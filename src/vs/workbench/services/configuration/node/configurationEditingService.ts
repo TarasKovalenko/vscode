@@ -86,13 +86,14 @@ export class ConfigurationEditingService implements IConfigurationEditingService
 		const checkDirtyConfiguration = !(options.force || options.donotSave);
 		const saveConfiguration = options.force || !options.donotSave;
 		return this.resolveAndValidate(target, operation, checkDirtyConfiguration, options.scopes || {})
-			.then(reference => this.writeToBuffer(reference.object.textEditorModel, operation, saveConfiguration));
+			.then(reference => this.writeToBuffer(reference.object.textEditorModel, operation, saveConfiguration)
+				.then(() => reference.dispose()));
 	}
 
 	private writeToBuffer(model: editorCommon.IModel, operation: IConfigurationEditOperation, save: boolean): TPromise<any> {
 		const edit = this.getEdits(model, operation)[0];
 		if (this.applyEditsToBuffer(edit, model) && save) {
-			return this.textFileService.save(operation.resource)
+			return this.textFileService.save(operation.resource, { skipSaveParticipants: true /* programmatic change */ })
 				// Reload the configuration so that we make sure all parties are updated
 				.then(() => this.configurationService.reloadConfiguration());
 		}

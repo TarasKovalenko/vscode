@@ -8,7 +8,7 @@ import {
 	createConnection, IConnection, Range,
 	TextDocuments, TextDocument, InitializeParams, InitializeResult, RequestType
 } from 'vscode-languageserver';
-import { GetConfigurationRequest } from 'vscode-languageserver/lib/protocol.proposed';
+import { GetConfigurationRequest } from 'vscode-languageserver-protocol/lib/protocol.configuration.proposed';
 
 import { getCSSLanguageService, getSCSSLanguageService, getLESSLanguageService, LanguageSettings, LanguageService, Stylesheet } from 'vscode-css-languageservice';
 import { getLanguageModelCache } from './languageModelCache';
@@ -90,6 +90,10 @@ function getLanguageService(document: TextDocument) {
 }
 
 let documentSettings: { [key: string]: Thenable<LanguageSettings> } = {};
+// remove document settings on close
+documents.onDidClose(e => {
+	delete documentSettings[e.document.uri];
+});
 function getDocumentSettings(textDocument: TextDocument): Thenable<LanguageSettings> {
 	if (scopedSettingsSupport) {
 		let promise = documentSettings[textDocument.uri];
