@@ -59,6 +59,7 @@ export interface IWindowsMainService {
 	reload(win: ICodeWindow, cli?: ParsedArgs): void;
 	openWorkspace(win?: ICodeWindow): void;
 	createAndOpenWorkspace(win: ICodeWindow, folders?: string[], path?: string): void;
+	saveAndOpenWorkspace(win: ICodeWindow, path: string): void;
 	closeWorkspace(win: ICodeWindow): void;
 	open(openConfig: IOpenConfiguration): ICodeWindow[];
 	openExtensionDevelopmentHostWindow(openConfig: IOpenConfiguration): void;
@@ -88,6 +89,7 @@ export interface IOpenConfiguration {
 	forceReuseWindow?: boolean;
 	forceEmpty?: boolean;
 	diffMode?: boolean;
+	addMode?: boolean;
 	forceOpenWorkspaceAsFile?: boolean;
 	initialStartup?: boolean;
 }

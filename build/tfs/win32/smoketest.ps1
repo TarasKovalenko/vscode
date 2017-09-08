@@ -39,8 +39,7 @@ step "Build minified" {
 
 step "Run smoke test" {
 	exec { & Push-Location test\smoke }
-	exec { & npm install }
-	exec { & npm test -- --latest "$env:AGENT_BUILDDIRECTORY\VSCode-win32-$global:arch\Code - Insiders.exe" }
+	exec { & .\node_modules\.bin/mocha --build "$env:AGENT_BUILDDIRECTORY\VSCode-win32-$global:arch\Code - Insiders.exe" --screenshot }
 	exec { & Pop-Location }
 }
 

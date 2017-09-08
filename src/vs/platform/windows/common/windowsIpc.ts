@@ -24,12 +24,18 @@ export interface IWindowsChannel extends IChannel {
 	call(command: 'closeWorkspace', arg: number): TPromise<void>;
 	call(command: 'openWorkspace', arg: number): TPromise<void>;
 	call(command: 'createAndOpenWorkspace', arg: [number, string[], string]): TPromise<void>;
+	call(command: 'saveAndOpenWorkspace', arg: [number, string]): TPromise<void>;
 	call(command: 'toggleFullScreen', arg: number): TPromise<void>;
 	call(command: 'setRepresentedFilename', arg: [number, string]): TPromise<void>;
 	call(command: 'addRecentlyOpened', arg: string[]): TPromise<void>;
 	call(command: 'removeFromRecentlyOpened', arg: (IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier)[]): TPromise<void>;
 	call(command: 'clearRecentlyOpened'): TPromise<void>;
 	call(command: 'getRecentlyOpened', arg: number): TPromise<IRecentlyOpened>;
+	call(command: 'showPreviousWindowTab', arg: number): TPromise<void>;
+	call(command: 'showNextWindowTab', arg: number): TPromise<void>;
+	call(command: 'moveWindowTabToNewWindow', arg: number): TPromise<void>;
+	call(command: 'mergeAllWindowTabs', arg: number): TPromise<void>;
+	call(command: 'toggleWindowTabsBar', arg: number): TPromise<void>;
 	call(command: 'focusWindow', arg: number): TPromise<void>;
 	call(command: 'closeWindow', arg: number): TPromise<void>;
 	call(command: 'isFocused', arg: number): TPromise<boolean>;
@@ -80,11 +86,17 @@ export class WindowsChannel implements IWindowsChannel {
 			case 'closeWorkspace': return this.service.closeWorkspace(arg);
 			case 'openWorkspace': return this.service.openWorkspace(arg);
 			case 'createAndOpenWorkspace': return this.service.createAndOpenWorkspace(arg[0], arg[1], arg[2]);
+			case 'saveAndOpenWorkspace': return this.service.saveAndOpenWorkspace(arg[0], arg[1]);
 			case 'toggleFullScreen': return this.service.toggleFullScreen(arg);
 			case 'setRepresentedFilename': return this.service.setRepresentedFilename(arg[0], arg[1]);
 			case 'addRecentlyOpened': return this.service.addRecentlyOpened(arg);
 			case 'removeFromRecentlyOpened': return this.service.removeFromRecentlyOpened(arg);
 			case 'clearRecentlyOpened': return this.service.clearRecentlyOpened();
+			case 'showPreviousWindowTab': return this.service.showPreviousWindowTab();
+			case 'showNextWindowTab': return this.service.showNextWindowTab();
+			case 'moveWindowTabToNewWindow': return this.service.moveWindowTabToNewWindow();
+			case 'mergeAllWindowTabs': return this.service.mergeAllWindowTabs();
+			case 'toggleWindowTabsBar': return this.service.toggleWindowTabsBar();
 			case 'getRecentlyOpened': return this.service.getRecentlyOpened(arg);
 			case 'focusWindow': return this.service.focusWindow(arg);
 			case 'closeWindow': return this.service.closeWindow(arg);
@@ -163,6 +175,10 @@ export class WindowsChannelClient implements IWindowsService {
 		return this.channel.call('createAndOpenWorkspace', [windowId, folders, path]);
 	}
 
+	saveAndOpenWorkspace(windowId: number, path: string): TPromise<void> {
+		return this.channel.call('saveAndOpenWorkspace', [windowId, path]);
+	}
+
 	toggleFullScreen(windowId: number): TPromise<void> {
 		return this.channel.call('toggleFullScreen', windowId);
 	}
@@ -185,6 +201,26 @@ export class WindowsChannelClient implements IWindowsService {
 
 	getRecentlyOpened(windowId: number): TPromise<IRecentlyOpened> {
 		return this.channel.call('getRecentlyOpened', windowId);
+	}
+
+	showPreviousWindowTab(): TPromise<void> {
+		return this.channel.call('showPreviousWindowTab');
+	}
+
+	showNextWindowTab(): TPromise<void> {
+		return this.channel.call('showNextWindowTab');
+	}
+
+	moveWindowTabToNewWindow(): TPromise<void> {
+		return this.channel.call('moveWindowTabToNewWindow');
+	}
+
+	mergeAllWindowTabs(): TPromise<void> {
+		return this.channel.call('mergeAllWindowTabs');
+	}
+
+	toggleWindowTabsBar(): TPromise<void> {
+		return this.channel.call('toggleWindowTabsBar');
 	}
 
 	focusWindow(windowId: number): TPromise<void> {

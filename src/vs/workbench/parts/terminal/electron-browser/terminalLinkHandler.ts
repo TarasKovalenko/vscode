@@ -18,7 +18,9 @@ import { IConfigurationService } from 'vs/platform/configuration/common/configur
 
 const pathPrefix = '(\\.\\.?|\\~)';
 const pathSeparatorClause = '\\/';
-const excludedPathCharactersClause = '[^\\0\\s!$`&*()\\[\\]+\'":;]'; // '":; are allowed in paths but they are often separators so ignore them
+// '":; are allowed in paths but they are often separators so ignore them
+// Also disallow \\ to prevent a catastropic backtracking case #24798
+const excludedPathCharactersClause = '[^\\0\\s!$`&*()\\[\\]+\'":;\\\\]';
 const escapedExcludedPathCharactersClause = '(\\\\s|\\\\!|\\\\$|\\\\`|\\\\&|\\\\*|(|)|\\+)';
 /** A regex that matches paths in the form /foo, ~/foo, ./foo, ../foo, foo/bar */
 const unixLocalLinkClause = '((' + pathPrefix + '|(' + excludedPathCharactersClause + '|' + escapedExcludedPathCharactersClause + ')+)?(' + pathSeparatorClause + '(' + excludedPathCharactersClause + '|' + escapedExcludedPathCharactersClause + ')+)+)';
@@ -87,7 +89,7 @@ export class TerminalLinkHandler {
 	}
 
 	public registerCustomLinkHandler(regex: RegExp, handler: (uri: string) => void, matchIndex?: number, validationCallback?: XtermLinkMatcherValidationCallback): number {
-		const wrappedValidationCallback = (uri, element, callback) => {
+		const wrappedValidationCallback = (uri: string, element: HTMLElement, callback) => {
 			this._addTooltipEventListeners(element);
 			if (validationCallback) {
 				validationCallback(uri, element, callback);
@@ -193,7 +195,7 @@ export class TerminalLinkHandler {
 	}
 
 	private _addTooltipEventListeners(element: HTMLElement): void {
-		let timeout = null;
+		let timeout: number = null;
 		let isMessageShowing = false;
 		this._hoverDisposables.push(dom.addDisposableListener(element, dom.EventType.MOUSE_OVER, e => {
 			element.classList.toggle('active', this._isLinkActivationModifierDown(e));

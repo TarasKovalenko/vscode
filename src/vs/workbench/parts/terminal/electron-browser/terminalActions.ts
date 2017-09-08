@@ -696,6 +696,40 @@ export class HideTerminalFindWidgetAction extends Action {
 	}
 }
 
+export class ShowNextFindTermTerminalFindWidgetAction extends Action {
+
+	public static ID = 'workbench.action.terminal.findWidget.history.showNext';
+	public static LABEL = nls.localize('nextTerminalFindTerm', "Show Next Find Term");
+
+	constructor(
+		id: string, label: string,
+		@ITerminalService private terminalService: ITerminalService
+	) {
+		super(id, label);
+	}
+
+	public run(): TPromise<any> {
+		return TPromise.as(this.terminalService.showNextFindTermFindWidget());
+	}
+}
+
+export class ShowPreviousFindTermTerminalFindWidgetAction extends Action {
+
+	public static ID = 'workbench.action.terminal.findWidget.history.showPrevious';
+	public static LABEL = nls.localize('previousTerminalFindTerm', "Show Previous Find Term");
+
+	constructor(
+		id: string, label: string,
+		@ITerminalService private terminalService: ITerminalService
+	) {
+		super(id, label);
+	}
+
+	public run(): TPromise<any> {
+		return TPromise.as(this.terminalService.showPreviousFindTermFindWidget());
+	}
+}
+
 
 export class QuickOpenActionTermContributor extends ActionBarContributor {
 
@@ -724,7 +758,7 @@ export class QuickOpenActionTermContributor extends ActionBarContributor {
 export class QuickOpenTermAction extends Action {
 
 	public static ID = 'workbench.action.quickOpenTerm';
-	public static LABEL = nls.localize('quickOpenTerm', "Terminal: Switch Active Terminal");
+	public static LABEL = nls.localize('quickOpenTerm', "Switch Active Terminal");
 
 	constructor(
 		id: string,

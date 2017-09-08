@@ -150,14 +150,27 @@ export namespace MarkdownString {
 		return markup.map(MarkdownString.from);
 	}
 
+	interface Codeblock {
+		language: string;
+		value: string;
+	}
+
+	function isCodeblock(thing: any): thing is Codeblock {
+		return typeof thing === 'object'
+			&& typeof (<Codeblock>thing).language === 'string'
+			&& typeof (<Codeblock>thing).value === 'string';
+	}
+
 	export function from(markup: vscode.MarkdownString | vscode.MarkedString): htmlContent.IMarkdownString {
-		if (htmlContent.isMarkdownString(markup)) {
-			return markup;
-		} else if (typeof markup === 'string' || !markup) {
-			return { value: <string>markup || '', isTrusted: true };
-		} else {
+		if (isCodeblock(markup)) {
 			const { language, value } = markup;
-			return { value: '```' + language + '\n' + value + '\n```' };
+			return { value: '```' + language + '\n' + value + '\n```\n' };
+		} else if (htmlContent.isMarkdownString(markup)) {
+			return markup;
+		} else if (typeof markup === 'string') {
+			return { value: <string>markup, isTrusted: true };
+		} else {
+			return { value: '' };
 		}
 	}
 	export function to(value: htmlContent.IMarkdownString): vscode.MarkdownString {
@@ -341,7 +354,7 @@ export namespace Suggest {
 		result.insertText = suggestion.insertText;
 		result.kind = CompletionItemKind.to(suggestion.type);
 		result.detail = suggestion.detail;
-		result.documentation = suggestion.documentation;
+		result.documentation = htmlContent.isMarkdownString(suggestion.documentation) ? MarkdownString.to(suggestion.documentation) : suggestion.documentation;
 		result.sortText = suggestion.sortText;
 		result.filterText = suggestion.filterText;
 
@@ -368,14 +381,56 @@ export namespace Suggest {
 	}
 };
 
-export namespace SignatureHelp {
+export namespace ParameterInformation {
+	export function from(info: types.ParameterInformation): modes.ParameterInformation {
+		return {
+			label: info.label,
+			documentation: info.documentation && MarkdownString.from(info.documentation)
+		};
+	}
+	export function to(info: modes.ParameterInformation): types.ParameterInformation {
+		return {
+			label: info.label,
+			documentation: htmlContent.isMarkdownString(info.documentation) ? MarkdownString.to(info.documentation) : info.documentation
+		};
+	}
+}
 
-	export function from(signatureHelp: types.SignatureHelp): modes.SignatureHelp {
-		return signatureHelp;
+export namespace SignatureInformation {
+
+	export function from(info: types.SignatureInformation): modes.SignatureInformation {
+		return {
+			label: info.label,
+			documentation: info.documentation && MarkdownString.from(info.documentation),
+			parameters: info.parameters && info.parameters.map(ParameterInformation.from)
+		};
 	}
 
-	export function to(hints: modes.SignatureHelp): types.SignatureHelp {
-		return hints;
+	export function to(info: modes.SignatureInformation): types.SignatureInformation {
+		return {
+			label: info.label,
+			documentation: htmlContent.isMarkdownString(info.documentation) ? MarkdownString.to(info.documentation) : info.documentation,
+			parameters: info.parameters && info.parameters.map(ParameterInformation.to)
+		};
+	}
+}
+
+export namespace SignatureHelp {
+
+	export function from(help: types.SignatureHelp): modes.SignatureHelp {
+		return {
+			activeSignature: help.activeSignature,
+			activeParameter: help.activeParameter,
+			signatures: help.signatures && help.signatures.map(SignatureInformation.from)
+		};
+	}
+
+	export function to(help: modes.SignatureHelp): types.SignatureHelp {
+		return {
+			activeSignature: help.activeSignature,
+			activeParameter: help.activeParameter,
+			signatures: help.signatures && help.signatures.map(SignatureInformation.to)
+		};
 	}
 }
 

@@ -897,7 +897,8 @@ export class ReportIssueAction extends Action {
 		id: string,
 		label: string,
 		@IIntegrityService private integrityService: IIntegrityService,
-		@IExtensionManagementService private extensionManagementService: IExtensionManagementService
+		@IExtensionManagementService private extensionManagementService: IExtensionManagementService,
+		@IEnvironmentService private environmentService: IEnvironmentService
 	) {
 		super(id, label);
 	}
@@ -916,7 +917,7 @@ export class ReportIssueAction extends Action {
 	public run(): TPromise<boolean> {
 		return this._optimisticIsPure().then(isPure => {
 			return this.extensionManagementService.getInstalled(LocalExtensionType.User).then(extensions => {
-				const issueUrl = this.generateNewIssueUrl(product.reportIssueUrl, pkg.name, pkg.version, product.commit, product.date, isPure, extensions);
+				const issueUrl = this.generateNewIssueUrl(product.reportIssueUrl, pkg.name, pkg.version, product.commit, product.date, isPure, extensions, this.environmentService.disableExtensions);
 
 				window.open(issueUrl);
 
@@ -925,14 +926,14 @@ export class ReportIssueAction extends Action {
 		});
 	}
 
-	private generateNewIssueUrl(baseUrl: string, name: string, version: string, commit: string, date: string, isPure: boolean, extensions: ILocalExtension[]): string {
+	private generateNewIssueUrl(baseUrl: string, name: string, version: string, commit: string, date: string, isPure: boolean, extensions: ILocalExtension[], areExtensionsDisabled: boolean): string {
 		// Avoid backticks, these can trigger XSS detectors. (https://github.com/Microsoft/vscode/issues/13098)
 		const osVersion = `${os.type()} ${os.arch()} ${os.release()}`;
 		const queryStringPrefix = baseUrl.indexOf('?') === -1 ? '?' : '&';
 		const body = encodeURIComponent(
 			`- VSCode Version: ${name} ${version}${isPure ? '' : ' **[Unsupported]**'} (${product.commit || 'Commit unknown'}, ${product.date || 'Date unknown'})
 - OS Version: ${osVersion}
-- Extensions: ${this.generateExtensionTable(extensions)}
+- Extensions: ${areExtensionsDisabled ? 'Extensions are disabled' : this.generateExtensionTable(extensions)}
 ---
 
 Steps to Reproduce:
@@ -1203,7 +1204,7 @@ export class ToggleSharedProcessAction extends Action {
 	}
 }
 
-enum Direction {
+export enum Direction {
 	Next,
 	Previous,
 }
@@ -1276,7 +1277,7 @@ export abstract class BaseNavigationAction extends Action {
 		return this.viewletService.openViewlet(activeViewletId, true);
 	}
 
-	protected navigateAcrossEditorGroup(direction): TPromise<boolean> {
+	protected navigateAcrossEditorGroup(direction: Direction): TPromise<boolean> {
 		const model = this.groupService.getStacksModel();
 		const currentPosition = model.positionOfGroup(model.activeGroup);
 		const nextPosition = direction === Direction.Next ? currentPosition + 1 : currentPosition - 1;
@@ -1329,7 +1330,7 @@ export class NavigateLeftAction extends BaseNavigationAction {
 		super(id, label, groupService, panelService, partService, viewletService);
 	}
 
-	protected navigateOnEditorFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean | IViewlet> {
+	protected navigateOnEditorFocus(isEditorGroupVertical: boolean, isSidebarPositionLeft: boolean): TPromise<boolean | IViewlet> {
 		if (!isEditorGroupVertical) {
 			if (isSidebarPositionLeft) {
 				return this.navigateToSidebar();
@@ -1345,7 +1346,7 @@ export class NavigateLeftAction extends BaseNavigationAction {
 			});
 	}
 
-	protected navigateOnPanelFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean | IViewlet> {
+	protected navigateOnPanelFocus(isEditorGroupVertica: boolean, isSidebarPositionLeft: boolean): TPromise<boolean | IViewlet> {
 		if (isSidebarPositionLeft) {
 			return this.navigateToSidebar();
 		}
@@ -1353,7 +1354,7 @@ export class NavigateLeftAction extends BaseNavigationAction {
 		return TPromise.as(false);
 	}
 
-	protected navigateOnSidebarFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean> {
+	protected navigateOnSidebarFocus(isEditorGroupVertical: boolean, isSidebarPositionLeft: boolean): TPromise<boolean> {
 		if (isSidebarPositionLeft) {
 			return TPromise.as(false);
 		}
@@ -1382,7 +1383,7 @@ export class NavigateRightAction extends BaseNavigationAction {
 		super(id, label, groupService, panelService, partService, viewletService);
 	}
 
-	protected navigateOnEditorFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean | IViewlet> {
+	protected navigateOnEditorFocus(isEditorGroupVertical: boolean, isSidebarPositionLeft: boolean): TPromise<boolean | IViewlet> {
 		if (!isEditorGroupVertical) {
 			if (!isSidebarPositionLeft) {
 				return this.navigateToSidebar();
@@ -1399,7 +1400,7 @@ export class NavigateRightAction extends BaseNavigationAction {
 			});
 	}
 
-	protected navigateOnPanelFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean | IViewlet> {
+	protected navigateOnPanelFocus(isEditorGroupVertical: boolean, isSidebarPositionLeft: boolean): TPromise<boolean | IViewlet> {
 		if (!isSidebarPositionLeft) {
 			return this.navigateToSidebar();
 		}
@@ -1407,7 +1408,7 @@ export class NavigateRightAction extends BaseNavigationAction {
 		return TPromise.as(false);
 	}
 
-	protected navigateOnSidebarFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean> {
+	protected navigateOnSidebarFocus(isEditorGroupVertical: boolean, isSidebarPositionLeft: boolean): TPromise<boolean> {
 		if (!isSidebarPositionLeft) {
 			return TPromise.as(false);
 		}
@@ -1436,14 +1437,14 @@ export class NavigateUpAction extends BaseNavigationAction {
 		super(id, label, groupService, panelService, partService, viewletService);
 	}
 
-	protected navigateOnEditorFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean> {
+	protected navigateOnEditorFocus(isEditorGroupVertical: boolean, isSidebarPositionLeft: boolean): TPromise<boolean> {
 		if (isEditorGroupVertical) {
 			return TPromise.as(false);
 		}
 		return this.navigateAcrossEditorGroup(Direction.Previous);
 	}
 
-	protected navigateOnPanelFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean> {
+	protected navigateOnPanelFocus(isEditorGroupVertical: boolean, isSidebarPositionLeft: boolean): TPromise<boolean> {
 		if (isEditorGroupVertical) {
 			return this.navigateToLastActiveGroup();
 		}
@@ -1467,7 +1468,7 @@ export class NavigateDownAction extends BaseNavigationAction {
 		super(id, label, groupService, panelService, partService, viewletService);
 	}
 
-	protected navigateOnEditorFocus(isEditorGroupVertical, isSidebarPositionLeft): TPromise<boolean | IPanel> {
+	protected navigateOnEditorFocus(isEditorGroupVertical: boolean, isSidebarPositionLeft: boolean): TPromise<boolean | IPanel> {
 		if (isEditorGroupVertical) {
 			return this.navigateToPanel();
 		}
@@ -1552,5 +1553,95 @@ export class DecreaseViewSizeAction extends BaseResizeViewAction {
 	public run(): TPromise<boolean> {
 		this.resizePart(-BaseResizeViewAction.RESIZE_INCREMENT);
 		return TPromise.as(true);
+	}
+}
+
+export class ShowPreviousWindowTab extends Action {
+
+	public static ID = 'workbench.action.showPreviousWindowTab';
+	public static LABEL = nls.localize('showPreviousTab', "Show Previous Window Tab");
+
+	constructor(
+		id: string,
+		label: string,
+		@IWindowsService private windowsService: IWindowsService
+	) {
+		super(ShowPreviousWindowTab.ID, ShowPreviousWindowTab.LABEL);
+	}
+
+	public run(): TPromise<boolean> {
+		return this.windowsService.showPreviousWindowTab().then(() => true);
+	}
+}
+
+export class ShowNextWindowTab extends Action {
+
+	public static ID = 'workbench.action.showNextWindowTab';
+	public static LABEL = nls.localize('showNextWindowTab', "Show Next Window Tab");
+
+	constructor(
+		id: string,
+		label: string,
+		@IWindowsService private windowsService: IWindowsService
+	) {
+		super(ShowNextWindowTab.ID, ShowNextWindowTab.LABEL);
+	}
+
+	public run(): TPromise<boolean> {
+		return this.windowsService.showNextWindowTab().then(() => true);
+	}
+}
+
+export class MoveWindowTabToNewWindow extends Action {
+
+	public static ID = 'workbench.action.moveWindowTabToNewWindow';
+	public static LABEL = nls.localize('moveWindowTabToNewWindow', "Move Window Tab to New Window");
+
+	constructor(
+		id: string,
+		label: string,
+		@IWindowsService private windowsService: IWindowsService
+	) {
+		super(MoveWindowTabToNewWindow.ID, MoveWindowTabToNewWindow.LABEL);
+	}
+
+	public run(): TPromise<boolean> {
+		return this.windowsService.moveWindowTabToNewWindow().then(() => true);
+	}
+}
+
+export class MergeAllWindowTabs extends Action {
+
+	public static ID = 'workbench.action.mergeAllWindowTabs';
+	public static LABEL = nls.localize('mergeAllWindowTabs', "Merge All Windows");
+
+	constructor(
+		id: string,
+		label: string,
+		@IWindowsService private windowsService: IWindowsService
+	) {
+		super(MergeAllWindowTabs.ID, MergeAllWindowTabs.LABEL);
+	}
+
+	public run(): TPromise<boolean> {
+		return this.windowsService.mergeAllWindowTabs().then(() => true);
+	}
+}
+
+export class ToggleWindowTabsBar extends Action {
+
+	public static ID = 'workbench.action.toggleWindowTabsBar';
+	public static LABEL = nls.localize('toggleWindowTabsBar', "Toggle Window Tabs Bar");
+
+	constructor(
+		id: string,
+		label: string,
+		@IWindowsService private windowsService: IWindowsService
+	) {
+		super(ToggleWindowTabsBar.ID, ToggleWindowTabsBar.LABEL);
+	}
+
+	public run(): TPromise<boolean> {
+		return this.windowsService.toggleWindowTabsBar().then(() => true);
 	}
 }

@@ -44,7 +44,7 @@ import { IPosition } from 'vs/editor/common/core/position';
 import { IRange } from 'vs/editor/common/core/range';
 import { ISelection, Selection } from 'vs/editor/common/core/selection';
 
-import { ITreeItem } from 'vs/workbench/parts/views/common/views';
+import { ITreeItem } from 'vs/workbench/common/views';
 import { ThemeColor } from 'vs/platform/theme/common/themeService';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { SerializedError } from 'vs/base/common/errors';
@@ -53,6 +53,7 @@ export interface IEnvironment {
 	isExtensionDevelopmentDebug: boolean;
 	enableProposedApiForAll: boolean;
 	enableProposedApiFor: string | string[];
+	appRoot: string;
 	appSettingsHome: string;
 	disableExtensions: boolean;
 	userExtensionsHome: string;
@@ -113,16 +114,22 @@ export interface MainThreadDiagnosticsShape extends IDisposable {
 	$clear(owner: string): TPromise<any>;
 }
 
-export interface MainThreadDialogOptions {
-	uri?: URI;
+export interface MainThreadDialogOpenOptions {
+	defaultResource?: URI;
 	openLabel?: string;
 	openFiles?: boolean;
 	openFolders?: boolean;
 	openMany?: boolean;
 }
 
+export interface MainThreadDialogSaveOptions {
+	defaultResource?: URI;
+	saveLabel?: string;
+}
+
 export interface MainThreadDiaglogsShape extends IDisposable {
-	$showOpenDialog(options: MainThreadDialogOptions): TPromise<string[]>;
+	$showOpenDialog(options: MainThreadDialogOpenOptions): TPromise<string[]>;
+	$showSaveDialog(options: MainThreadDialogSaveOptions): TPromise<string>;
 }
 
 export interface MainThreadDocumentContentProvidersShape extends IDisposable {
@@ -222,7 +229,7 @@ export interface MainThreadLanguageFeaturesShape extends IDisposable {
 	$registerOnTypeFormattingSupport(handle: number, selector: vscode.DocumentSelector, autoFormatTriggerCharacters: string[]): TPromise<any>;
 	$registerNavigateTypeSupport(handle: number): TPromise<any>;
 	$registerRenameSupport(handle: number, selector: vscode.DocumentSelector): TPromise<any>;
-	$registerSuggestSupport(handle: number, selector: vscode.DocumentSelector, triggerCharacters: string[]): TPromise<any>;
+	$registerSuggestSupport(handle: number, selector: vscode.DocumentSelector, triggerCharacters: string[], supportsResolveDetails: boolean): TPromise<any>;
 	$registerSignatureHelpProvider(handle: number, selector: vscode.DocumentSelector, triggerCharacter: string[]): TPromise<any>;
 	$registerDocumentLinkProvider(handle: number, selector: vscode.DocumentSelector): TPromise<any>;
 	$registerColorFormats(formats: IRawColorFormatMap): TPromise<any>;
@@ -278,7 +285,7 @@ export interface MainThreadQuickOpenShape extends IDisposable {
 
 export interface MainThreadStatusBarShape extends IDisposable {
 	$setEntry(id: number, extensionId: string, text: string, tooltip: string, command: string, color: string | ThemeColor, alignment: MainThreadStatusBarAlignment, priority: number): void;
-	$dispose(id: number);
+	$dispose(id: number): void;
 }
 
 export interface MainThreadStorageShape extends IDisposable {
@@ -295,8 +302,12 @@ export interface MainThreadWorkspaceShape extends IDisposable {
 	$cancelSearch(requestId: number): Thenable<boolean>;
 	$saveAll(includeUntitled?: boolean): Thenable<boolean>;
 	$applyWorkspaceEdit(edits: IResourceEdit[]): TPromise<boolean>;
+
 	$registerFileSystemProvider(handle: number, authority: string): void;
+	$unregisterFileSystemProvider(handle: number): void;
 	$onFileSystemChange(handle: number, resource: URI): void;
+	$updateSearchSession(session: number, data): void;
+	$finishSearchSession(session: number, err?: any): void;
 }
 
 export interface MainThreadTaskShape extends IDisposable {
@@ -325,11 +336,21 @@ export interface SCMGroupFeatures {
 export type SCMRawResource = [
 	number /*handle*/,
 	string /*resourceUri*/,
-	modes.Command /*command*/,
 	string[] /*icons: light, dark*/,
 	string /*tooltip*/,
 	boolean /*strike through*/,
 	boolean /*faded*/
+];
+
+export type SCMRawResourceSplice = [
+	number /* start */,
+	number /* delete count */,
+	SCMRawResource[]
+];
+
+export type SCMRawResourceSplices = [
+	number, /*handle*/
+	SCMRawResourceSplice[]
 ];
 
 export interface MainThreadSCMShape extends IDisposable {
@@ -340,10 +361,11 @@ export interface MainThreadSCMShape extends IDisposable {
 	$registerGroup(sourceControlHandle: number, handle: number, id: string, label: string): void;
 	$updateGroup(sourceControlHandle: number, handle: number, features: SCMGroupFeatures): void;
 	$updateGroupLabel(sourceControlHandle: number, handle: number, label: string): void;
-	$updateGroupResourceStates(sourceControlHandle: number, groupHandle: number, resources: SCMRawResource[]): void;
 	$unregisterGroup(sourceControlHandle: number, handle: number): void;
 
-	$setInputBoxValue(value: string): void;
+	$spliceResourceStates(sourceControlHandle: number, splices: SCMRawResourceSplices[]): void;
+
+	$setInputBoxValue(sourceControlHandle: number, value: string): void;
 }
 
 export type DebugSessionUUID = string;
@@ -362,6 +384,10 @@ export interface MainThreadCredentialsShape extends IDisposable {
 	$deleteSecret(service: string, account: string): Thenable<boolean>;
 }
 
+export interface MainThreadWindowShape extends IDisposable {
+	$getWindowVisibility(): TPromise<boolean>;
+}
+
 // -- extension host
 
 export interface ExtHostCommandsShape {
@@ -370,7 +396,7 @@ export interface ExtHostCommandsShape {
 }
 
 export interface ExtHostConfigurationShape {
-	$acceptConfigurationChanged(data: IConfigurationData<any>);
+	$acceptConfigurationChanged(data: IConfigurationData<any>): void;
 }
 
 export interface ExtHostDiagnosticsShape {
@@ -435,8 +461,11 @@ export interface ExtHostTreeViewsShape {
 
 export interface ExtHostWorkspaceShape {
 	$acceptWorkspaceData(workspace: IWorkspaceData): void;
+
 	$resolveFile(handle: number, resource: URI): TPromise<string>;
 	$storeFile(handle: number, resource: URI, content: string): TPromise<any>;
+	$startSearch(handle: number, session: number, query: string): void;
+	$cancelSearch(handle: number, session: number): void;
 }
 
 export interface ExtHostExtensionServiceShape {
@@ -449,7 +478,7 @@ export interface FileSystemEvents {
 	deleted: URI[];
 }
 export interface ExtHostFileSystemEventServiceShape {
-	$onFileEvent(events: FileSystemEvents);
+	$onFileEvent(events: FileSystemEvents): void;
 }
 
 export interface ObjectIdentifier {
@@ -478,6 +507,18 @@ export interface IRawColorInfo {
 
 export type IRawColorFormatMap = [number, string][];
 
+
+export interface IExtHostSuggestion extends modes.ISuggestion {
+	_id: number;
+	_parentId: number;
+}
+
+export interface IExtHostSuggestResult {
+	_id: number;
+	suggestions: IExtHostSuggestion[];
+	incomplete?: boolean;
+}
+
 export interface ExtHostLanguageFeaturesShape {
 	$provideDocumentSymbols(handle: number, resource: URI): TPromise<modes.SymbolInformation[]>;
 	$provideCodeLenses(handle: number, resource: URI): TPromise<modes.ICodeLensSymbol[]>;
@@ -495,8 +536,9 @@ export interface ExtHostLanguageFeaturesShape {
 	$provideWorkspaceSymbols(handle: number, search: string): TPromise<modes.SymbolInformation[]>;
 	$resolveWorkspaceSymbol(handle: number, symbol: modes.SymbolInformation): TPromise<modes.SymbolInformation>;
 	$provideRenameEdits(handle: number, resource: URI, position: IPosition, newName: string): TPromise<modes.WorkspaceEdit>;
-	$provideCompletionItems(handle: number, resource: URI, position: IPosition): TPromise<modes.ISuggestResult>;
+	$provideCompletionItems(handle: number, resource: URI, position: IPosition): TPromise<IExtHostSuggestResult>;
 	$resolveCompletionItem(handle: number, resource: URI, position: IPosition, suggestion: modes.ISuggestion): TPromise<modes.ISuggestion>;
+	$releaseCompletionItems(handle: number, id: number): void;
 	$provideSignatureHelp(handle: number, resource: URI, position: IPosition): TPromise<modes.SignatureHelp>;
 	$provideDocumentLinks(handle: number, resource: URI): TPromise<modes.ILink[]>;
 	$provideDocumentColors(handle: number, resource: URI): TPromise<IRawColorInfo[]>;
@@ -515,9 +557,8 @@ export interface ExtHostTerminalServiceShape {
 
 export interface ExtHostSCMShape {
 	$provideOriginalResource(sourceControlHandle: number, uri: URI): TPromise<URI>;
-	$onActiveSourceControlChange(sourceControlHandle: number): TPromise<void>;
-	$onInputBoxValueChange(value: string): TPromise<void>;
-	$onInputBoxAcceptChanges(): TPromise<void>;
+	$onInputBoxValueChange(sourceControlHandle: number, value: string): TPromise<void>;
+	$executeResourceCommand(sourceControlHandle: number, groupHandle: number, handle: number): TPromise<void>;
 }
 
 export interface ExtHostTaskShape {
@@ -534,6 +575,10 @@ export interface ExtHostDebugServiceShape {
 }
 
 export interface ExtHostCredentialsShape {
+}
+
+export interface ExtHostWindowShape {
+	$onDidChangeWindowFocus(value: boolean): void;
 }
 
 // --- proxy identifiers
@@ -564,6 +609,7 @@ export const MainContext = {
 	MainThreadSCM: createMainId<MainThreadSCMShape>('MainThreadSCM'),
 	MainThreadTask: createMainId<MainThreadTaskShape>('MainThreadTask'),
 	MainThreadCredentials: createMainId<MainThreadCredentialsShape>('MainThreadCredentials'),
+	MainThreadWindow: createMainId<MainThreadWindowShape>('MainThreadWindow'),
 };
 
 export const ExtHostContext = {
@@ -587,4 +633,5 @@ export const ExtHostContext = {
 	ExtHostTask: createExtId<ExtHostTaskShape>('ExtHostTask'),
 	ExtHostWorkspace: createExtId<ExtHostWorkspaceShape>('ExtHostWorkspace'),
 	ExtHostCredentials: createExtId<ExtHostCredentialsShape>('ExtHostCredentials'),
+	ExtHostWindow: createExtId<ExtHostWindowShape>('ExtHostWindow'),
 };

@@ -9,7 +9,7 @@ import * as paths from 'vs/base/common/paths';
 import { TPromise } from 'vs/base/common/winjs.base';
 import Event, { Emitter } from 'vs/base/common/event';
 import { StrictResourceMap } from 'vs/base/common/map';
-import { equals } from 'vs/base/common/arrays';
+import { equals, coalesce } from 'vs/base/common/arrays';
 import * as objects from 'vs/base/common/objects';
 import * as errors from 'vs/base/common/errors';
 import * as collections from 'vs/base/common/collections';
@@ -33,7 +33,7 @@ import { Registry } from 'vs/platform/registry/common/platform';
 import { ExtensionsRegistry, ExtensionMessageCollector } from 'vs/platform/extensions/common/extensionsRegistry';
 import { IConfigurationNode, IConfigurationRegistry, Extensions, editorConfigurationSchemaId, IDefaultConfigurationExtension, validateProperty, ConfigurationScope, schemaId } from 'vs/platform/configuration/common/configurationRegistry';
 import { createHash } from 'crypto';
-import { getWorkspaceLabel, IWorkspacesService, IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
+import { getWorkspaceLabel, IWorkspacesService, IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier, IStoredWorkspaceFolder } from 'vs/platform/workspaces/common/workspaces';
 
 interface IStat {
 	resource: URI;
@@ -215,10 +215,6 @@ export class WorkspaceService extends Disposable implements IWorkspaceConfigurat
 		return this.workspace && !!this.workspace.configuration;
 	}
 
-	public saveWorkspace(location: URI): TPromise<void> {
-		return TPromise.wrapError(new Error('Not supported'));
-	}
-
 	public getRoot(resource: URI): URI {
 		return this.workspace ? this.workspace.getRoot(resource) : null;
 	}
@@ -357,11 +353,6 @@ export class WorkspaceServiceImpl extends WorkspaceService {
 		this.baseConfigurationService = this._register(new GlobalConfigurationService(environmentService));
 	}
 
-	saveWorkspace(location: URI): TPromise<void> {
-		return this.workspacesService.saveWorkspace({ id: this.workspace.id, configPath: this.workspace.configuration.fsPath }, location.fsPath)
-			.then(workspaceIdentifier => this.onWorkspaceChange(URI.file(workspaceIdentifier.configPath)));
-	}
-
 	public getUnsupportedWorkspaceKeys(): string[] {
 		return this.hasFolderWorkspace() ? this._configuration.getFolderConfigurationModel(this.workspace.roots[0]).workspaceSettingsConfig.unsupportedKeys : [];
 	}
@@ -416,44 +407,61 @@ export class WorkspaceServiceImpl extends WorkspaceService {
 			});
 	}
 
-	private onWorkspaceChange(configPath: URI): TPromise<void> {
-		let workspaceName = this.workspace.name;
-		this.workspaceConfigPath = configPath;
+	// TODO@Sandeep use again once we can change workspace without window reload
+	// private onWorkspaceChange(configPath: URI): TPromise<void> {
+	// 	let workspaceName = this.workspace.name;
+	// 	this.workspaceConfigPath = configPath;
 
-		// Reset the workspace if current workspace is single folder
-		if (this.hasFolderWorkspace()) {
-			this.folderPath = null;
-			this.workspace = null;
-		}
+	// 	// Reset the workspace if current workspace is single folder
+	// 	if (this.hasFolderWorkspace()) {
+	// 		this.folderPath = null;
+	// 		this.workspace = null;
+	// 	}
 
-		// Update workspace configuration path with new path
-		else {
-			this.workspace.configuration = configPath;
-			this.workspace.name = getWorkspaceLabel({ id: this.workspace.id, configPath: this.workspace.configuration.fsPath }, this.environmentService);
-		}
+	// 	// Update workspace configuration path with new path
+	// 	else {
+	// 		this.workspace.configuration = configPath;
+	// 		this.workspace.name = getWorkspaceLabel({ id: this.workspace.id, configPath: this.workspace.configuration.fsPath }, this.environmentService);
+	// 	}
 
-		return this.initialize().then(() => {
-			if (workspaceName !== this.workspace.name) {
-				this._onDidChangeWorkspaceName.fire();
-			}
-		});
-	}
+	// 	return this.initialize().then(() => {
+	// 		if (workspaceName !== this.workspace.name) {
+	// 			this._onDidChangeWorkspaceName.fire();
+	// 		}
+	// 	});
+	// }
 
 	private initializeMulitFolderWorkspace(): TPromise<void> {
 		this.registerWorkspaceConfigSchema();
 		return this.workspaceConfiguration.load(this.workspaceConfigPath)
 			.then(() => {
 				const workspaceConfigurationModel = this.workspaceConfiguration.workspaceConfigurationModel;
-				if (!workspaceConfigurationModel.folders.length) {
+				const workspaceFolders = this.parseWorkspaceFolders(workspaceConfigurationModel.folders);
+				if (!workspaceFolders.length) {
 					return TPromise.wrapError<void>(new Error('Invalid workspace configuraton file ' + this.workspaceConfigPath));
 				}
 				const workspaceId = (this.workspaceIdentifier as IWorkspaceIdentifier).id;
 				const workspaceName = getWorkspaceLabel({ id: workspaceId, configPath: this.workspaceConfigPath.fsPath }, this.environmentService);
-				this.workspace = new Workspace(workspaceId, workspaceName, workspaceConfigurationModel.folders, this.workspaceConfigPath);
+				this.workspace = new Workspace(workspaceId, workspaceName, workspaceFolders, this.workspaceConfigPath);
 				this.legacyWorkspace = new LegacyWorkspace(this.workspace.roots[0]);
 				this._register(this.workspaceConfiguration.onDidUpdateConfiguration(() => this.onWorkspaceConfigurationChanged()));
 				return null;
 			});
+	}
+
+	private parseWorkspaceFolders(configuredFolders: IStoredWorkspaceFolder[]): URI[] {
+		return coalesce(configuredFolders.map(configuredFolder => {
+			const path = configuredFolder.path;
+			if (!path) {
+				return void 0;
+			}
+
+			if (paths.isAbsolute(path)) {
+				return URI.file(path);
+			}
+
+			return URI.file(paths.join(paths.dirname(this.workspaceConfigPath.fsPath), path));
+		}));
 	}
 
 	private registerWorkspaceConfigSchema(): void {
@@ -461,27 +469,29 @@ export class WorkspaceServiceImpl extends WorkspaceService {
 		if (!contributionRegistry.getSchemaContributions().schemas['vscode://schemas/workspaceConfig']) {
 			contributionRegistry.registerSchema('vscode://schemas/workspaceConfig', {
 				default: {
-					id: 'SOME_UNIQUE_ID',
 					folders: [
-						'file:///'
+						{
+							path: ''
+						}
 					],
 					settings: {
 					}
 				},
-				required: ['id', 'folders'],
+				required: ['folders'],
 				properties: {
-					'id': {
-						type: 'string',
-						description: nls.localize('workspaceConfig.id.description', "Workspace Identifier. Used for storing internal workspace state, which can be lost on changing."),
-						minLength: 1
-					},
 					'folders': {
 						minItems: 1,
 						uniqueItems: true,
-						description: nls.localize('workspaceConfig.folders.description', "List of folders to be loaded in the workspace. Must be a file path. e.g. `file:///root/folderA`"),
+						description: nls.localize('workspaceConfig.folders.description', "List of folders to be loaded in the workspace. Must be a file path. e.g. `/root/folderA` or `./folderA` for a relative path that will be resolved against the location of the workspace file."),
 						items: {
-							type: 'string',
-							pattern: '^file:\/\/[^/]*\/'
+							type: 'object',
+							default: { path: '' },
+							properties: {
+								path: {
+									type: 'string',
+									description: nls.localize('workspaceConfig.folder.description', "A file path. e.g. `/root/folderA` or `./folderA` for a relative path that will be resolved against the location of the workspace file.")
+								}
+							}
 						}
 					},
 					'settings': {
@@ -531,9 +541,9 @@ export class WorkspaceServiceImpl extends WorkspaceService {
 	}
 
 	private onWorkspaceConfigurationChanged(): void {
-		let configuredFolders = this.workspaceConfiguration.workspaceConfigurationModel.folders;
-		const foldersChanged = !equals(this.workspace.roots, configuredFolders, (r1, r2) => r1.toString() === r2.toString());
-		if (foldersChanged) {
+		let configuredFolders = this.parseWorkspaceFolders(this.workspaceConfiguration.workspaceConfigurationModel.folders);
+		const foldersChanged = !equals(this.workspace.roots, configuredFolders, (r1, r2) => r1.fsPath === r2.fsPath);
+		if (foldersChanged) { // TODO@Sandeep be smarter here about detecting changes
 			this.workspace.roots = configuredFolders;
 			this.onFoldersChanged()
 				.then(configurationChanged => {

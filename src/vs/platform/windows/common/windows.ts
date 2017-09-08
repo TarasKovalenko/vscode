@@ -43,6 +43,7 @@ export interface IWindowsService {
 	closeWorkspace(windowId: number): TPromise<void>;
 	openWorkspace(windowId: number): TPromise<void>;
 	createAndOpenWorkspace(windowId: number, folders?: string[], path?: string): TPromise<void>;
+	saveAndOpenWorkspace(windowId: number, path: string): TPromise<void>;
 	toggleFullScreen(windowId: number): TPromise<void>;
 	setRepresentedFilename(windowId: number, fileName: string): TPromise<void>;
 	addRecentlyOpened(files: string[]): TPromise<void>;
@@ -59,6 +60,13 @@ export interface IWindowsService {
 	setDocumentEdited(windowId: number, flag: boolean): TPromise<void>;
 	quit(): TPromise<void>;
 	relaunch(options: { addArgs?: string[], removeArgs?: string[] }): TPromise<void>;
+
+	// macOS Native Tabs
+	showPreviousWindowTab(): TPromise<void>;
+	showNextWindowTab(): TPromise<void>;
+	moveWindowTabToNewWindow(): TPromise<void>;
+	mergeAllWindowTabs(): TPromise<void>;
+	toggleWindowTabsBar(): TPromise<void>;
 
 	// Shared process
 	whenSharedProcessReady(): TPromise<void>;
@@ -99,6 +107,7 @@ export interface IWindowService {
 	closeWorkspace(): TPromise<void>;
 	openWorkspace(): TPromise<void>;
 	createAndOpenWorkspace(folders?: string[], path?: string): TPromise<void>;
+	saveAndOpenWorkspace(path: string): TPromise<void>;
 	toggleFullScreen(): TPromise<void>;
 	setRepresentedFilename(fileName: string): TPromise<void>;
 	getRecentlyOpened(): TPromise<IRecentlyOpened>;
@@ -110,7 +119,8 @@ export interface IWindowService {
 	maximizeWindow(): TPromise<void>;
 	unmaximizeWindow(): TPromise<void>;
 	onWindowTitleDoubleClick(): TPromise<void>;
-	showMessageBox(options: Electron.ShowMessageBoxOptions): number;
+	show(): TPromise<void>;
+	showMessageBox(options: Electron.MessageBoxOptions): number;
 	showSaveDialog(options: Electron.SaveDialogOptions, callback?: (fileName: string) => void): string;
 	showOpenDialog(options: Electron.OpenDialogOptions, callback?: (fileNames: string[]) => void): string[];
 }
@@ -197,6 +207,10 @@ export interface IOpenFileRequest {
 	filesToOpen?: IPath[];
 	filesToCreate?: IPath[];
 	filesToDiff?: IPath[];
+}
+
+export interface IAddFoldersRequest {
+	foldersToAdd: IPath[];
 }
 
 export interface IWindowConfiguration extends ParsedArgs, IOpenFileRequest {

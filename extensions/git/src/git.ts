@@ -82,12 +82,12 @@ function findGitDarwin(): Promise<IGit> {
 
 			function getVersion(path: string) {
 				// make sure git executes
-				cp.exec('git --version', (err, stdout: Buffer) => {
+				cp.exec('git --version', (err, stdout) => {
 					if (err) {
 						return e('git not found');
 					}
 
-					return c({ path, version: parseVersion(stdout.toString('utf8').trim()) });
+					return c({ path, version: parseVersion(stdout.trim()) });
 				});
 			}
 
@@ -737,7 +737,7 @@ export class Repository {
 		await this.run(args);
 	}
 
-	async revertFiles(treeish: string, paths: string[]): Promise<void> {
+	async revert(treeish: string, paths: string[]): Promise<void> {
 		const result = await this.run(['branch']);
 		let args: string[];
 

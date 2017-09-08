@@ -14,7 +14,7 @@ import { ResolvedKeybinding, ResolvedKeybindingPart } from 'vs/base/common/keyCo
 import { AriaLabelProvider, UserSettingsLabelProvider, UILabelProvider, ModifierLabels as ModLabels } from 'vs/base/common/keybindingLabels';
 import { CommonEditorRegistry, EditorAction } from 'vs/editor/common/editorCommonExtensions';
 import { MenuRegistry, ILocalizedString, SyncActionDescriptor, ICommandAction } from 'vs/platform/actions/common/actions';
-import { IWorkbenchActionRegistry, Extensions as ActionExtensions } from 'vs/workbench/common/actionRegistry';
+import { IWorkbenchActionRegistry, Extensions as ActionExtensions } from 'vs/workbench/common/actions';
 import { EditorModel } from 'vs/workbench/common/editor';
 import { IExtensionService } from 'vs/platform/extensions/common/extensions';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
@@ -274,7 +274,7 @@ class KeybindingItemMatches {
 	}
 
 	private matchesWords(words: string[], wordToMatchAgainst: string, wordMatchesFilter: IFilter): IMatch[] {
-		let matches = [];
+		let matches: IMatch[] = [];
 		for (const word of words) {
 			const wordMatches = wordMatchesFilter(word, wordToMatchAgainst);
 			if (wordMatches) {
@@ -385,7 +385,7 @@ class KeybindingItemMatches {
 			return false;
 		}
 		const ariaLabel = keybinding.keyAriaLabel;
-		if (ariaLabel.length === 1 || word.length === 1) {
+		if (this.completeMatch || ariaLabel.length === 1 || word.length === 1) {
 			if (strings.compareIgnoreCase(ariaLabel, word) === 0) {
 				return true;
 			}

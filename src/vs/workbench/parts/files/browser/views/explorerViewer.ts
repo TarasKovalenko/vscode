@@ -28,8 +28,8 @@ import { ITextFileService } from 'vs/workbench/services/textfile/common/textfile
 import { FileOperationError, FileOperationResult, IFileService, FileKind } from 'vs/platform/files/common/files';
 import { ResourceMap } from 'vs/base/common/map';
 import { DuplicateFileAction, ImportFileAction, IEditableData, IFileViewletState } from 'vs/workbench/parts/files/browser/fileActions';
-import { IDataSource, ITree, IAccessibilityProvider, IRenderer, ContextMenuEvent, ISorter, IFilter, IDragAndDrop, IDragAndDropData, IDragOverReaction, DRAG_OVER_ACCEPT_BUBBLE_DOWN, DRAG_OVER_ACCEPT_BUBBLE_DOWN_COPY, DRAG_OVER_ACCEPT_BUBBLE_UP, DRAG_OVER_ACCEPT_BUBBLE_UP_COPY, DRAG_OVER_REJECT } from 'vs/base/parts/tree/browser/tree';
-import { DesktopDragAndDropData, ExternalElementsDragAndDropData } from 'vs/base/parts/tree/browser/treeDnd';
+import { IDataSource, ITree, IAccessibilityProvider, IRenderer, ContextMenuEvent, ISorter, IFilter, IDragAndDropData, IDragOverReaction, DRAG_OVER_ACCEPT_BUBBLE_DOWN, DRAG_OVER_ACCEPT_BUBBLE_DOWN_COPY, DRAG_OVER_ACCEPT_BUBBLE_UP, DRAG_OVER_ACCEPT_BUBBLE_UP_COPY, DRAG_OVER_REJECT } from 'vs/base/parts/tree/browser/tree';
+import { DesktopDragAndDropData, ExternalElementsDragAndDropData, SimpleFileResourceDragAndDrop } from 'vs/base/parts/tree/browser/treeDnd';
 import { ClickBehavior, DefaultController } from 'vs/base/parts/tree/browser/treeDefaults';
 import { FileStat, NewStatPlaceholder, Model } from 'vs/workbench/parts/files/common/explorerModel';
 import { DragMouseEvent, IMouseEvent } from 'vs/base/browser/mouseEvent';
@@ -54,6 +54,8 @@ import { IWindowService } from 'vs/platform/windows/common/windows';
 import { IWorkspaceEditingService } from 'vs/workbench/services/workspace/common/workspaceEditing';
 import { distinct } from 'vs/base/common/arrays';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
+import { getPathLabel } from 'vs/base/common/labels';
+import { extractResources } from 'vs/base/browser/dnd';
 
 export class FileDataSource implements IDataSource {
 	constructor(
@@ -104,7 +106,14 @@ export class FileDataSource implements IDataSource {
 
 				return stat.children;
 			}, (e: any) => {
-				this.messageService.show(Severity.Error, e);
+				stat.exists = false;
+				stat.hasChildren = false;
+				if (!stat.isRoot) {
+					this.messageService.show(Severity.Error, e);
+				} else {
+					// We render the roots that do not exist differently, nned to do a refresh
+					tree.refresh(stat, false);
+				}
 
 				return []; // we could not resolve any children because of an error
 			});
@@ -309,6 +318,9 @@ export class FileRenderer implements IRenderer {
 		if (!editableData) {
 			templateData.label.element.style.display = 'block';
 			const extraClasses = ['explorer-item'];
+			if (!stat.exists && stat.isRoot) {
+				extraClasses.push('nonexistent-root');
+			}
 			templateData.label.setFile(stat.resource, { hidePath: true, fileKind: stat.isRoot ? FileKind.ROOT_FOLDER : stat.isDirectory ? FileKind.FOLDER : FileKind.FILE, extraClasses });
 		}
 
@@ -350,7 +362,7 @@ export class FileRenderer implements IRenderer {
 		inputBox.select({ start: 0, end: lastDot > 0 && !stat.isDirectory ? lastDot : value.length });
 		inputBox.focus();
 
-		const done = once(commit => {
+		const done = once((commit: boolean) => {
 			tree.clearHighlight();
 
 			if (commit && inputBox.value) {
@@ -495,7 +507,7 @@ export class FileController extends DefaultController {
 			return true;
 		}
 
-		const anchor = { x: event.posx + 1, y: event.posy };
+		const anchor = { x: event.posx, y: event.posy };
 		this.contextMenuService.showContextMenu({
 			getAnchor: () => anchor,
 			getActions: () => {
@@ -685,7 +697,7 @@ export class FileFilter implements IFilter {
 }
 
 // Explorer Drag And Drop Controller
-export class FileDragAndDrop implements IDragAndDrop {
+export class FileDragAndDrop extends SimpleFileResourceDragAndDrop {
 	private toDispose: IDisposable[];
 	private dropEnabled: boolean;
 
@@ -702,11 +714,25 @@ export class FileDragAndDrop implements IDragAndDrop {
 		@IWorkspaceEditingService private workspaceEditingService: IWorkspaceEditingService,
 		@IEnvironmentService private environmentService: IEnvironmentService
 	) {
+		super(stat => this.statToResource(stat));
+
 		this.toDispose = [];
 
 		this.onConfigurationUpdated(configurationService.getConfiguration<IFilesConfiguration>());
 
 		this.registerListeners();
+	}
+
+	private statToResource(stat: FileStat): URI {
+		if (stat.isRoot) {
+			return null; // Can not move root folder
+		}
+
+		if (stat.isDirectory) {
+			return URI.from({ scheme: 'folder', path: stat.resource.fsPath }); // indicates that we are dragging a folder
+		}
+
+		return stat.resource;
 	}
 
 	private registerListeners(): void {
@@ -715,26 +741,6 @@ export class FileDragAndDrop implements IDragAndDrop {
 
 	private onConfigurationUpdated(config: IFilesConfiguration): void {
 		this.dropEnabled = config && config.explorer && config.explorer.enableDragAndDrop;
-	}
-
-	public getDragURI(tree: ITree, stat: FileStat): string {
-		if (this.contextService.getWorkspace().roots.some(r => r.toString() === stat.resource.toString())) {
-			return null; // Can not move root folder
-		}
-		if (stat.isDirectory) {
-			return URI.from({ scheme: 'folder', path: stat.resource.fsPath }).toString(); // indicates that we are dragging a folder
-		}
-
-		return stat.resource.toString();
-	}
-
-	public getDragLabel(tree: ITree, elements: any[]): string {
-		if (elements.length > 1) {
-			return String(elements.length);
-		}
-
-		const stat = elements[0] as FileStat;
-		return paths.basename(stat.resource.fsPath);
 	}
 
 	public onDragStart(tree: ITree, data: IDragAndDropData, originalEvent: DragMouseEvent): void {
@@ -749,12 +755,13 @@ export class FileDragAndDrop implements IDragAndDrop {
 			tree.collapse(source, false);
 		}
 
-		// Native only: when a DownloadURL attribute is defined on the data transfer it is possible to
-		// drag a file from the browser to the desktop and have it downloaded there.
-		if (!(data instanceof DesktopDragAndDropData)) {
-			if (source && !source.isDirectory) {
+		// Apply some datatransfer types to allow for dragging the element outside of the application
+		if (source) {
+			if (!source.isDirectory) {
 				originalEvent.dataTransfer.setData('DownloadURL', [MIME_BINARY, source.name, source.resource.toString()].join(':'));
 			}
+
+			originalEvent.dataTransfer.setData('text/plain', getPathLabel(source.resource));
 		}
 	}
 
@@ -861,14 +868,10 @@ export class FileDragAndDrop implements IDragAndDrop {
 	}
 
 	private handleExternalDrop(tree: ITree, data: DesktopDragAndDropData, target: FileStat | Model, originalEvent: DragMouseEvent): TPromise<void> {
-		const fileList = <FileList>(<DesktopDragAndDropData>data).getData().files;
-		const filePaths: string[] = [];
-		for (let i = 0; i < fileList.length; i++) {
-			filePaths.push(fileList[i].path);
-		}
+		const droppedResources = extractResources(originalEvent.browserEvent as DragEvent, true);
 
 		// Check for dropped external files to be folders
-		return this.fileService.resolveFiles(filePaths.map(filePath => { return { resource: URI.file(filePath) }; })).then(result => {
+		return this.fileService.resolveFiles(droppedResources).then(result => {
 
 			// Pass focus to window
 			this.windowService.focusWindow();
@@ -886,16 +889,16 @@ export class FileDragAndDrop implements IDragAndDrop {
 
 				// If we are in single-folder context, ask for confirmation to create a workspace
 				const result = this.messageService.confirm({
-					message: nls.localize('dropFolders', "Do you want to add the folders to the workspace?"),
+					message: folders.length > 1 ? nls.localize('dropFolders', "Do you want to add the folders to the workspace?") : nls.localize('dropFolder', "Do you want to add the folder to the workspace?"),
 					type: 'question',
-					primaryButton: nls.localize('create', "&&Add Folders")
+					primaryButton: folders.length > 1 ? nls.localize('addFolders', "&&Add Folders") : nls.localize('addFolder', "&&Add Folder")
 				});
 
 				if (result) {
 					const currentRoots = this.contextService.getWorkspace().roots;
 					const newRoots = [...currentRoots, ...folders];
 
-					return this.windowService.createAndOpenWorkspace(distinct(newRoots.map(root => root.toString(true /* skip encoding to preserve drive letters readable */))));
+					return this.windowService.createAndOpenWorkspace(distinct(newRoots.map(root => root.fsPath)));
 				}
 			}
 
@@ -903,7 +906,7 @@ export class FileDragAndDrop implements IDragAndDrop {
 			else if (target instanceof FileStat) {
 				const importAction = this.instantiationService.createInstance(ImportFileAction, tree, target, null);
 				return importAction.run({
-					input: { paths: filePaths }
+					input: { paths: droppedResources.map(res => res.resource.fsPath) }
 				});
 			}
 

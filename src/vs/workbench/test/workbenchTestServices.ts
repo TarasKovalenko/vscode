@@ -24,7 +24,7 @@ import { IStorageService, StorageScope } from 'vs/platform/storage/common/storag
 import { IPartService, Parts } from 'vs/workbench/services/part/common/partService';
 import { TextModelResolverService } from 'vs/workbench/services/textmodelResolver/common/textModelResolverService';
 import { ITextModelService } from 'vs/editor/common/services/resolverService';
-import { IEditorInput, IEditorOptions, Position, Direction, IEditor, IResourceInput, ITextEditorOptions } from 'vs/platform/editor/common/editor';
+import { IEditorInput, IEditorOptions, Position, Direction, IEditor, IResourceInput, ITextEditorSelection } from 'vs/platform/editor/common/editor';
 import { IUntitledEditorService, UntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
 import { IMessageService, IConfirmation } from 'vs/platform/message/common/message';
 import { ILegacyWorkspace, IWorkspaceContextService, IWorkspace as IWorkbenchWorkspace } from 'vs/platform/workspace/common/workspace';
@@ -110,10 +110,6 @@ export class TestContextService implements IWorkspaceContextService {
 
 	public getWorkspace(): IWorkbenchWorkspace {
 		return this.workspace;
-	}
-
-	public saveWorkspace(location: URI): TPromise<void> {
-		return TPromise.as(null);
 	}
 
 	public getRoot(resource: URI): URI {
@@ -257,13 +253,16 @@ export class TestHistoryService implements IHistoryService {
 	public reopenLastClosedEditor(): void {
 	}
 
-	public add(input: IEditorInput, options?: ITextEditorOptions): void {
+	public add(input: IEditorInput, selection?: ITextEditorSelection): void {
 	}
 
 	public forward(acrossEditors?: boolean): void {
 	}
 
 	public back(acrossEditors?: boolean): void {
+	}
+
+	public last(): void {
 	}
 
 	public remove(input: IEditorInput | IResourceInput): void {
@@ -635,9 +634,19 @@ export class TestFileService implements IFileService {
 	private _onFileChanges: Emitter<FileChangesEvent>;
 	private _onAfterOperation: Emitter<FileOperationEvent>;
 
+	private content = 'Hello Html';
+
 	constructor() {
 		this._onFileChanges = new Emitter<FileChangesEvent>();
 		this._onAfterOperation = new Emitter<FileOperationEvent>();
+	}
+
+	public setContent(content: string): void {
+		this.content = content;
+	}
+
+	public getContent(): string {
+		return this.content;
 	}
 
 	public get onFileChanges(): Event<FileChangesEvent> {
@@ -679,7 +688,7 @@ export class TestFileService implements IFileService {
 	resolveContent(resource: URI, options?: IResolveContentOptions): TPromise<IContent> {
 		return TPromise.as({
 			resource: resource,
-			value: 'Hello Html',
+			value: this.content,
 			etag: 'index.txt',
 			encoding: 'utf8',
 			mtime: Date.now(),
@@ -693,7 +702,7 @@ export class TestFileService implements IFileService {
 			value: {
 				on: (event: string, callback: Function): void => {
 					if (event === 'data') {
-						callback('Hello Html');
+						callback(this.content);
 					}
 					if (event === 'end') {
 						callback();
@@ -876,6 +885,10 @@ export class TestWindowService implements IWindowService {
 		return TPromise.as(void 0);
 	}
 
+	saveAndOpenWorkspace(path: string): TPromise<void> {
+		return TPromise.as(void 0);
+	}
+
 	toggleFullScreen(): TPromise<void> {
 		return TPromise.as(void 0);
 	}
@@ -916,7 +929,11 @@ export class TestWindowService implements IWindowService {
 		return TPromise.as(void 0);
 	}
 
-	showMessageBox(options: Electron.ShowMessageBoxOptions): number {
+	show(): TPromise<void> {
+		return TPromise.as(void 0);
+	}
+
+	showMessageBox(options: Electron.MessageBoxOptions): number {
 		return 0;
 	}
 
@@ -1009,6 +1026,10 @@ export class TestWindowsService implements IWindowsService {
 	}
 
 	createAndOpenWorkspace(windowId: number, folders?: string[], path?: string): TPromise<void> {
+		return TPromise.as(void 0);
+	}
+
+	saveAndOpenWorkspace(windowId: number, path: string): TPromise<void> {
 		return TPromise.as(void 0);
 	}
 
@@ -1106,6 +1127,26 @@ export class TestWindowsService implements IWindowsService {
 	}
 
 	showItemInFolder(path: string): TPromise<void> {
+		return TPromise.as(void 0);
+	}
+
+	showPreviousWindowTab(): Promise<void> {
+		return TPromise.as(void 0);
+	}
+
+	showNextWindowTab(): Promise<void> {
+		return TPromise.as(void 0);
+	}
+
+	moveWindowTabToNewWindow(): Promise<void> {
+		return TPromise.as(void 0);
+	}
+
+	mergeAllWindowTabs(): Promise<void> {
+		return TPromise.as(void 0);
+	}
+
+	toggleWindowTabsBar(): Promise<void> {
 		return TPromise.as(void 0);
 	}
 

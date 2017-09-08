@@ -17,7 +17,7 @@ import { Registry } from 'vs/platform/registry/common/platform';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { Part } from 'vs/workbench/browser/part';
-import { IWorkbenchActionRegistry, Extensions as ActionExtensions } from 'vs/workbench/common/actionRegistry';
+import { IWorkbenchActionRegistry, Extensions as ActionExtensions } from 'vs/workbench/common/actions';
 import { StatusbarAlignment, IStatusbarRegistry, Extensions, IStatusbarItem } from 'vs/workbench/browser/parts/statusbar/statusbar';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
@@ -235,7 +235,7 @@ class StatusBarEntryItem implements IStatusbarItem {
 		if (this.entry.command) {
 			textContainer = document.createElement('a');
 
-			$(textContainer).on('click', () => this.executeCommand(this.entry.command), toDispose);
+			$(textContainer).on('click', () => this.executeCommand(this.entry.command, this.entry.arguments), toDispose);
 		} else {
 			textContainer = document.createElement('span');
 		}
@@ -284,7 +284,8 @@ class StatusBarEntryItem implements IStatusbarItem {
 		};
 	}
 
-	private executeCommand(id: string) {
+	private executeCommand(id: string, args?: any[]) {
+		args = args || [];
 
 		// Lookup built in commands
 		const builtInActionDescriptor = Registry.as<IWorkbenchActionRegistry>(ActionExtensions.WorkbenchActions).getWorkbenchAction(id);
@@ -311,7 +312,7 @@ class StatusBarEntryItem implements IStatusbarItem {
 		}
 
 		// Fallback to the command service for any other case
-		this.commandService.executeCommand(id).done(undefined, err => this.messageService.show(Severity.Error, toErrorMessage(err)));
+		this.commandService.executeCommand(id, ...args).done(undefined, err => this.messageService.show(Severity.Error, toErrorMessage(err)));
 	}
 }
 

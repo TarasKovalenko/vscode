@@ -17,15 +17,33 @@ import { QueryType, ISearchQuery } from 'vs/platform/search/common/search';
 import { DiskSearch } from 'vs/workbench/services/search/node/searchService';
 import { IInitData, IEnvironment, IWorkspaceData, MainContext } from 'vs/workbench/api/node/extHost.protocol';
 import * as errors from 'vs/base/common/errors';
-// import * as watchdog from 'native-watchdog';
+import * as watchdog from 'native-watchdog';
 
-const nativeExit = process.exit.bind(process);
+// const nativeExit = process.exit.bind(process);
 process.exit = function () {
 	const err = new Error('An extension called process.exit() and this was prevented.');
 	console.warn(err.stack);
 };
 export function exit(code?: number) {
-	nativeExit(code);
+	//nativeExit(code);
+
+	// TODO@electron
+	// See https://github.com/Microsoft/vscode/issues/32990
+	// calling process.exit() does not exit the process when the process is being debugged
+	// It waits for the debugger to disconnect, but in our version, the debugger does not
+	// receive an event that the process desires to exit such that it can disconnect.
+
+	// Do exactly what node.js would have done, minus the wait for the debugger part
+
+	if (code || code === 0) {
+		process.exitCode = code;
+	}
+
+	if (!(<any>process)._exiting) {
+		(<any>process)._exiting = true;
+		process.emit('exit', process.exitCode || 0);
+	}
+	watchdog.exit(process.exitCode || 0);
 }
 
 interface ITestRunner {
@@ -54,9 +72,14 @@ export class ExtensionHostMain {
 			(<any>Error).prepareStackTrace = (error: Error, stackTrace: errors.V8CallSite[]) => {
 				let stackTraceMessage = '';
 				let extension: IExtensionDescription;
+				let fileName: string;
 				for (const call of stackTrace) {
 					stackTraceMessage += `\n\tat ${call.toString()}`;
-					extension = extension || map.findSubstr(stackTrace[0].getFileName());
+					fileName = call.getFileName();
+					if (!extension && fileName) {
+						extension = map.findSubstr(fileName);
+					}
+
 				}
 				extensionErrors.set(error, extension);
 				return `${error.name || 'Error'}: ${error.message || ''}${stackTraceMessage}`;
@@ -163,15 +186,14 @@ export class ExtensionHostMain {
 				return this._diskSearch.search(query).then(result => result.results.length ? p : undefined);
 			} else {
 				// find exact path
-				return new TPromise<string>(async resolve => {
+				return (async resolve => {
 					for (const { fsPath } of this._workspace.roots) {
 						if (await pfs.exists(join(fsPath, p))) {
-							resolve(p);
-							return;
+							return p;
 						}
 					}
-					resolve(undefined);
-				});
+					return undefined;
+				})();
 			}
 		});
 

@@ -43,7 +43,7 @@ export class RipgrepEngine {
 
 	// TODO@Rob - make promise-based once the old search is gone, and I don't need them to have matching interfaces anymore
 	search(onResult: (match: ISerializedFileMatch) => void, onMessage: (message: ISearchLog) => void, done: (error: Error, complete: ISerializedSearchComplete) => void): void {
-		if (!this.config.folderQueries.length) {
+		if (!this.config.folderQueries.length && !this.config.extraFiles.length) {
 			done(null, {
 				limitHit: false,
 				stats: null
@@ -57,12 +57,11 @@ export class RipgrepEngine {
 		}
 
 		const cwd = platform.isWindows ? 'c:/' : '/';
-		process.nextTick(() => {
+		process.nextTick(() => { // Allow caller to register progress callback
 			const escapedArgs = rgArgs.globArgs
 				.map(arg => arg.match(/^-/) ? arg : `'${arg}'`)
 				.join(' ');
 
-			// Allow caller to register progress callback
 			const rgCmd = `rg ${escapedArgs}\n - cwd: ${cwd}\n`;
 			onMessage({ message: rgCmd });
 			if (rgArgs.siblingClauses) {
@@ -364,17 +363,17 @@ export class LineMatch implements ILineMatch {
 	}
 }
 
-interface IRgGlobResult {
+export interface IRgGlobResult {
 	globArgs: string[];
 	siblingClauses: glob.IExpression;
 }
 
-function foldersToRgExcludeGlobs(folderQueries: IFolderSearch[], globalExclude: glob.IExpression): IRgGlobResult {
+export function foldersToRgExcludeGlobs(folderQueries: IFolderSearch[], globalExclude: glob.IExpression, excludesToSkip?: Set<string>, absoluteGlobs = true): IRgGlobResult {
 	const globArgs: string[] = [];
 	let siblingClauses: glob.IExpression = {};
 	folderQueries.forEach(folderQuery => {
 		const totalExcludePattern = objects.assign({}, folderQuery.excludePattern || {}, globalExclude || {});
-		const result = globExprsToRgGlobs(totalExcludePattern, folderQuery.folder);
+		const result = globExprsToRgGlobs(totalExcludePattern, absoluteGlobs && folderQuery.folder, excludesToSkip);
 		globArgs.push(...result.globArgs);
 		if (result.siblingClauses) {
 			siblingClauses = objects.assign(siblingClauses, result.siblingClauses);
@@ -384,24 +383,28 @@ function foldersToRgExcludeGlobs(folderQueries: IFolderSearch[], globalExclude: 
 	return { globArgs, siblingClauses };
 }
 
-function foldersToIncludeGlobs(folderQueries: IFolderSearch[], globalInclude: glob.IExpression): string[] {
-	const globArgs = [];
+export function foldersToIncludeGlobs(folderQueries: IFolderSearch[], globalInclude: glob.IExpression, absoluteGlobs = true): string[] {
+	const globArgs: string[] = [];
 	folderQueries.forEach(folderQuery => {
 		const totalIncludePattern = objects.assign({}, globalInclude || {}, folderQuery.includePattern || {});
-		const result = globExprsToRgGlobs(totalIncludePattern, folderQuery.folder);
+		const result = globExprsToRgGlobs(totalIncludePattern, absoluteGlobs && folderQuery.folder);
 		globArgs.push(...result.globArgs);
 	});
 
 	return globArgs;
 }
 
-function globExprsToRgGlobs(patterns: glob.IExpression, folder: string): IRgGlobResult {
+function globExprsToRgGlobs(patterns: glob.IExpression, folder?: string, excludesToSkip?: Set<string>): IRgGlobResult {
 	const globArgs: string[] = [];
 	let siblingClauses: glob.IExpression = null;
 	Object.keys(patterns)
 		.forEach(key => {
+			if (excludesToSkip && excludesToSkip.has(key)) {
+				return;
+			}
+
 			const value = patterns[key];
-			key = getAbsoluteGlob(folder, key);
+			key = trimTrailingSlash(folder ? getAbsoluteGlob(folder, key) : key);
 
 			if (typeof value === 'boolean' && value) {
 				globArgs.push(fixDriveC(key));
@@ -424,14 +427,14 @@ function globExprsToRgGlobs(patterns: glob.IExpression, folder: string): IRgGlob
  * Exported for testing
  */
 export function getAbsoluteGlob(folder: string, key: string): string {
-	let absolute = paths.isAbsolute(key) ?
+	return paths.isAbsolute(key) ?
 		key :
 		path.join(folder, key);
+}
 
-	absolute = strings.rtrim(absolute, '\\');
-	absolute = strings.rtrim(absolute, '/');
-
-	return absolute;
+function trimTrailingSlash(str: string): string {
+	str = strings.rtrim(str, '\\');
+	return strings.rtrim(str, '/');
 }
 
 export function fixDriveC(path: string): string {
@@ -451,9 +454,17 @@ function getRgArgs(config: IRawSearch): IRgGlobResult {
 	});
 
 	let siblingClauses: glob.IExpression;
-	const rgGlobs = foldersToRgExcludeGlobs(config.folderQueries, config.excludePattern);
+
+	// Find excludes that are exactly the same in all folderQueries - e.g. from user settings, and that start with `**`.
+	// To make the command shorter, don't resolve these against every folderQuery path - see #33189.
+	const universalExcludes = findUniversalExcludes(config.folderQueries);
+	const rgGlobs = foldersToRgExcludeGlobs(config.folderQueries, config.excludePattern, universalExcludes);
 	rgGlobs.globArgs
 		.forEach(rgGlob => args.push('-g', `!${rgGlob}`));
+	if (universalExcludes) {
+		universalExcludes
+			.forEach(exclude => args.push('-g', `!${trimTrailingSlash(exclude)}`));
+	}
 	siblingClauses = rgGlobs.siblingClauses;
 
 	if (config.maxFilesize) {
@@ -516,4 +527,25 @@ function getSiblings(file: string): TPromise<string[]> {
 			resolve(files);
 		});
 	});
+}
+
+function findUniversalExcludes(folderQueries: IFolderSearch[]): Set<string> {
+	if (folderQueries.length < 2) {
+		// Nothing to simplify
+		return null;
+	}
+
+	const firstFolder = folderQueries[0];
+	if (!firstFolder.excludePattern) {
+		return null;
+	}
+
+	const universalExcludes = new Set<string>();
+	Object.keys(firstFolder.excludePattern).forEach(key => {
+		if (strings.startsWith(key, '**') && folderQueries.every(q => q.excludePattern && q.excludePattern[key] === true)) {
+			universalExcludes.add(key);
+		}
+	});
+
+	return universalExcludes;
 }

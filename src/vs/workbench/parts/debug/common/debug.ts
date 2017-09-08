@@ -60,6 +60,7 @@ export interface IRawStoppedDetails {
 	threadId?: number;
 	text?: string;
 	totalFrames?: number;
+	allThreadsStopped?: boolean;
 	framesErrorMessage?: string;
 }
 
@@ -266,7 +267,7 @@ export interface IViewModel extends ITreeElement {
 	focusedStackFrame: IStackFrame;
 	getSelectedExpression(): IExpression;
 	getSelectedFunctionBreakpoint(): IFunctionBreakpoint;
-	setSelectedExpression(expression: IExpression);
+	setSelectedExpression(expression: IExpression): void;
 	setSelectedFunctionBreakpoint(functionBreakpoint: IFunctionBreakpoint): void;
 
 	isMultiProcessView(): boolean;
@@ -374,8 +375,8 @@ export interface IRawAdapter extends IRawEnvAdapter {
 
 export interface IDebugConfigurationProvider {
 	type: string;
-	resolveDebugConfiguration?(folderUri: uri | undefined, debugConfiguration: any): TPromise<any>;
-	provideDebugConfigurations?(folderUri: uri | undefined): TPromise<any[]>;
+	resolveDebugConfiguration?(folderUri: uri | undefined, debugConfiguration: IConfig): TPromise<IConfig>;
+	provideDebugConfigurations?(folderUri: uri | undefined): TPromise<IConfig[]>;
 }
 
 export interface IConfigurationManager {
@@ -390,8 +391,6 @@ export interface IConfigurationManager {
 	selectedLaunch: ILaunch;
 
 	selectedName: string;
-
-	mruConfigs: { name: string, launch: ILaunch }[];
 
 	selectConfiguration(launch: ILaunch, name?: string, debugStarted?: boolean): void;
 
@@ -410,8 +409,8 @@ export interface IConfigurationManager {
 	getStartSessionCommand(type?: string): TPromise<{ command: string, type: string }>;
 
 	registerDebugConfigurationProvider(handle: number, debugConfigurationProvider: IDebugConfigurationProvider): void;
-	unregisterDebugConfigurationProvider(handle): void;
-	resolveDebugConfiguration(folderUri: uri | undefined, debugConfiguration: any): TPromise<any>;
+	unregisterDebugConfigurationProvider(handle: number): void;
+	resolveDebugConfiguration(folderUri: uri | undefined, type: string | undefined, debugConfiguration: any): TPromise<any>;
 }
 
 export interface ILaunch {
@@ -575,6 +574,11 @@ export interface IDebugService {
 	 * Removes all watch expressions. If id is passed only removes the watch expression with the passed id.
 	 */
 	removeWatchExpressions(id?: string): void;
+
+	/**
+	 * Evaluates all watch expression.
+	 */
+	evaluateWatchExpressions(): TPromise<void>;
 
 	/**
 	 * Starts debugging. If the configOrName is not passed uses the selected configuration in the debug dropdown.

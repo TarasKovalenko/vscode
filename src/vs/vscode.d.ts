@@ -2458,7 +2458,7 @@ declare module 'vscode' {
 		 * The human-readable doc-comment of this signature. Will be shown
 		 * in the UI but can be omitted.
 		 */
-		documentation?: string;
+		documentation?: string | MarkdownString;
 
 		/**
 		 * Creates a new parameter information object.
@@ -2466,7 +2466,7 @@ declare module 'vscode' {
 		 * @param label A label string.
 		 * @param documentation A doc string.
 		 */
-		constructor(label: string, documentation?: string);
+		constructor(label: string, documentation?: string | MarkdownString);
 	}
 
 	/**
@@ -2486,7 +2486,7 @@ declare module 'vscode' {
 		 * The human-readable doc-comment of this signature. Will be shown
 		 * in the UI but can be omitted.
 		 */
-		documentation?: string;
+		documentation?: string | MarkdownString;
 
 		/**
 		 * The parameters of this signature.
@@ -2499,7 +2499,7 @@ declare module 'vscode' {
 		 * @param label A label string.
 		 * @param documentation A doc string.
 		 */
-		constructor(label: string, documentation?: string);
+		constructor(label: string, documentation?: string | MarkdownString);
 	}
 
 	/**
@@ -2613,7 +2613,7 @@ declare module 'vscode' {
 		/**
 		 * A human-readable string that represents a doc-comment.
 		 */
-		documentation?: string;
+		documentation?: string | MarkdownString;
 
 		/**
 		 * A string that should be used when comparing this item
@@ -3971,6 +3971,13 @@ declare module 'vscode' {
 		export let appName: string;
 
 		/**
+		 * The application root folder from which the editor is running.
+		 *
+		 * @readonly
+		 */
+		export let appRoot: string;
+
+		/**
 		 * Represents the preferred user-language, like `de-CH`, `fr`, or `en-US`.
 		 *
 		 * @readonly
@@ -4064,10 +4071,10 @@ declare module 'vscode' {
 		/**
 		 * Executes the command denoted by the given command identifier.
 		 *
-		 * When executing an editor command not all types are allowed to
+		 * * *Note 1:* When executing an editor command not all types are allowed to
 		 * be passed as arguments. Allowed are the primitive types `string`, `boolean`,
-		 * `number`, `undefined`, and `null`, as well as classes defined in this API.
-		 * There are no restrictions when executing commands that have been contributed
+		 * `number`, `undefined`, and `null`, as well as [`Position`](#Position), [`Range`](#Range), [`Uri`](#Uri) and [`Location`](#Location).
+		 * * *Note 2:* There are no restrictions when executing commands that have been contributed
 		 * by extensions.
 		 *
 		 * @param command Identifier of the command to execute.
@@ -4085,6 +4092,17 @@ declare module 'vscode' {
 		 * @return Thenable that resolves to a list of command ids.
 		 */
 		export function getCommands(filterInternal?: boolean): Thenable<string[]>;
+	}
+
+	/**
+	 * Represents the state of a window.
+	 */
+	export interface WindowState {
+
+		/**
+		 * Whether the current window is focused.
+		 */
+		readonly focused: boolean;
 	}
 
 	/**
@@ -4138,6 +4156,19 @@ declare module 'vscode' {
 		 * An [event](#Event) which fires when a terminal is disposed.
 		 */
 		export const onDidCloseTerminal: Event<Terminal>;
+
+		/**
+		 * Represents the current window's state.
+		 *
+		 * @readonly
+		 */
+		export let state: WindowState;
+
+		/**
+		 * An [event](#Event) which fires when the focus state of the current window
+		 * changes. The value of the event represents whether the window is focused.
+		 */
+		export const onDidChangeWindowState: Event<WindowState>;
 
 		/**
 		 * Show the given document in a text editor. A [column](#ViewColumn) can be provided
@@ -5439,6 +5470,11 @@ declare module 'vscode' {
 		readonly label: string;
 
 		/**
+		 * The [input box](#SourceControlInputBox) for this source control.
+		 */
+		readonly inputBox: SourceControlInputBox;
+
+		/**
 		 * The UI-visible count of [resource states](#SourceControlResourceState) of
 		 * this source control.
 		 *
@@ -5489,14 +5525,17 @@ declare module 'vscode' {
 	export namespace scm {
 
 		/**
-		 * The [input box](#SourceControlInputBox) in the Source Control viewlet.
+		 * ~~The [input box](#SourceControlInputBox) for the last source control
+		 * created by the extension.~~
+		 *
+		 * @deprecated Use [SourceControl.inputBox](#SourceControl.inputBox) instead
 		 */
 		export const inputBox: SourceControlInputBox;
 
 		/**
 		 * Creates a new [source control](#SourceControl) instance.
 		 *
-		 * @param id A unique `id` for the source control. Something short, eg: `git`.
+		 * @param id An `id` for the source control. Something short, eg: `git`.
 		 * @param label A human-readable string for the source control. Eg: `Git`.
 		 * @return An instance of [source control](#SourceControl).
 		 */
@@ -5508,14 +5547,14 @@ declare module 'vscode' {
 	 */
 	export interface DebugConfiguration {
 		/**
-		 * The type for the debug session.
+		 * The type of the debug session.
 		 */
 		type: string;
 
 		/**
-		 * An optional name for the debug session.
+		 * The name of the debug session.
 		 */
-		name?: string;
+		name: string;
 
 		/**
 		 * The request type of the debug session.
@@ -5575,6 +5614,35 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * A debug configuration provider allows to add the initial debug configurations to a newly created launch.json
+	 * and allows to resolve a launch configuration before it is used to start a new debug session.
+	 * A debug configuration provider is registered via #workspace.registerDebugConfigurationProvider.
+	 */
+	export interface DebugConfigurationProvider {
+		/**
+		 * Provides initial [debug configuration](#DebugConfiguration). If more than one debug configuration provider is
+		 * registered for the same type, debug configurations are concatenated in arbitrary order.
+		 *
+		 * @param folder The workspace folder for which the configurations are used or undefined for a folderless setup.
+		 * @param token A cancellation token.
+		 * @return An array of [debug configurations](#DebugConfiguration).
+		 */
+		provideDebugConfigurations?(folder: WorkspaceFolder | undefined, token?: CancellationToken): ProviderResult<DebugConfiguration[]>;
+
+		/**
+		 * Resolves a [debug configuration](#DebugConfiguration) by filling in missing values or by adding/changing/removing attributes.
+		 * If more than one debug configuration provider is registered for the same type, the resolveDebugConfiguration calls are chained
+		 * in arbitrary order and the initial debug configuration is piped through the chain.
+		 *
+		 * @param folder The workspace folder from which the configuration originates from or undefined for a folderless setup.
+		 * @param debugConfiguration The [debug configuration](#DebugConfiguration) to resolve.
+		 * @param token A cancellation token.
+		 * @return The resolved debug configuration.
+		 */
+		resolveDebugConfiguration?(folder: WorkspaceFolder | undefined, debugConfiguration: DebugConfiguration, token?: CancellationToken): ProviderResult<DebugConfiguration>;
+	}
+
+	/**
 	 * Namespace for dealing with debug sessions.
 	 */
 	export namespace debug {
@@ -5619,6 +5687,16 @@ declare module 'vscode' {
 		 * An [event](#Event) which fires when a [debug session](#DebugSession) has terminated.
 		 */
 		export const onDidTerminateDebugSession: Event<DebugSession>;
+
+		/**
+		 * Register a [debug configuration provider](#DebugConfigurationProvider) for a specifc debug type.
+		 * More than one provider can be registered for the same type.
+		 *
+		 * @param type The debug type for which the provider is registered.
+		 * @param provider The [debug configuration provider](#DebugConfigurationProvider) to register.
+		 * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
+		 */
+		export function registerDebugConfigurationProvider(debugType: string, provider: DebugConfigurationProvider): Disposable;
 	}
 
 	/**

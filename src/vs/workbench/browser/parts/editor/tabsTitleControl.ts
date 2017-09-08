@@ -12,13 +12,13 @@ import errors = require('vs/base/common/errors');
 import DOM = require('vs/base/browser/dom');
 import { isMacintosh } from 'vs/base/common/platform';
 import { MIME_BINARY } from 'vs/base/common/mime';
-import { shorten } from 'vs/base/common/labels';
+import { shorten, getPathLabel } from 'vs/base/common/labels';
 import { ActionRunner, IAction } from 'vs/base/common/actions';
 import { Position, IEditorInput, Verbosity, IUntitledResourceInput } from 'vs/platform/editor/common/editor';
 import { IEditorGroup, toResource } from 'vs/workbench/common/editor';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode } from 'vs/base/common/keyCodes';
-import { EditorLabel } from 'vs/workbench/browser/labels';
+import { ResourceLabel } from 'vs/workbench/browser/labels';
 import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
@@ -56,7 +56,7 @@ export class TabsTitleControl extends TitleControl {
 	private titleContainer: HTMLElement;
 	private tabsContainer: HTMLElement;
 	private activeTab: HTMLElement;
-	private editorLabels: EditorLabel[];
+	private editorLabels: ResourceLabel[];
 	private scrollbar: ScrollableElement;
 	private tabDisposeables: IDisposable[];
 	private blockRevealActiveTab: boolean;
@@ -167,6 +167,13 @@ export class TabsTitleControl extends TitleControl {
 
 		// Drag over
 		this.toUnbind.push(DOM.addDisposableListener(this.tabsContainer, DOM.EventType.DRAG_OVER, (e: DragEvent) => {
+
+			// update the dropEffect, otherwise it would look like a "move" operation. but only if we are
+			// not dragging a tab actually because there we support both moving as well as copying
+			if (!TabsTitleControl.getDraggedEditor()) {
+				e.dataTransfer.dropEffect = 'copy';
+			}
+
 			DOM.addClass(this.tabsContainer, 'scroll'); // enable support to scroll while dragging
 
 			const target = e.target;
@@ -295,7 +302,16 @@ export class TabsTitleControl extends TitleControl {
 					tabContainer.setAttribute('aria-selected', 'true');
 					tabContainer.style.backgroundColor = this.getColor(TAB_ACTIVE_BACKGROUND);
 					tabLabel.element.style.color = this.getColor(isGroupActive ? TAB_ACTIVE_FOREGROUND : TAB_UNFOCUSED_ACTIVE_FOREGROUND);
-					tabContainer.style.borderBottomColor = this.getColor(isGroupActive ? TAB_ACTIVE_BORDER : TAB_UNFOCUSED_ACTIVE_BORDER);
+
+					// Use boxShadow for the active tab border because if we also have a editor group header
+					// color, the two colors would collide and the tab border never shows up.
+					// see https://github.com/Microsoft/vscode/issues/33111
+					const activeTabBorderColor = this.getColor(isGroupActive ? TAB_ACTIVE_BORDER : TAB_UNFOCUSED_ACTIVE_BORDER);
+					if (activeTabBorderColor) {
+						tabContainer.style.boxShadow = `${activeTabBorderColor} 0 -1px inset`;
+					} else {
+						tabContainer.style.boxShadow = null;
+					}
 
 					this.activeTab = tabContainer;
 				} else {
@@ -303,7 +319,7 @@ export class TabsTitleControl extends TitleControl {
 					tabContainer.setAttribute('aria-selected', 'false');
 					tabContainer.style.backgroundColor = this.getColor(TAB_INACTIVE_BACKGROUND);
 					tabLabel.element.style.color = this.getColor(isGroupActive ? TAB_INACTIVE_FOREGROUND : TAB_UNFOCUSED_INACTIVE_FOREGROUND);
-					tabContainer.style.borderBottomColor = null;
+					tabContainer.style.boxShadow = null;
 				}
 
 				// Dirty State
@@ -436,7 +452,7 @@ export class TabsTitleControl extends TitleControl {
 		DOM.addClass(tabContainer, 'tab');
 
 		// Tab Editor Label
-		const editorLabel = this.instantiationService.createInstance(EditorLabel, tabContainer, void 0);
+		const editorLabel = this.instantiationService.createInstance(ResourceLabel, tabContainer, void 0);
 		this.editorLabels.push(editorLabel);
 
 		// Tab Close
@@ -606,6 +622,7 @@ export class TabsTitleControl extends TitleControl {
 				const resource = fileResource.toString();
 				e.dataTransfer.setData('URL', resource); // enables cross window DND of tabs
 				e.dataTransfer.setData('DownloadURL', [MIME_BINARY, editor.getName(), resource].join(':')); // enables support to drag a tab as file to desktop
+				e.dataTransfer.setData('text/plain', getPathLabel(resource)); // enables dropping tab resource path into text controls
 			}
 		}));
 
@@ -618,7 +635,21 @@ export class TabsTitleControl extends TitleControl {
 		// Drag over
 		disposables.push(DOM.addDisposableListener(tab, DOM.EventType.DRAG_ENTER, (e: DragEvent) => {
 			counter++;
-			this.updateDropFeedback(tab, true, index);
+
+			// Find out if the currently dragged editor is this tab and in that
+			// case we do not want to show any drop feedback
+			let draggedEditorIsTab = false;
+			const draggedEditor = TabsTitleControl.getDraggedEditor();
+			if (draggedEditor) {
+				const { group, editor } = this.toTabContext(index);
+				if (draggedEditor.editor === editor && draggedEditor.group === group) {
+					draggedEditorIsTab = true;
+				}
+			}
+
+			if (!draggedEditorIsTab) {
+				this.updateDropFeedback(tab, true, index);
+			}
 		}));
 
 		// Drag leave

@@ -11,7 +11,7 @@ import { assign } from 'vs/base/common/objects';
 import URI from 'vs/base/common/uri';
 import { IWindowsService, OpenContext, INativeOpenDialogOptions } from 'vs/platform/windows/common/windows';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { shell, crashReporter, app } from 'electron';
+import { shell, crashReporter, app, Menu } from 'electron';
 import Event, { chain } from 'vs/base/common/event';
 import { fromEventEmitter } from 'vs/base/node/event';
 import { IURLService } from 'vs/platform/url/common/url';
@@ -134,6 +134,16 @@ export class WindowsService implements IWindowsService, IDisposable {
 		return TPromise.as(null);
 	}
 
+	saveAndOpenWorkspace(windowId: number, path: string): TPromise<void> {
+		const codeWindow = this.windowsMainService.getWindowById(windowId);
+
+		if (codeWindow) {
+			this.windowsMainService.saveAndOpenWorkspace(codeWindow, path);
+		}
+
+		return TPromise.as(null);
+	}
+
 	toggleFullScreen(windowId: number): TPromise<void> {
 		const codeWindow = this.windowsMainService.getWindowById(windowId);
 
@@ -180,6 +190,36 @@ export class WindowsService implements IWindowsService, IDisposable {
 		}
 
 		return TPromise.as(this.historyService.getRecentlyOpened());
+	}
+
+	showPreviousWindowTab(): TPromise<void> {
+		Menu.sendActionToFirstResponder('selectPreviousTab:');
+
+		return TPromise.as(void 0);
+	}
+
+	showNextWindowTab(): TPromise<void> {
+		Menu.sendActionToFirstResponder('selectNextTab:');
+
+		return TPromise.as(void 0);
+	}
+
+	moveWindowTabToNewWindow(): TPromise<void> {
+		Menu.sendActionToFirstResponder('moveTabToNewWindow:');
+
+		return TPromise.as(void 0);
+	}
+
+	mergeAllWindowTabs(): TPromise<void> {
+		Menu.sendActionToFirstResponder('mergeAllWindows:');
+
+		return TPromise.as(void 0);
+	}
+
+	toggleWindowTabsBar(): TPromise<void> {
+		Menu.sendActionToFirstResponder('toggleTabBar:');
+
+		return TPromise.as(void 0);
 	}
 
 	focusWindow(windowId: number): TPromise<void> {
@@ -356,10 +396,15 @@ export class WindowsService implements IWindowsService, IDisposable {
 	 * This should only fire whenever an extension URL is open
 	 * and there are no windows to handle it.
 	 */
-	private openExtensionForURI(uri: URI): TPromise<void> {
+	private async openExtensionForURI(uri: URI): TPromise<void> {
 		const cli = assign(Object.create(null), this.environmentService.args);
-		this.windowsMainService.open({ context: OpenContext.API, cli });
-		return TPromise.as(null);
+		const window = await this.windowsMainService.open({ context: OpenContext.API, cli })[0];
+
+		if (!window) {
+			return;
+		}
+
+		window.win.show();
 	}
 
 	dispose(): void {

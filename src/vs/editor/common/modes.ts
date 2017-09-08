@@ -226,7 +226,7 @@ export interface ISuggestion {
 	insertText: string;
 	type: SuggestionType;
 	detail?: string;
-	documentation?: string;
+	documentation?: string | IMarkdownString;
 	filterText?: string;
 	sortText?: string;
 	noAutoAccept?: boolean;
@@ -244,6 +244,7 @@ export interface ISuggestion {
 export interface ISuggestResult {
 	suggestions: ISuggestion[];
 	incomplete?: boolean;
+	dispose?(): void;
 }
 
 /**
@@ -284,7 +285,7 @@ export interface ParameterInformation {
 	 * The human-readable doc-comment of this signature. Will be shown
 	 * in the UI but can be omitted.
 	 */
-	documentation?: string;
+	documentation?: string | IMarkdownString;
 }
 /**
  * Represents the signature of something callable. A signature
@@ -301,7 +302,7 @@ export interface SignatureInformation {
 	 * The human-readable doc-comment of this signature. Will be shown
 	 * in the UI but can be omitted.
 	 */
-	documentation?: string;
+	documentation?: string | IMarkdownString;
 	/**
 	 * The parameters of this signature.
 	 */
@@ -654,7 +655,6 @@ export interface LinkProvider {
 
 /**
  * A color in RGBA format.
- * @internal
  */
 export interface IColor {
 
@@ -681,17 +681,14 @@ export interface IColor {
 
 /**
  * A color formatter.
- * @internal
  */
-
 export interface IColorFormatter {
 	readonly supportsTransparency: boolean;
-	format(color: Color): string;
+	format(color: IColor): string;
 }
 
 /**
  * A color range is a range in a text model which represents a color.
- * @internal
  */
 export interface IColorRange {
 
@@ -713,10 +710,8 @@ export interface IColorRange {
 
 /**
  * A provider of colors for editor models.
- * @internal
  */
-export interface ColorRangeProvider {
-
+export interface DocumentColorProvider {
 	/**
 	 * Provides the color ranges for a specific model.
 	 */
@@ -839,7 +834,7 @@ export const LinkProviderRegistry = new LanguageFeatureRegistry<LinkProvider>();
 /**
  * @internal
  */
-export const ColorProviderRegistry = new LanguageFeatureRegistry<ColorRangeProvider>();
+export const ColorProviderRegistry = new LanguageFeatureRegistry<DocumentColorProvider>();
 
 /**
  * @internal

@@ -164,6 +164,13 @@ export interface IScrollPosition {
 	readonly scrollLeft: number;
 	readonly scrollTop: number;
 }
+export interface ISmoothScrollPosition {
+	readonly scrollLeft: number;
+	readonly scrollTop: number;
+
+	readonly width: number;
+	readonly height: number;
+}
 export interface INewScrollPosition {
 	scrollLeft?: number;
 	scrollTop?: number;
@@ -285,6 +292,9 @@ export class Scrollable extends Disposable {
 
 		// Begin smooth scrolling animation
 		this._smoothScrolling.animationFrameDisposable = this._scheduleAtNextAnimationFrame(() => {
+			if (!this._smoothScrolling) {
+				return;
+			}
 			this._smoothScrolling.animationFrameDisposable = null;
 			this._performSmoothScrolling();
 		});
@@ -304,6 +314,9 @@ export class Scrollable extends Disposable {
 
 		// Continue smooth scrolling animation
 		this._smoothScrolling.animationFrameDisposable = this._scheduleAtNextAnimationFrame(() => {
+			if (!this._smoothScrolling) {
+				return;
+			}
 			this._smoothScrolling.animationFrameDisposable = null;
 			this._performSmoothScrolling();
 		});
@@ -320,7 +333,7 @@ export class Scrollable extends Disposable {
 	}
 }
 
-class SmoothScrollingUpdate implements IScrollPosition {
+export class SmoothScrollingUpdate {
 
 	public readonly scrollLeft: number;
 	public readonly scrollTop: number;
@@ -334,20 +347,68 @@ class SmoothScrollingUpdate implements IScrollPosition {
 
 }
 
-class SmoothScrollingOperation {
+export interface IAnimation {
+	(completion: number): number;
+}
 
-	public readonly from: IScrollPosition;
-	public to: IScrollPosition;
+function createEaseOutCubic(from: number, to: number): IAnimation {
+	const delta = to - from;
+	return function (completion: number): number {
+		return from + delta * easeOutCubic(completion);
+	};
+}
+
+function createComposed(a: IAnimation, b: IAnimation, cut: number): IAnimation {
+	return function (completion: number): number {
+		if (completion < cut) {
+			return a(completion / cut);
+		}
+		return b((completion - cut) / (1 - cut));
+	};
+}
+
+export class SmoothScrollingOperation {
+
+	public readonly from: ISmoothScrollPosition;
+	public to: ISmoothScrollPosition;
 	public readonly duration: number;
 	private readonly _startTime: number;
 	public animationFrameDisposable: IDisposable;
 
-	private constructor(from: IScrollPosition, to: IScrollPosition, startTime: number, duration: number) {
+	private scrollLeft: IAnimation;
+	private scrollTop: IAnimation;
+
+	protected constructor(from: ISmoothScrollPosition, to: ISmoothScrollPosition, startTime: number, duration: number) {
 		this.from = from;
 		this.to = to;
 		this.duration = duration;
 		this._startTime = startTime;
+
 		this.animationFrameDisposable = null;
+
+		this._initAnimations();
+	}
+
+	private _initAnimations(): void {
+		this.scrollLeft = this._initAnimation(this.from.scrollLeft, this.to.scrollLeft, this.to.width);
+		this.scrollTop = this._initAnimation(this.from.scrollTop, this.to.scrollTop, this.to.height);
+	}
+
+	private _initAnimation(from: number, to: number, viewportSize: number): IAnimation {
+		const delta = Math.abs(from - to);
+		if (delta > 2.5 * viewportSize) {
+			let stop1: number, stop2: number;
+			if (from < to) {
+				// scroll to 75% of the viewportSize
+				stop1 = from + 0.75 * viewportSize;
+				stop2 = to - 0.75 * viewportSize;
+			} else {
+				stop1 = from - 0.75 * viewportSize;
+				stop2 = to + 0.75 * viewportSize;
+			}
+			return createComposed(createEaseOutCubic(from, stop1), createEaseOutCubic(stop2, to), 0.33);
+		}
+		return createEaseOutCubic(from, to);
 	}
 
 	public dispose(): void {
@@ -359,34 +420,42 @@ class SmoothScrollingOperation {
 
 	public acceptScrollDimensions(state: ScrollState): void {
 		this.to = state.withScrollPosition(this.to);
+		this._initAnimations();
 	}
 
 	public tick(): SmoothScrollingUpdate {
-		const completion = (Date.now() - this._startTime) / this.duration;
+		return this._tick(Date.now());
+	}
+
+	protected _tick(now: number): SmoothScrollingUpdate {
+		const completion = (now - this._startTime) / this.duration;
 
 		if (completion < 1) {
-			const t = easeOutCubic(completion);
-			const newScrollLeft = this.from.scrollLeft + (this.to.scrollLeft - this.from.scrollLeft) * t;
-			const newScrollTop = this.from.scrollTop + (this.to.scrollTop - this.from.scrollTop) * t;
+			const newScrollLeft = this.scrollLeft(completion);
+			const newScrollTop = this.scrollTop(completion);
 			return new SmoothScrollingUpdate(newScrollLeft, newScrollTop, false);
 		}
 
 		return new SmoothScrollingUpdate(this.to.scrollLeft, this.to.scrollTop, true);
 	}
 
-	public combine(from: IScrollPosition, to: IScrollPosition, duration: number): SmoothScrollingOperation {
+	public combine(from: ISmoothScrollPosition, to: ISmoothScrollPosition, duration: number): SmoothScrollingOperation {
 		return SmoothScrollingOperation.start(from, to, duration);
 	}
 
-	public static start(from: IScrollPosition, to: IScrollPosition, duration: number): SmoothScrollingOperation {
-		return new SmoothScrollingOperation(from, to, Date.now(), duration);
+	public static start(from: ISmoothScrollPosition, to: ISmoothScrollPosition, duration: number): SmoothScrollingOperation {
+		// +10 / -10 : pretend the animation already started for a quicker response to a scroll request
+		duration = duration + 10;
+		const startTime = Date.now() - 10;
+
+		return new SmoothScrollingOperation(from, to, startTime, duration);
 	}
 }
 
-function easeInCubic(t) {
+function easeInCubic(t: number) {
 	return Math.pow(t, 3);
 }
 
-function easeOutCubic(t) {
+function easeOutCubic(t: number) {
 	return 1 - easeInCubic(1 - t);
 }

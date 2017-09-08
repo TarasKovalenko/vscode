@@ -847,7 +847,7 @@ class EditSettingRenderer extends Disposable {
 	}
 
 	private onEditSettingClicked(editPreferenceWidget: EditPreferenceWidget<ISetting>, e: IEditorMouseEvent): void {
-		const anchor = { x: e.event.posx + 1, y: e.event.posy + 10 };
+		const anchor = { x: e.event.posx, y: e.event.posy + 10 };
 		const actions = this.getSettings(editPreferenceWidget.getLine()).length === 1 ? this.getActions(editPreferenceWidget.preferences[0], this.getConfigurationsMap()[editPreferenceWidget.preferences[0].key])
 			: editPreferenceWidget.preferences.map(setting => new ContextSubMenu(setting.key, this.getActions(setting, this.getConfigurationsMap()[setting.key])));
 		this.contextMenuService.showContextMenu({
@@ -932,7 +932,7 @@ class SettingHighlighter extends Disposable {
 			resource: this.editor.getModel().uri
 		}, this.editor);
 
-		this.editor.revealLinesInCenterIfOutsideViewport(setting.valueRange.startLineNumber, setting.valueRange.endLineNumber - 1);
+		this.editor.revealLineInCenterIfOutsideViewport(setting.valueRange.startLineNumber, editorCommon.ScrollType.Smooth);
 		this.focusEventEmitter.fire(setting);
 	}
 
@@ -955,7 +955,7 @@ class UnsupportedWorkspaceSettingsRenderer extends Disposable {
 		this._register(this.configurationService.onDidUpdateConfiguration(() => this.render()));
 	}
 
-	private getMarkerMessage(settingKey): string {
+	private getMarkerMessage(settingKey: string): string {
 		switch (settingKey) {
 			case 'php.validate.executablePath':
 				return nls.localize('unsupportedPHPExecutablePathSetting', "This setting must be a User Setting. To configure PHP for the workspace, open a PHP file and click on 'PHP Path' in the status bar.");

@@ -9,7 +9,7 @@ import * as path from 'path';
 import { TPromise } from 'vs/base/common/winjs.base';
 import * as uuid from 'vs/base/common/uuid';
 import { distinct } from 'vs/base/common/arrays';
-import { getErrorMessage } from 'vs/base/common/errors';
+import { getErrorMessage, isPromiseCanceledError } from 'vs/base/common/errors';
 import { StatisticType, IGalleryExtension, IExtensionGalleryService, IGalleryExtensionAsset, IQueryOptions, SortBy, SortOrder, IExtensionManifest } from 'vs/platform/extensionManagement/common/extensionManagement';
 import { getGalleryExtensionId, getGalleryExtensionTelemetryData, adoptToGalleryExtensionId } from 'vs/platform/extensionManagement/common/extensionManagementUtil';
 import { assign, getOrDefault } from 'vs/base/common/objects';
@@ -233,7 +233,7 @@ function getEngine(version: IRawGalleryExtensionVersion): string {
 	return (values.length > 0 && values[0].value) || '';
 }
 
-function toExtension(galleryExtension: IRawGalleryExtension, extensionsGalleryUrl: string, index: number, query: Query): IGalleryExtension {
+function toExtension(galleryExtension: IRawGalleryExtension, extensionsGalleryUrl: string, index: number, query: Query, querySource?: string): IGalleryExtension {
 	const [version] = galleryExtension.versions;
 	const assets = {
 		manifest: getVersionAsset(version, AssetType.Manifest),
@@ -265,7 +265,8 @@ function toExtension(galleryExtension: IRawGalleryExtension, extensionsGalleryUr
 		},
 		telemetryData: {
 			index: ((query.pageNumber - 1) * query.pageSize) + index,
-			searchText: query.searchText
+			searchText: query.searchText,
+			querySource
 		}
 	};
 }
@@ -356,12 +357,12 @@ export class ExtensionGalleryService implements IExtensionGalleryService {
 		}
 
 		return this.queryGallery(query).then(({ galleryExtensions, total }) => {
-			const extensions = galleryExtensions.map((e, index) => toExtension(e, this.extensionsGalleryUrl, index, query));
+			const extensions = galleryExtensions.map((e, index) => toExtension(e, this.extensionsGalleryUrl, index, query, options.source));
 			const pageSize = query.pageSize;
-			const getPage = pageIndex => {
+			const getPage = (pageIndex: number) => {
 				const nextPageQuery = query.withPage(pageIndex + 1);
 				return this.queryGallery(nextPageQuery)
-					.then(({ galleryExtensions }) => galleryExtensions.map((e, index) => toExtension(e, this.extensionsGalleryUrl, index, nextPageQuery)));
+					.then(({ galleryExtensions }) => galleryExtensions.map((e, index) => toExtension(e, this.extensionsGalleryUrl, index, nextPageQuery, options.source)));
 			};
 
 			return { firstPage: extensions, total, pageSize, getPage };
@@ -424,7 +425,7 @@ export class ExtensionGalleryService implements IExtensionGalleryService {
 			const zipPath = path.join(tmpdir(), uuid.generateUuid());
 			const data = getGalleryExtensionTelemetryData(extension);
 			const startTime = new Date().getTime();
-			const log = duration => this.telemetryService.publicLog('galleryService:downloadVSIX', assign(data, { duration }));
+			const log = (duration: number) => this.telemetryService.publicLog('galleryService:downloadVSIX', assign(data, { duration }));
 
 			return this.getAsset(extension.assets.download)
 				.then(context => download(zipPath, context))
@@ -545,17 +546,36 @@ export class ExtensionGalleryService implements IExtensionGalleryService {
 		const headers = assign({}, this.commonHTTPHeaders, options.headers || {});
 		options = assign({}, options, baseOptions, { headers });
 
-		const firstOptions = assign({}, options, { url: asset.uri });
+		const url = asset.uri;
+		const fallbackUrl = asset.fallbackUri;
+		const firstOptions = assign({}, options, { url });
 
 		return this.requestService.request(firstOptions)
-			.then(context => context.res.statusCode === 200 ? context : TPromise.wrapError<IRequestContext>(new Error('expected 200')))
-			.then(null, err => {
-				this.telemetryService.publicLog('galleryService:requestError', { cdn: true, message: getErrorMessage(err) });
-				this.telemetryService.publicLog('galleryService:cdnFallback', { url: asset.uri });
+			.then(context => {
+				if (context.res.statusCode === 200) {
+					return TPromise.as(context);
+				}
 
-				const fallbackOptions = assign({}, options, { url: asset.fallbackUri });
+				return asText(context)
+					.then(message => TPromise.wrapError<IRequestContext>(new Error(`Expected 200, got back ${context.res.statusCode} instead.\n\n${message}`)));
+			})
+			.then(null, err => {
+				if (isPromiseCanceledError(err)) {
+					return TPromise.wrapError<IRequestContext>(err);
+				}
+
+				const message = getErrorMessage(err);
+				this.telemetryService.publicLog('galleryService:requestError', { url, cdn: true, message });
+				this.telemetryService.publicLog('galleryService:cdnFallback', { url, message });
+
+				const fallbackOptions = assign({}, options, { url: fallbackUrl });
 				return this.requestService.request(fallbackOptions).then(null, err => {
-					this.telemetryService.publicLog('galleryService:requestError', { cdn: false, message: getErrorMessage(err) });
+					if (isPromiseCanceledError(err)) {
+						return TPromise.wrapError<IRequestContext>(err);
+					}
+
+					const message = getErrorMessage(err);
+					this.telemetryService.publicLog('galleryService:requestError', { url: fallbackUrl, cdn: false, message });
 					return TPromise.wrapError<IRequestContext>(err);
 				});
 			});

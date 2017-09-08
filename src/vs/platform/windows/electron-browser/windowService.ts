@@ -72,6 +72,10 @@ export class WindowService implements IWindowService {
 		return this.windowsService.createAndOpenWorkspace(this.windowId, folders, path);
 	}
 
+	saveAndOpenWorkspace(path: string): TPromise<void> {
+		return this.windowsService.saveAndOpenWorkspace(this.windowId, path);
+	}
+
 	closeWindow(): TPromise<void> {
 		return this.windowsService.closeWindow(this.windowId);
 	}
@@ -116,7 +120,11 @@ export class WindowService implements IWindowService {
 		return this.windowsService.setDocumentEdited(this.windowId, flag);
 	}
 
-	showMessageBox(options: Electron.ShowMessageBoxOptions): number {
+	show(): TPromise<void> {
+		return this.windowsService.showWindow(this.windowId);
+	}
+
+	showMessageBox(options: Electron.MessageBoxOptions): number {
 		return remote.dialog.showMessageBox(remote.getCurrentWindow(), options);
 	}
 

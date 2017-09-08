@@ -5,11 +5,22 @@ set -e
 . ./scripts/env.sh
 . ./build/tfs/common/common.sh
 
-export ARCH="$1"
-export VSCODE_MIXIN_PASSWORD="$2"
-VSO_PAT="$3"
+export ARCH="x64"
+export VSCODE_MIXIN_PASSWORD="$1"
+VSO_PAT="$2"
 
 echo "machine monacotools.visualstudio.com password $VSO_PAT" > ~/.netrc
+
+function configureEnvironment {
+	id -u testuser &>/dev/null || (useradd -m testuser; chpasswd <<< testuser:testpassword)
+	sudo -i -u testuser -- sh -c 'git config --global user.name "VS Code Agent" &&  git config --global user.email "monacotools@microsoft.com"'
+	mkdir -p $AGENT_BUILDDIRECTORY/smoketest-screenshots
+	chown -R testuser $AGENT_BUILDDIRECTORY/smoketest-screenshots
+}
+
+function runSmokeTest {
+	DISPLAY=:10 sudo -i -u testuser -- sh -c "cd $BUILD_SOURCESDIRECTORY/test/smoke && ./node_modules/.bin/mocha --build $AGENT_BUILDDIRECTORY/VSCode-linux-x64/code-insiders --screenshot"
+}
 
 step "Install dependencies" \
 	npm install --arch=$ARCH --unsafe-perm
@@ -26,21 +37,9 @@ step "Install distro dependencies" \
 step "Build minified" \
 	npm run gulp -- "vscode-linux-$ARCH-min"
 
-function configureEnvironment {
-	id -u testuser &>/dev/null || (useradd -m testuser; chpasswd <<< testuser:testpassword)
-	sudo -i -u testuser git config --global user.name "VS Code Agent"
-	sudo -i -u testuser git config --global user.email "monacotools@microsoft.com"
-	chown -R testuser $AGENT_BUILDDIRECTORY
-}
+step "Configure environment" \
+	configureEnvironment
 
-function runTest {
-	pushd test/smoke
-	npm install
-	sudo -u testuser -H xvfb-run -a -s "-screen 0 1024x768x8" npm test -- --latest "$AGENT_BUILDDIRECTORY/VSCode-linux-ia32/code-insiders"
-	popd
-}
-
-step "Configure environment" configureEnvironment
-
-step "Run smoke test" runTest
+step "Run smoke test" \
+	runSmokeTest
 

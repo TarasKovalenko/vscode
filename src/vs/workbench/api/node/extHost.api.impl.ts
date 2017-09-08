@@ -36,6 +36,7 @@ import { ExtHostApiCommands } from 'vs/workbench/api/node/extHostApiCommands';
 import { ExtHostTask } from 'vs/workbench/api/node/extHostTask';
 import { ExtHostDebugService } from 'vs/workbench/api/node/extHostDebugService';
 import { ExtHostCredentials } from 'vs/workbench/api/node/extHostCredentials';
+import { ExtHostWindow } from 'vs/workbench/api/node/extHostWindow';
 import * as extHostTypes from 'vs/workbench/api/node/extHostTypes';
 import URI from 'vs/base/common/uri';
 import Severity from 'vs/base/common/severity';
@@ -52,7 +53,6 @@ import { TextEditorCursorStyle } from 'vs/editor/common/config/editorOptions';
 import { ExtHostThreadService } from 'vs/workbench/services/thread/node/extHostThreadService';
 import { ProxyIdentifier } from 'vs/workbench/services/thread/common/threadService';
 import { ExtHostDialogs } from 'vs/workbench/api/node/extHostDialogs';
-import { MarkdownString } from 'vs/base/common/htmlContent';
 
 export interface IExtensionApiFactory {
 	(extension: IExtensionDescription): typeof vscode;
@@ -99,6 +99,7 @@ export function createApiFactory(
 	const extHostSCM = threadService.set(ExtHostContext.ExtHostSCM, new ExtHostSCM(threadService, extHostCommands));
 	const extHostTask = threadService.set(ExtHostContext.ExtHostTask, new ExtHostTask(threadService));
 	const extHostCredentials = threadService.set(ExtHostContext.ExtHostCredentials, new ExtHostCredentials(threadService));
+	const extHostWindow = threadService.set(ExtHostContext.ExtHostWindow, new ExtHostWindow(threadService));
 	threadService.set(ExtHostContext.ExtHostExtensionService, extensionService);
 
 	// Check that no named customers are missing
@@ -199,7 +200,8 @@ export function createApiFactory(
 			get machineId() { return initData.telemetryInfo.machineId; },
 			get sessionId() { return initData.telemetryInfo.sessionId; },
 			get language() { return Platform.language; },
-			get appName() { return product.nameLong; }
+			get appName() { return product.nameLong; },
+			get appRoot() { return initData.environment.appRoot; },
 		});
 
 		// namespace: extensions
@@ -327,6 +329,12 @@ export function createApiFactory(
 			onDidCloseTerminal(listener, thisArg?, disposables?) {
 				return extHostTerminalService.onDidCloseTerminal(listener, thisArg, disposables);
 			},
+			get state() {
+				return extHostWindow.state;
+			},
+			onDidChangeWindowState: proposedApiFunction(extension, (listener, thisArg?, disposables?) => {
+				return extHostWindow.onDidChangeWindowState(listener, thisArg, disposables);
+			}),
 			showInformationMessage(message, first, ...rest) {
 				return extHostMessageService.showMessage(extension, Severity.Info, message, first, rest);
 			},
@@ -373,6 +381,9 @@ export function createApiFactory(
 			}),
 			showOpenDialog: proposedApiFunction(extension, options => {
 				return extHostDialogs.showOpenDialog(options);
+			}),
+			showSaveDialog: proposedApiFunction(extension, options => {
+				return extHostDialogs.showSaveDialog(options);
 			})
 		};
 
@@ -473,7 +484,7 @@ export function createApiFactory(
 		// namespace: scm
 		const scm: typeof vscode.scm = {
 			get inputBox() {
-				return extHostSCM.inputBox;
+				return extHostSCM.getLastInputBox(extension);
 			},
 			createSourceControl(id: string, label: string) {
 				mainThreadTelemetry.$publicLog('registerSCMProvider', {
@@ -482,7 +493,7 @@ export function createApiFactory(
 					providerLabel: label
 				});
 
-				return extHostSCM.createSourceControl(id, label);
+				return extHostSCM.createSourceControl(extension, id, label);
 			}
 		};
 
@@ -506,9 +517,9 @@ export function createApiFactory(
 			onDidReceiveDebugSessionCustomEvent(listener, thisArg?, disposables?) {
 				return extHostDebugService.onDidReceiveDebugSessionCustomEvent(listener, thisArg, disposables);
 			},
-			registerDebugConfigurationProvider: proposedApiFunction(extension, (debugType: string, provider: vscode.DebugConfigurationProvider) => {
+			registerDebugConfigurationProvider(debugType: string, provider: vscode.DebugConfigurationProvider) {
 				return extHostDebugService.registerDebugConfigurationProvider(debugType, provider);
-			}),
+			},
 		};
 
 		// namespace: credentials
@@ -555,7 +566,7 @@ export function createApiFactory(
 			Hover: extHostTypes.Hover,
 			IndentAction: languageConfiguration.IndentAction,
 			Location: extHostTypes.Location,
-			MarkdownString: MarkdownString,
+			MarkdownString: extHostTypes.MarkdownString,
 			OverviewRulerLane: EditorCommon.OverviewRulerLane,
 			ParameterInformation: extHostTypes.ParameterInformation,
 			Position: extHostTypes.Position,
