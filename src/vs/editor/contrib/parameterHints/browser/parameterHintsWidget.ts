@@ -25,7 +25,7 @@ import { CharacterSet } from 'vs/editor/common/core/characterClassifier';
 import { IConfigurationChangedEvent } from 'vs/editor/common/config/editorOptions';
 import { ICursorSelectionChangedEvent } from 'vs/editor/common/controller/cursorEvents';
 import { registerThemingParticipant, HIGH_CONTRAST } from 'vs/platform/theme/common/themeService';
-import { editorHoverBackground, editorHoverBorder } from 'vs/platform/theme/common/colorRegistry';
+import { editorHoverBackground, editorHoverBorder, textLinkForeground } from 'vs/platform/theme/common/colorRegistry';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { MarkdownRenderer } from 'vs/editor/contrib/markdown/browser/markdownRenderer';
@@ -218,9 +218,6 @@ export class ParameterHintsWidget implements IContentWidget, IDisposable {
 		this.element = $('.editor-widget.parameter-hints-widget');
 		const wrapper = dom.append(this.element, $('.wrapper'));
 
-		const onClick = stop(domEvent(this.element, 'click'));
-		onClick(this.next, this, this.disposables);
-
 		const buttons = dom.append(wrapper, $('.buttons'));
 		const previous = dom.append(buttons, $('.button.previous'));
 		const next = dom.append(buttons, $('.button.next'));
@@ -336,8 +333,10 @@ export class ParameterHintsWidget implements IContentWidget, IDisposable {
 		if (activeParameter && activeParameter.documentation) {
 			const documentation = $('span.documentation');
 			if (typeof activeParameter.documentation === 'string') {
+				dom.removeClass(this.docs, 'markdown-docs');
 				documentation.textContent = activeParameter.documentation;
 			} else {
+				dom.addClass(this.docs, 'markdown-docs');
 				documentation.appendChild(this.markdownRenderer.render(activeParameter.documentation));
 			}
 			dom.append(this.docs, $('p', null, documentation));
@@ -506,5 +505,10 @@ registerThemingParticipant((theme, collector) => {
 	let background = theme.getColor(editorHoverBackground);
 	if (background) {
 		collector.addRule(`.monaco-editor .parameter-hints-widget { background-color: ${background}; }`);
+	}
+
+	const link = theme.getColor(textLinkForeground);
+	if (link) {
+		collector.addRule(`.monaco-editor .parameter-hints-widget a { color: ${link}; }`);
 	}
 });

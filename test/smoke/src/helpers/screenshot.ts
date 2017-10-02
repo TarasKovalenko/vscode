@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as mkdirp from 'mkdirp';
 import { Application } from 'spectron';
-import { SCREENSHOTS_DIR, CAPTURE_SCREENSHOT } from '../spectron/application';
+import { SCREENSHOTS_DIR } from '../spectron/application';
 
 function sanitize(name: string): string {
 	return name.replace(/[&*:\/]/g, '');
@@ -21,11 +21,10 @@ export class ScreenCapturer {
 	constructor(private application: Application, private suiteName: string) { }
 
 	async capture(name: string): Promise<void> {
-		if (!CAPTURE_SCREENSHOT) {
+		if (!SCREENSHOTS_DIR) {
 			return;
 		}
 
-		const image = await this.application.browserWindow.capturePage();
 		const screenshotPath = path.join(
 			SCREENSHOTS_DIR,
 			sanitize(this.suiteName),
@@ -33,6 +32,7 @@ export class ScreenCapturer {
 			`${ScreenCapturer.counter++}-${sanitize(name)}.png`
 		);
 
+		const image = await this.application.browserWindow.capturePage();
 		await new Promise((c, e) => mkdirp(path.dirname(screenshotPath), err => err ? e(err) : c()));
 		await new Promise((c, e) => fs.writeFile(screenshotPath, image, err => err ? e(err) : c()));
 	}

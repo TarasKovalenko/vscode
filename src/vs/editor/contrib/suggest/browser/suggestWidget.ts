@@ -28,7 +28,7 @@ import { alert } from 'vs/base/browser/ui/aria/aria';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { attachListStyler } from 'vs/platform/theme/common/styler';
 import { IThemeService, ITheme, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
-import { registerColor, editorWidgetBackground, listFocusBackground, activeContrastBorder, listHighlightForeground, editorForeground, editorWidgetBorder, focusBorder } from 'vs/platform/theme/common/colorRegistry';
+import { registerColor, editorWidgetBackground, listFocusBackground, activeContrastBorder, listHighlightForeground, editorForeground, editorWidgetBorder, focusBorder, textLinkForeground } from 'vs/platform/theme/common/colorRegistry';
 import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
 import { MarkdownRenderer } from 'vs/editor/contrib/markdown/browser/markdownRenderer';
 import { IModeService } from 'vs/editor/common/services/modeService';
@@ -249,8 +249,10 @@ class SuggestionDetails {
 		}
 		removeClass(this.el, 'no-docs');
 		if (typeof item.suggestion.documentation === 'string') {
+			removeClass(this.docs, 'markdown-docs');
 			this.docs.textContent = item.suggestion.documentation;
 		} else {
+			addClass(this.docs, 'markdown-docs');
 			this.docs.innerHTML = this.markdownRenderer.render(item.suggestion.documentation).innerHTML;
 		}
 
@@ -726,6 +728,15 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 		} else {
 			const { stats } = this.completionModel;
 			stats['wasAutomaticallyTriggered'] = !!isAuto;
+			/* __GDPR__
+				"suggestWidget" : {
+					"wasAutomaticallyTriggered" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+					"${include}": [
+						"${ICompletionStats}",
+						"${EditorTelemetryData}"
+					]
+				}
+			*/
 			this.telemetryService.publicLog('suggestWidget', { ...stats, ...this.editor.getTelemetryData() });
 
 			this.focusedItem = null;
@@ -853,6 +864,13 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 				this.details.element.style.borderColor = this.detailsFocusBorderColor;
 			}
 		}
+		/* __GDPR__
+			"suggestWidget:toggleDetailsFocus" : {
+				"${include}": [
+					"${EditorTelemetryData}"
+				]
+			}
+		*/
 		this.telemetryService.publicLog('suggestWidget:toggleDetailsFocus', this.editor.getTelemetryData());
 	}
 
@@ -867,6 +885,13 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 			removeClass(this.element, 'docs-side');
 			removeClass(this.element, 'docs-below');
 			this.editor.layoutContentWidget(this);
+			/* __GDPR__
+				"suggestWidget:collapseDetails" : {
+					"${include}": [
+						"${EditorTelemetryData}"
+					]
+				}
+			*/
 			this.telemetryService.publicLog('suggestWidget:collapseDetails', this.editor.getTelemetryData());
 		} else {
 			if (this.state !== State.Open && this.state !== State.Details) {
@@ -875,6 +900,13 @@ export class SuggestWidget implements IContentWidget, IDelegate<ICompletionItem>
 
 			this.updateExpandDocsSetting(true);
 			this.showDetails();
+			/* __GDPR__
+				"suggestWidget:expandDetails" : {
+					"${include}": [
+						"${EditorTelemetryData}"
+					]
+				}
+			*/
 			this.telemetryService.publicLog('suggestWidget:expandDetails', this.editor.getTelemetryData());
 		}
 
@@ -1078,5 +1110,10 @@ registerThemingParticipant((theme, collector) => {
 	let foreground = theme.getColor(editorSuggestWidgetForeground);
 	if (foreground) {
 		collector.addRule(`.monaco-editor .suggest-widget { color: ${foreground}; }`);
+	}
+
+	const link = theme.getColor(textLinkForeground);
+	if (link) {
+		collector.addRule(`.monaco-editor .suggest-widget a { color: ${link}; }`);
 	}
 });

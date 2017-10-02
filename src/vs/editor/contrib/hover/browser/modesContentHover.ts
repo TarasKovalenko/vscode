@@ -9,7 +9,7 @@ import * as dom from 'vs/base/browser/dom';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { IRange, Range } from 'vs/editor/common/core/range';
 import { Position } from 'vs/editor/common/core/position';
-import { HoverProviderRegistry, Hover, IColor, IColorFormatter } from 'vs/editor/common/modes';
+import { HoverProviderRegistry, Hover, IColor, DocumentColorProvider } from 'vs/editor/common/modes';
 import { ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { getHover } from '../common/hover';
 import { HoverOperation, IHoverComputer } from './hoverOperation';
@@ -22,6 +22,7 @@ import { ColorPickerWidget } from 'vs/editor/contrib/colorPicker/browser/colorPi
 import { ColorDetector } from 'vs/editor/contrib/colorPicker/browser/colorDetector';
 import { Color, RGBA } from 'vs/base/common/color';
 import { IDisposable, empty as EmptyDisposable, dispose, combinedDisposable } from 'vs/base/common/lifecycle';
+import { getColorPresentations } from 'vs/editor/contrib/colorPicker/common/color';
 const $ = dom.$;
 
 class ColorHover {
@@ -29,7 +30,7 @@ class ColorHover {
 	constructor(
 		public readonly range: IRange,
 		public readonly color: IColor,
-		public readonly formatters: IColorFormatter[]
+		public readonly provider: DocumentColorProvider
 	) { }
 }
 
@@ -90,13 +91,13 @@ class ModesContentComputer implements IHoverComputer<HoverPart[]> {
 			}
 
 			const range = new Range(this._range.startLineNumber, startColumn, this._range.startLineNumber, endColumn);
-			const colorRange = colorDetector.getColorRange(d.range.getStartPosition());
+			const colorData = colorDetector.getColorData(d.range.getStartPosition());
 
-			if (!didFindColor && colorRange) {
+			if (!didFindColor && colorData) {
 				didFindColor = true;
 
-				const { color, formatters } = colorRange;
-				return new ColorHover(d.range, color, formatters);
+				const { color } = colorData.colorInfo;
+				return new ColorHover(d.range, color, colorData.provider);
 			} else {
 				if (isEmptyMarkdownString(d.options.hoverMessage)) {
 					return null;
@@ -293,6 +294,7 @@ export class ModesContentHoverWidget extends ContentHoverWidget {
 			highlightRange = messages[0].range,
 			fragment = document.createDocumentFragment();
 
+		let containColorPicker = false;
 		messages.forEach((msg) => {
 			if (!msg.range) {
 				return;
@@ -309,54 +311,87 @@ export class ModesContentHoverWidget extends ContentHoverWidget {
 						fragment.appendChild($('div.hover-row', null, renderedContents));
 					});
 			} else {
+				containColorPicker = true;
+
 				const { red, green, blue, alpha } = msg.color;
 				const rgba = new RGBA(red * 255, green * 255, blue * 255, alpha);
 				const color = new Color(rgba);
 
-				const formatters = [...msg.formatters];
-				const text = this._editor.getModel().getValueInRange(msg.range);
-
-				let formatterIndex = 0;
-
-				for (let i = 0; i < formatters.length; i++) {
-					if (text === formatters[i].format(msg.color)) {
-						formatterIndex = i;
-						break;
-					}
-				}
-
-				const model = new ColorPickerModel(color, formatters, formatterIndex);
-				const widget = new ColorPickerWidget(fragment, model, this._editor.getConfiguration().pixelRatio);
-
 				const editorModel = this._editor.getModel();
 				let range = new Range(msg.range.startLineNumber, msg.range.startColumn, msg.range.endLineNumber, msg.range.endColumn);
+				let colorInfo = { range: msg.range, color: msg.color };
 
-				const updateEditorModel = () => {
-					const text = model.formatter.format({
-						red: model.color.rgba.r / 255,
-						green: model.color.rgba.g / 255,
-						blue: model.color.rgba.b / 255,
-						alpha: model.color.rgba.a
+				// create blank olor picker model and widget first to ensure it's positioned correctly.
+				const model = new ColorPickerModel(color, [], 0);
+				const widget = new ColorPickerWidget(fragment, model, this._editor.getConfiguration().pixelRatio);
+
+				getColorPresentations(editorModel, colorInfo, msg.provider).then(colorPresentations => {
+					model.colorPresentations = colorPresentations;
+					const originalText = this._editor.getModel().getValueInRange(msg.range);
+					model.guessColorPresentation(color, originalText);
+
+					const updateEditorModel = () => {
+						let textEdits;
+						let newRange;
+						if (model.presentation.textEdit) {
+							textEdits = [model.presentation.textEdit];
+							newRange = new Range(
+								model.presentation.textEdit.range.startLineNumber,
+								model.presentation.textEdit.range.startColumn,
+								model.presentation.textEdit.range.endLineNumber,
+								model.presentation.textEdit.range.endColumn
+							);
+							newRange = newRange.setEndPosition(newRange.endLineNumber, newRange.startColumn + model.presentation.textEdit.text.length);
+						} else {
+							textEdits = [{ identifier: null, range, text: model.presentation.label, forceMoveMarkers: false }];
+							newRange = range.setEndPosition(range.endLineNumber, range.startColumn + model.presentation.label.length);
+						}
+
+						editorModel.pushEditOperations([], textEdits, () => []);
+
+						if (model.presentation.additionalTextEdits) {
+							textEdits = [...model.presentation.additionalTextEdits];
+							editorModel.pushEditOperations([], textEdits, () => []);
+							this.hide();
+						}
+						this._editor.pushUndoStop();
+						range = newRange;
+					};
+
+					const updateColorPresentations = (color: Color) => {
+						return getColorPresentations(editorModel, {
+							range: range,
+							color: {
+								red: color.rgba.r / 255,
+								green: color.rgba.g / 255,
+								blue: color.rgba.b / 255,
+								alpha: color.rgba.a
+							}
+						}, msg.provider).then((colorPresentations) => {
+							model.colorPresentations = colorPresentations;
+						});
+					};
+
+					const colorListener = model.onColorFlushed((color: Color) => {
+						updateColorPresentations(color).then(updateEditorModel);
 					});
-					editorModel.pushEditOperations([], [{ identifier: null, range, text, forceMoveMarkers: false }], () => []);
-					this._editor.pushUndoStop();
-					range = range.setEndPosition(range.endLineNumber, range.startColumn + text.length);
-				};
+					const colorChangeListener = model.onDidChangeColor(updateColorPresentations);
 
-				const colorListener = model.onColorFlushed(updateEditorModel);
+					this._colorPicker = widget;
+					this.showAt(new Position(renderRange.startLineNumber, renderColumn), this._shouldFocus);
+					this.updateContents(fragment);
+					this._colorPicker.layout();
 
-				this._colorPicker = widget;
-				this.renderDisposable = combinedDisposable([colorListener, widget]);
+					this.renderDisposable = combinedDisposable([colorListener, colorChangeListener, widget]);
+				});
 			}
 		});
 
 		// show
-		this.showAt(new Position(renderRange.startLineNumber, renderColumn), this._shouldFocus);
 
-		this.updateContents(fragment);
-
-		if (this._colorPicker) {
-			this._colorPicker.layout();
+		if (!containColorPicker) {
+			this.showAt(new Position(renderRange.startLineNumber, renderColumn), this._shouldFocus);
+			this.updateContents(fragment);
 		}
 
 		this._isChangingDecorations = true;

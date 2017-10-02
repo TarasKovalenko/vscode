@@ -11,14 +11,15 @@ import * as minimist from 'minimist';
 import * as tmp from 'tmp';
 import * as rimraf from 'rimraf';
 import * as mkdirp from 'mkdirp';
-import { ncp } from 'ncp';
+
+const tmpDir = tmp.dirSync({ prefix: 't' }) as { name: string; removeCallback: Function; };
+const testDataPath = tmpDir.name;
+process.once('exit', () => rimraf.sync(testDataPath));
 
 const [, , ...args] = process.argv;
-const opts = minimist(args, { string: ['build', 'stable-build'], boolean: ['screenshot'] });
+const opts = minimist(args, { string: ['build', 'stable-build', 'screenshots'] });
 
-const tmpDir = tmp.dirSync() as { name: string; removeCallback: Function; };
-const testDataPath = tmpDir.name;
-process.once('exit', code => code === 0 && rimraf.sync(testDataPath));
+opts.screenshots = opts.screenshots === '' ? path.join(testDataPath, 'screenshots') : opts.screenshots;
 
 const workspacePath = path.join(testDataPath, 'smoketest.code-workspace');
 const testRepoUrl = 'https://github.com/Microsoft/vscode-smoketest-express';
@@ -75,13 +76,12 @@ if (!fs.existsSync(testCodePath)) {
 	fail(`Can't find Code at ${testCodePath}.`);
 }
 
-process.env.VSCODE_USER_DIR = path.join(testDataPath, 'user-dir');
+process.env.VSCODE_USER_DIR = path.join(testDataPath, 'd');
 process.env.VSCODE_EXTENSIONS_DIR = extensionsPath;
-process.env.SCREENSHOTS_DIR = path.join(testDataPath, 'screenshots');
 process.env.SMOKETEST_REPO = testRepoLocalDir;
 process.env.VSCODE_WORKSPACE_PATH = workspacePath;
 process.env.VSCODE_KEYBINDINGS_PATH = keybindingsPath;
-process.env.CAPTURE_SCREENSHOT = opts.screenshot ? '1' : '';
+process.env.SCREENSHOTS_DIR = opts.screenshots || '';
 
 if (process.env.VSCODE_DEV === '1') {
 	process.env.VSCODE_EDITION = 'dev';
@@ -101,10 +101,10 @@ function getKeybindingPlatform(): string {
 
 function toUri(path: string): string {
 	if (process.platform === 'win32') {
-		return `file:///${path.replace(/\\/g, '/')}`;
+		return `${path.replace(/\\/g, '/')}`;
 	}
 
-	return `file://${path}`;
+	return `${path}`;
 }
 
 async function setup(): Promise<void> {
@@ -127,11 +127,16 @@ async function setup(): Promise<void> {
 	if (!fs.existsSync(workspacePath)) {
 		console.log('*** Creating workspace file...');
 		const workspace = {
-			id: (Date.now() + Math.round(Math.random() * 1000)).toString(),
 			folders: [
-				toUri(path.join(testRepoLocalDir, 'public')),
-				toUri(path.join(testRepoLocalDir, 'routes')),
-				toUri(path.join(testRepoLocalDir, 'views'))
+				{
+					path: toUri(path.join(testRepoLocalDir, 'public'))
+				},
+				{
+					path: toUri(path.join(testRepoLocalDir, 'routes'))
+				},
+				{
+					path: toUri(path.join(testRepoLocalDir, 'views'))
+				}
 			]
 		};
 
@@ -180,18 +185,9 @@ before(async function () {
 	await setup();
 });
 
-async function teardown(): Promise<void> {
-	const screenshotsSourcePath = process.env.SCREENSHOTS_DIR;
-
-	if (process.env.CAPTURE_SCREENSHOT && screenshotsSourcePath) {
-		const screenshotsDestinationPath = path.join(repoPath, '..', 'smoketest-screenshots');
-
-		rimraf.sync(screenshotsDestinationPath);
-		await new Promise((c, e) => ncp(screenshotsSourcePath, screenshotsDestinationPath, err => err ? e(err) : c()));
-	}
-}
-
-after(teardown);
+after(async () => {
+	await new Promise((c, e) => rimraf(testDataPath, { maxBusyTries: 10 }, err => err ? e(err) : c()));
+});
 
 // import './areas/workbench/data-migration.test';
 import './areas/workbench/data-loss.test';
@@ -203,7 +199,7 @@ import './areas/css/css.test';
 import './areas/editor/editor.test';
 import './areas/debug/debug.test';
 import './areas/git/git.test';
-import './areas/terminal/terminal.test';
+// import './areas/terminal/terminal.test';
 import './areas/statusbar/statusbar.test';
 import './areas/extensions/extensions.test';
 import './areas/workbench/localization.test';

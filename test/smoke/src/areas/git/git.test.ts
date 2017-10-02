@@ -19,11 +19,11 @@ describe('Git', () => {
 	it('reflects working tree changes', async function () {
 		await app.workbench.scm.openSCMViewlet();
 
-		await app.workbench.openFile('app.js');
+		await app.workbench.quickopen.openFile('app.js');
 		await app.client.type('.foo{}');
 		await app.workbench.saveOpenedFile();
 
-		await app.workbench.openFile('index.jade');
+		await app.workbench.quickopen.openFile('index.jade');
 		await app.client.type('hello world');
 		await app.workbench.saveOpenedFile();
 
@@ -68,7 +68,7 @@ describe('Git', () => {
 		await app.workbench.scm.commit('first commit');
 		await app.client.waitForText(SYNC_STATUSBAR, ' 0↓ 1↑');
 
-		await app.workbench.commandPallette.runCommand('Git: Stage All Changes');
+		await app.workbench.quickopen.runCommand('Git: Stage All Changes');
 		await app.workbench.scm.waitForChange(c => c.name === 'index.jade' && c.type === 'Index Modified');
 
 		await app.workbench.scm.commit('second commit');

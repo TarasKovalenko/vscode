@@ -16,7 +16,7 @@ export class Terminal {
 
 	public async showTerminal(): Promise<void> {
 		if (!await this.isVisible()) {
-			await this.spectron.workbench.commandPallette.runCommand('View: Toggle Integrated Terminal');
+			await this.spectron.workbench.quickopen.runCommand('View: Toggle Integrated Terminal');
 			await this.spectron.client.waitForElement(Terminal.TERMINAL_CURSOR);
 			await this.waitForTerminalText(text => text.length > 0, 'Waiting for Terminal to be ready');
 		}
@@ -30,11 +30,6 @@ export class Terminal {
 	public async runCommand(commandText: string): Promise<void> {
 		await this.spectron.client.type(commandText);
 		await this.spectron.client.keys(['Enter', 'NULL']);
-	}
-
-	public async waitForTextInLine(line: number, fn: (text: string) => boolean): Promise<string> {
-		const terminalText = await this.waitForTerminalText(terminalText => fn(terminalText[line - 1]), 'Waiting for Text in line ' + line);
-		return terminalText[line - 1];
 	}
 
 	public async waitForTerminalText(fn: (text: string[]) => boolean, timeOutDescription: string = 'Getting Terminal Text'): Promise<string[]> {
