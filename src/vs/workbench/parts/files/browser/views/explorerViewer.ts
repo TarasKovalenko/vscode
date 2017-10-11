@@ -290,7 +290,8 @@ export class FileRenderer implements IRenderer {
 		state: FileViewletState,
 		@IContextViewService private contextViewService: IContextViewService,
 		@IInstantiationService private instantiationService: IInstantiationService,
-		@IThemeService private themeService: IThemeService
+		@IThemeService private themeService: IThemeService,
+		@IConfigurationService private configurationService: IConfigurationService
 	) {
 		this.state = state;
 	}
@@ -323,7 +324,14 @@ export class FileRenderer implements IRenderer {
 			if (!stat.exists && stat.isRoot) {
 				extraClasses.push('nonexistent-root');
 			}
-			templateData.label.setFile(stat.resource, { hidePath: true, fileKind: stat.isRoot ? FileKind.ROOT_FOLDER : stat.isDirectory ? FileKind.FOLDER : FileKind.FILE, extraClasses });
+			templateData.label.setFile(stat.resource, {
+				hidePath: true,
+				fileKind: stat.isRoot ? FileKind.ROOT_FOLDER : stat.isDirectory ? FileKind.FOLDER : FileKind.FILE,
+				extraClasses,
+				fileDecorations: this.configurationService.getConfiguration<IFilesConfiguration>().explorer.enableFileDecorations
+					? stat.isDirectory ? 'all' : 'mine'
+					: undefined
+			});
 		}
 
 		// Input Box
@@ -910,10 +918,6 @@ export class FileDragAndDrop extends SimpleFileResourceDragAndDrop {
 			// Handle folders by adding to workspace if we are in workspace context
 			const folders = result.filter(result => result.stat.isDirectory).map(result => result.stat.resource);
 			if (folders.length > 0) {
-				if (this.environmentService.appQuality === 'stable') {
-					return void 0; // TODO@Ben multi root
-				}
-
 				if (this.contextService.getWorkbenchState() === WorkbenchState.WORKSPACE) {
 					return this.workspaceEditingService.addFolders(folders);
 				}

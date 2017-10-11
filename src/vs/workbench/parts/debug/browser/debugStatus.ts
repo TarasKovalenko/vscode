@@ -18,8 +18,10 @@ const MAX_LABEL_LENGTH = 17;
 
 export class DebugStatus extends Themable implements IStatusbarItem {
 	private toDispose: IDisposable[];
+	private container: HTMLElement;
 	private label: HTMLElement;
 	private icon: HTMLElement;
+	private hidden = true;
 
 	constructor(
 		@IQuickOpenService private quickOpenService: IQuickOpenService,
@@ -31,29 +33,41 @@ export class DebugStatus extends Themable implements IStatusbarItem {
 		this.toDispose.push(this.debugService.getConfigurationManager().onDidSelectConfiguration(e => {
 			this.setLabel();
 		}));
+		this.toDispose.push(this.debugService.onDidNewProcess(() => {
+			if (this.hidden) {
+				this.hidden = false;
+				this.render(this.container);
+			}
+		}));
 	}
 
 	protected updateStyles(): void {
 		super.updateStyles();
-		this.icon.style.backgroundColor = this.getColor(STATUS_BAR_FOREGROUND);
+		if (this.icon) {
+			this.icon.style.backgroundColor = this.getColor(STATUS_BAR_FOREGROUND);
+		}
 	}
 
 	public render(container: HTMLElement): IDisposable {
-		const statusBarItem = dom.append(container, $('.debug-statusbar-item'));
-		this.toDispose.push(dom.addDisposableListener(statusBarItem, 'click', () => {
-			this.quickOpenService.show('debug ').done(undefined, errors.onUnexpectedError);
-		}));
-		statusBarItem.title = nls.localize('debug', "Debug");
-		this.icon = dom.append(statusBarItem, $('.icon'));
-		this.label = dom.append(statusBarItem, $('span.label'));
-		this.setLabel();
-		this.updateStyles();
+		this.container = container;
+		if (!this.hidden) {
+			const statusBarItem = dom.append(container, $('.debug-statusbar-item'));
+			this.toDispose.push(dom.addDisposableListener(statusBarItem, 'click', () => {
+				this.quickOpenService.show('debug ').done(undefined, errors.onUnexpectedError);
+			}));
+			statusBarItem.title = nls.localize('debug', "Debug");
+			const a = dom.append(statusBarItem, $('a'));
+			this.icon = dom.append(a, $('.icon'));
+			this.label = dom.append(a, $('span.label'));
+			this.setLabel();
+			this.updateStyles();
+		}
 
 		return this;
 	}
 
 	private setLabel(): void {
-		if (this.label) {
+		if (this.label && !this.hidden) {
 			let name = this.debugService.getConfigurationManager().selectedName || '';
 			if (name.length > MAX_LABEL_LENGTH) {
 				name = name.substring(0, MAX_LABEL_LENGTH) + '...';
