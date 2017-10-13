@@ -6,11 +6,10 @@
 'use strict';
 
 import { IWorkbenchContribution } from 'vs/workbench/common/contributions';
-import { IResourceDecorationsService, IDecorationsProvider, IResourceDecoration } from 'vs/workbench/services/decorations/browser/decorations';
+import { IResourceDecorationsService, IDecorationsProvider, IResourceDecorationData } from 'vs/workbench/services/decorations/browser/decorations';
 import { IDisposable, dispose, combinedDisposable } from 'vs/base/common/lifecycle';
 import { ISCMService, ISCMRepository, ISCMProvider, ISCMResource } from 'vs/workbench/services/scm/common/scm';
 import URI from 'vs/base/common/uri';
-import Severity from 'vs/base/common/severity';
 import Event, { Emitter } from 'vs/base/common/event';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { localize } from 'vs/nls';
@@ -61,16 +60,16 @@ class SCMDecorationsProvider implements IDecorationsProvider {
 		this._onDidChange.fire(uris);
 	}
 
-	provideDecorations(uri: URI): IResourceDecoration {
+	provideDecorations(uri: URI): IResourceDecorationData {
 		const resource = this._data.get(uri.toString());
-		if (!resource) {
+		if (!resource || !resource.decorations.color) {
 			return undefined;
 		}
 		return {
-			severity: Severity.Info,
-			tooltip: localize('tooltip', "{0} - {1}", resource.decorations.tooltip, this._provider.label),
-			color: this._config.fileDecorations.useColors ? resource.decorations.color : undefined,
-			icon: this._config.fileDecorations.useIcons ? { light: resource.decorations.icon, dark: resource.decorations.iconDark } : undefined
+			weight: 100 - resource.decorations.tooltip.charAt(0).toLowerCase().charCodeAt(0),
+			tooltip: localize('tooltip', "{0}, {1}", resource.decorations.tooltip, this._provider.label),
+			color: resource.decorations.color,
+			letter: resource.decorations.tooltip.charAt(0)
 		};
 	}
 }
@@ -78,8 +77,6 @@ class SCMDecorationsProvider implements IDecorationsProvider {
 interface ISCMConfiguration {
 	fileDecorations: {
 		enabled: boolean;
-		useIcons: boolean;
-		useColors: boolean;
 	};
 }
 

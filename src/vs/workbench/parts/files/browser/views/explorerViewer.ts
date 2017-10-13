@@ -108,14 +108,8 @@ export class FileDataSource implements IDataSource {
 
 				return stat.children;
 			}, (e: any) => {
-				stat.exists = false;
 				stat.hasChildren = false;
-				if (!stat.isRoot) {
-					this.messageService.show(Severity.Error, e);
-				} else {
-					// We render the roots that do not exist differently, nned to do a refresh
-					tree.refresh(stat, false);
-				}
+				this.messageService.show(Severity.Error, e);
 
 				return []; // we could not resolve any children because of an error
 			});
@@ -319,18 +313,17 @@ export class FileRenderer implements IRenderer {
 
 		// File Label
 		if (!editableData) {
-			templateData.label.element.style.display = 'block';
+			templateData.label.element.style.display = 'flex';
 			const extraClasses = ['explorer-item'];
-			if (!stat.exists && stat.isRoot) {
+			if (stat.nonexistentRoot) {
 				extraClasses.push('nonexistent-root');
 			}
 			templateData.label.setFile(stat.resource, {
 				hidePath: true,
+				title: stat.nonexistentRoot ? nls.localize('canNotResolve', "Can not resolve folder {0}", stat.resource.toString()) : undefined,
 				fileKind: stat.isRoot ? FileKind.ROOT_FOLDER : stat.isDirectory ? FileKind.FOLDER : FileKind.FILE,
 				extraClasses,
-				fileDecorations: this.configurationService.getConfiguration<IFilesConfiguration>().explorer.enableFileDecorations
-					? stat.isDirectory ? 'all' : 'mine'
-					: undefined
+				fileDecorations: this.configurationService.getConfiguration<IFilesConfiguration>().explorer.decorations
 			});
 		}
 

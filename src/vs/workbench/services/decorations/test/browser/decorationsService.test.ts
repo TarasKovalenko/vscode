@@ -7,17 +7,20 @@
 
 import * as assert from 'assert';
 import { FileDecorationsService } from 'vs/workbench/services/decorations/browser/decorationsService';
-import { IDecorationsProvider, IResourceDecoration } from 'vs/workbench/services/decorations/browser/decorations';
+import { IDecorationsProvider, IResourceDecorationData } from 'vs/workbench/services/decorations/browser/decorations';
 import URI from 'vs/base/common/uri';
 import Event, { toPromise } from 'vs/base/common/event';
-import Severity from 'vs/base/common/severity';
+import { TestThemeService } from 'vs/platform/theme/test/common/testThemeService';
 
 suite('DecorationsService', function () {
 
 	let service: FileDecorationsService;
 
 	setup(function () {
-		service = new FileDecorationsService();
+		if (service) {
+			service.dispose();
+		}
+		service = new FileDecorationsService(new TestThemeService());
 	});
 
 	test('Async provider, async/evented result', function () {
@@ -30,10 +33,10 @@ suite('DecorationsService', function () {
 			readonly onDidChange: Event<URI[]> = Event.None;
 			provideDecorations(uri: URI) {
 				callCounter += 1;
-				return new Promise<IResourceDecoration>(resolve => {
+				return new Promise<IResourceDecorationData>(resolve => {
 					setTimeout(() => resolve({
-						severity: Severity.Info,
-						color: 'someBlue'
+						color: 'someBlue',
+						tooltip: 'T'
 					}));
 				});
 			}
@@ -48,7 +51,7 @@ suite('DecorationsService', function () {
 			assert.equal(e.affectsResource(uri), true);
 
 			// sync result
-			assert.deepEqual(service.getTopDecoration(uri, false), { severity: Severity.Info, color: 'someBlue' });
+			assert.deepEqual(service.getTopDecoration(uri, false).tooltip, 'T');
 			assert.equal(callCounter, 1);
 		});
 	});
@@ -63,12 +66,12 @@ suite('DecorationsService', function () {
 			readonly onDidChange: Event<URI[]> = Event.None;
 			provideDecorations(uri: URI) {
 				callCounter += 1;
-				return { severity: Severity.Info, color: 'someBlue' };
+				return { color: 'someBlue', tooltip: 'Z' };
 			}
 		});
 
 		// trigger -> sync
-		assert.deepEqual(service.getTopDecoration(uri, false), { severity: Severity.Info, color: 'someBlue' });
+		assert.deepEqual(service.getTopDecoration(uri, false).tooltip, 'Z');
 		assert.equal(callCounter, 1);
 	});
 
@@ -81,12 +84,12 @@ suite('DecorationsService', function () {
 			readonly onDidChange: Event<URI[]> = Event.None;
 			provideDecorations(uri: URI) {
 				callCounter += 1;
-				return { severity: Severity.Info, color: 'someBlue' };
+				return { color: 'someBlue', tooltip: 'J' };
 			}
 		});
 
 		// trigger -> sync
-		assert.deepEqual(service.getTopDecoration(uri, false), { severity: Severity.Info, color: 'someBlue' });
+		assert.deepEqual(service.getTopDecoration(uri, false).tooltip, 'J');
 		assert.equal(callCounter, 1);
 
 		// un-register -> ensure good event

@@ -8,7 +8,7 @@
 import { localize } from 'vs/nls';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } from 'vs/workbench/common/contributions';
-import { DirtyDiffDecorator } from './dirtydiffDecorator';
+import { DirtyDiffWorkbenchController } from './dirtydiffDecorator';
 import { ViewletRegistry, Extensions as ViewletExtensions, ViewletDescriptor, ToggleViewletAction } from 'vs/workbench/browser/viewlet';
 import { VIEWLET_ID } from 'vs/workbench/parts/scm/common/scm';
 import { IWorkbenchActionRegistry, Extensions as WorkbenchActionExtensions } from 'vs/workbench/common/actions';
@@ -32,7 +32,7 @@ class OpenSCMViewletAction extends ToggleViewletAction {
 }
 
 Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench)
-	.registerWorkbenchContribution(DirtyDiffDecorator);
+	.registerWorkbenchContribution(DirtyDiffWorkbenchController);
 
 const viewletDescriptor = new ViewletDescriptor(
 	SCMViewlet,
@@ -74,16 +74,6 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 	'properties': {
 		'scm.fileDecorations.enabled': {
 			'description': localize('scm.fileDecorations.enabled', "Show source control status on files and folders"),
-			'type': 'boolean',
-			'default': true
-		},
-		'scm.fileDecorations.useIcons': {
-			'description': localize('scm.fileDecorations.useIcons', "Use icons when showing source control status on files and folders"),
-			'type': 'boolean',
-			'default': true
-		},
-		'scm.fileDecorations.useColors': {
-			'description': localize('scm.fileDecorations.useColors', "Use colors when showing source control status on files and folders"),
 			'type': 'boolean',
 			'default': true
 		}

@@ -25,8 +25,6 @@ import { Schemas } from 'vs/base/common/network';
 import { FileKind } from 'vs/platform/files/common/files';
 import { IModel } from 'vs/editor/common/editorCommon';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { Color } from 'vs/base/common/color';
-import { localize } from 'vs/nls';
 
 export interface IResourceLabel {
 	name: string;
@@ -36,7 +34,7 @@ export interface IResourceLabel {
 
 export interface IResourceLabelOptions extends IIconLabelOptions {
 	fileKind?: FileKind;
-	fileDecorations?: 'mine' | 'all';
+	fileDecorations?: { colors: boolean, badges: boolean };
 }
 
 export class ResourceLabel extends IconLabel {
@@ -159,74 +157,48 @@ export class ResourceLabel extends IconLabel {
 			return;
 		}
 
+		const iconLabelOptions: IIconLabelOptions = {
+			title: '',
+			italic: this.options && this.options.italic,
+			matches: this.options && this.options.matches,
+		};
+
 		const resource = this.label.resource;
 		let label = this.label.name;
 
-		let title = '';
+
 		if (this.options && typeof this.options.title === 'string') {
-			title = this.options.title;
+			iconLabelOptions.title = this.options.title;
 		} else if (resource) {
-			title = getPathLabel(resource, void 0, this.environmentService);
+			iconLabelOptions.title = getPathLabel(resource, void 0, this.environmentService);
 		}
 
 		if (!this.computedIconClasses) {
 			this.computedIconClasses = getIconClasses(this.modelService, this.modeService, resource, this.options && this.options.fileKind);
 		}
 
-		let extraClasses = this.computedIconClasses.slice(0);
+		iconLabelOptions.extraClasses = this.computedIconClasses.slice(0);
 		if (this.options && this.options.extraClasses) {
-			extraClasses.push(...this.options.extraClasses);
+			iconLabelOptions.extraClasses.push(...this.options.extraClasses);
 		}
 
-		const italic = this.options && this.options.italic;
-		const matches = this.options && this.options.matches;
-
-
-
-		let color: Color;
-		let extraIcon: uri;
 		if (this.options && this.options.fileDecorations) {
 			let deco = this.decorationsService.getTopDecoration(
 				resource,
-				this.options.fileDecorations === 'all'
+				this.options.fileKind !== FileKind.FILE
 			);
-
-			if (deco) {
-				color = this.themeService.getTheme().getColor(deco.color);
-
-				if (deco.tooltip) {
-					title = localize('deco.tooltip', "{0}, {1}", title, deco.tooltip);
-				}
-
-				if (deco.prefix) {
-					label += deco.prefix;
-					if (matches) {
-						matches.forEach(match => {
-							match.start += deco.prefix.length;
-							match.end += deco.prefix.length;
-						});
-					}
-				}
-
-				if (deco.suffix) {
-					label += deco.suffix;
-				}
-
-				if (deco.icon) {
-					const { type } = this.themeService.getTheme();
-					extraIcon = type === 'light' ? deco.icon.light : deco.icon.dark;
-				}
+			if (deco && this.options.fileDecorations.colors) {
+				iconLabelOptions.extraClasses.push(deco.labelClassName);
+			}
+			if (deco && deco.badgeClassName && this.options.fileDecorations.badges) {
+				iconLabelOptions.badge = {
+					title: deco.tooltip,
+					className: deco.badgeClassName,
+				};
 			}
 		}
 
-		this.setValue(label, this.label.description, {
-			title,
-			extraClasses,
-			italic,
-			matches,
-			color,
-			extraIcon
-		});
+		this.setValue(label, this.label.description, iconLabelOptions);
 	}
 
 	public dispose(): void {

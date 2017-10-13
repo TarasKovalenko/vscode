@@ -7,26 +7,31 @@
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import URI from 'vs/base/common/uri';
 import Event from 'vs/base/common/event';
-import Severity from 'vs/base/common/severity';
 import { ColorIdentifier } from 'vs/platform/theme/common/colorRegistry';
 import { IDisposable } from 'vs/base/common/lifecycle';
 
 export const IResourceDecorationsService = createDecorator<IResourceDecorationsService>('IFileDecorationsService');
 
-export interface IResourceDecoration {
-	readonly severity: Severity;
-	readonly tooltip?: string;
-	readonly prefix?: string;
-	readonly suffix?: string;
+export interface IResourceDecorationData {
+	readonly weight?: number;
 	readonly color?: ColorIdentifier;
-	readonly icon?: { light: URI, dark: URI };
-	readonly leafOnly?: boolean;
+	readonly opacity?: number;
+	readonly letter?: string;
+	readonly tooltip?: string;
+}
+
+export interface IResourceDecoration {
+	readonly _decoBrand: undefined;
+	readonly weight?: number;
+	readonly tooltip?: string;
+	readonly labelClassName?: string;
+	readonly badgeClassName?: string;
 }
 
 export interface IDecorationsProvider {
 	readonly label: string;
 	readonly onDidChange: Event<URI[]>;
-	provideDecorations(uri: URI): IResourceDecoration | Thenable<IResourceDecoration>;
+	provideDecorations(uri: URI): IResourceDecorationData | Thenable<IResourceDecorationData>;
 }
 
 export interface IResourceDecorationChangeEvent {
