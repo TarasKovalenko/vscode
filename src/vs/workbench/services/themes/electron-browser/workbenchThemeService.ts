@@ -14,8 +14,7 @@ import { IStorageService, StorageScope } from 'vs/platform/storage/common/storag
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { Registry } from 'vs/platform/registry/common/platform';
 import errors = require('vs/base/common/errors');
-import { IConfigurationEditingService, ConfigurationTarget } from 'vs/workbench/services/configuration/common/configurationEditing';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
+import { IConfigurationService, ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
 import { IConfigurationRegistry, Extensions as ConfigurationExtensions, IConfigurationPropertySchema, IConfigurationNode } from 'vs/platform/configuration/common/configurationRegistry';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { IMessageService } from 'vs/platform/message/common/message';
@@ -222,8 +221,8 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 
 		this.updateColorCustomizations(false);
 
-		let colorThemeSetting = this.configurationService.lookup<string>(COLOR_THEME_SETTING).value;
-		let iconThemeSetting = this.configurationService.lookup<string>(ICON_THEME_SETTING).value || '';
+		let colorThemeSetting = this.configurationService.getValue<string>(COLOR_THEME_SETTING);
+		let iconThemeSetting = this.configurationService.getValue<string>(ICON_THEME_SETTING) || '';
 
 		return Promise.join([
 			this.colorThemeStore.findThemeDataBySettingsId(colorThemeSetting, DEFAULT_THEME_ID).then(theme => {
@@ -236,8 +235,8 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 	}
 
 	private installConfigurationListener() {
-		this.configurationService.onDidUpdateConfiguration(e => {
-			let colorThemeSetting = this.configurationService.lookup<string>(COLOR_THEME_SETTING).value;
+		this.configurationService.onDidChangeConfiguration(e => {
+			let colorThemeSetting = this.configurationService.getValue<string>(COLOR_THEME_SETTING);
 			if (colorThemeSetting !== this.currentColorTheme.settingsId) {
 				this.colorThemeStore.findThemeDataBySettingsId(colorThemeSetting, null).then(theme => {
 					if (theme) {
@@ -246,7 +245,7 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 				});
 			}
 
-			let iconThemeSetting = this.configurationService.lookup<string>(ICON_THEME_SETTING).value || '';
+			let iconThemeSetting = this.configurationService.getValue<string>(ICON_THEME_SETTING) || '';
 			if (iconThemeSetting !== this.currentIconTheme.settingsId) {
 				this.iconThemeStore.findThemeBySettingsId(iconThemeSetting).then(theme => {
 					this.setFileIconTheme(theme && theme.id, null);
@@ -375,10 +374,10 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 	}
 
 	private updateColorCustomizations(notify = true): void {
-		let newColorCustomizations = this.configurationService.lookup<IColorCustomizations>(CUSTOM_WORKBENCH_COLORS_SETTING).value || {};
+		let newColorCustomizations = this.configurationService.getValue<IColorCustomizations>(CUSTOM_WORKBENCH_COLORS_SETTING) || {};
 		let newColorIds = Object.keys(newColorCustomizations);
 
-		let newTokenColorCustomizations = this.configurationService.lookup<ITokenColorCustomizations>(CUSTOM_EDITOR_COLORS_SETTING).value || {};
+		let newTokenColorCustomizations = this.configurationService.getValue<ITokenColorCustomizations>(CUSTOM_EDITOR_COLORS_SETTING) || {};
 
 		if (this.hasCustomizationChanged(newColorCustomizations, newColorIds, newTokenColorCustomizations)) {
 			this.colorCustomizations = newColorCustomizations;
@@ -507,11 +506,11 @@ colorThemeSchema.register();
 fileIconThemeSchema.register();
 
 class ConfigurationWriter {
-	constructor( @IConfigurationService private configurationService: IConfigurationService, @IConfigurationEditingService private configurationEditingService: IConfigurationEditingService) {
+	constructor( @IConfigurationService private configurationService: IConfigurationService) {
 	}
 
 	public writeConfiguration(key: string, value: any, settingsTarget: ConfigurationTarget): TPromise<void> {
-		let settings = this.configurationService.lookup(key);
+		let settings = this.configurationService.inspect(key);
 		if (settingsTarget === ConfigurationTarget.USER) {
 			if (value === settings.user) {
 				return TPromise.as(null); // nothing to do
@@ -526,7 +525,7 @@ class ConfigurationWriter {
 				return TPromise.as(null); // nothing to do
 			}
 		}
-		return this.configurationEditingService.writeConfiguration(settingsTarget, { key, value });
+		return this.configurationService.updateValue(key, value, settingsTarget);
 	}
 }
 

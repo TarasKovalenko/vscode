@@ -38,7 +38,11 @@ export class PreferencesContribution implements IWorkbenchContribution {
 		@IWorkspaceContextService private workspaceService: IWorkspaceContextService,
 		@IConfigurationService private configurationService: IConfigurationService
 	) {
-		this.settingsListener = this.configurationService.onDidUpdateConfiguration(() => this.handleSettingsEditorOverride());
+		this.settingsListener = this.configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration(DEFAULT_SETTINGS_EDITOR_SETTING)) {
+				this.handleSettingsEditorOverride();
+			}
+		});
 		this.handleSettingsEditorOverride();
 
 		this.start();
@@ -50,7 +54,7 @@ export class PreferencesContribution implements IWorkbenchContribution {
 		this.editorOpeningListener = dispose(this.editorOpeningListener);
 
 		// install editor opening listener unless user has disabled this
-		if (!!this.configurationService.lookup(DEFAULT_SETTINGS_EDITOR_SETTING).value) {
+		if (!!this.configurationService.getValue(DEFAULT_SETTINGS_EDITOR_SETTING)) {
 			this.editorOpeningListener = this.editorGroupService.onEditorOpening(e => this.onEditorOpening(e));
 		}
 	}
@@ -60,14 +64,23 @@ export class PreferencesContribution implements IWorkbenchContribution {
 		if (
 			!resource || resource.scheme !== 'file' ||									// require a file path opening
 			!endsWith(resource.fsPath, 'settings.json') ||								// file must end in settings.json
-			!this.configurationService.lookup(DEFAULT_SETTINGS_EDITOR_SETTING).value	// user has not disabled default settings editor
+			!this.configurationService.getValue(DEFAULT_SETTINGS_EDITOR_SETTING)	// user has not disabled default settings editor
 		) {
+			return;
+		}
+
+		// If the file resource was already opened before in the group, do not prevent
+		// the opening of that resource. Otherwise we would have the same settings
+		// opened twice (https://github.com/Microsoft/vscode/issues/36447)
+		const stacks = this.editorGroupService.getStacksModel();
+		const group = stacks.groupAt(event.position);
+		if (group && group.contains(event.input)) {
 			return;
 		}
 
 		// Global User Settings File
 		if (resource.fsPath === this.environmentService.appSettingsPath) {
-			return event.prevent(() => this.preferencesService.openGlobalSettings(event.position));
+			return event.prevent(() => this.preferencesService.openGlobalSettings(event.options, event.position));
 		}
 
 		// Single Folder Workspace Settings File
@@ -75,7 +88,7 @@ export class PreferencesContribution implements IWorkbenchContribution {
 		if (state === WorkbenchState.FOLDER) {
 			const folders = this.workspaceService.getWorkspace().folders;
 			if (resource.fsPath === folders[0].toResource(FOLDER_SETTINGS_PATH).fsPath) {
-				return event.prevent(() => this.preferencesService.openWorkspaceSettings(event.position));
+				return event.prevent(() => this.preferencesService.openWorkspaceSettings(event.options, event.position));
 			}
 		}
 
@@ -84,7 +97,7 @@ export class PreferencesContribution implements IWorkbenchContribution {
 			const folders = this.workspaceService.getWorkspace().folders;
 			for (let i = 0; i < folders.length; i++) {
 				if (resource.fsPath === folders[i].toResource(FOLDER_SETTINGS_PATH).fsPath) {
-					return event.prevent(() => this.preferencesService.openFolderSettings(folders[i].uri, event.position));
+					return event.prevent(() => this.preferencesService.openFolderSettings(folders[i].uri, event.options, event.position));
 				}
 			}
 		}

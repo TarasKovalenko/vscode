@@ -7,7 +7,7 @@
 
 import { IWorkbenchContribution, IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } from 'vs/workbench/common/contributions';
 import { IMarkerService, IMarker } from 'vs/platform/markers/common/markers';
-import { IResourceDecorationsService, IDecorationsProvider, IResourceDecorationData } from 'vs/workbench/services/decorations/browser/decorations';
+import { IDecorationsService, IDecorationsProvider, IDecorationData } from 'vs/workbench/services/decorations/browser/decorations';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import URI from 'vs/base/common/uri';
 import Event from 'vs/base/common/event';
@@ -29,7 +29,7 @@ class MarkersDecorationsProvider implements IDecorationsProvider {
 		this.onDidChange = _markerService.onMarkerChanged;
 	}
 
-	provideDecorations(resource: URI): IResourceDecorationData {
+	provideDecorations(resource: URI): IDecorationData {
 		let markers = this._markerService.read({ resource });
 		let first: IMarker;
 		for (const marker of markers) {
@@ -44,7 +44,8 @@ class MarkersDecorationsProvider implements IDecorationsProvider {
 
 		return {
 			weight: 100 * first.severity,
-			tooltip: markers.length === 1 ? localize('tooltip.1', "1 problem in this file") : localize('tooltip.N', "{0} problems in this file", markers.length),
+			bubble: true,
+			title: markers.length === 1 ? localize('tooltip.1', "1 problem in this file") : localize('tooltip.N', "{0} problems in this file", markers.length),
 			letter: markers.length.toString(),
 			color: first.severity === Severity.Error ? editorErrorForeground : editorWarningForeground,
 		};
@@ -59,12 +60,12 @@ class MarkersFileDecorations implements IWorkbenchContribution {
 
 	constructor(
 		@IMarkerService private _markerService: IMarkerService,
-		@IResourceDecorationsService private _decorationsService: IResourceDecorationsService,
+		@IDecorationsService private _decorationsService: IDecorationsService,
 		@IConfigurationService private _configurationService: IConfigurationService
 	) {
 		//
 		this._disposables = [
-			this._configurationService.onDidUpdateConfiguration(this._updateEnablement, this),
+			this._configurationService.onDidChangeConfiguration(this._updateEnablement, this),
 		];
 		this._updateEnablement();
 	}
@@ -86,7 +87,7 @@ class MarkersFileDecorations implements IWorkbenchContribution {
 		this._enabled = value.decorations.enabled;
 		if (this._enabled) {
 			const provider = new MarkersDecorationsProvider(this._markerService);
-			this._provider = this._decorationsService.registerDecortionsProvider(provider);
+			this._provider = this._decorationsService.registerDecorationsProvider(provider);
 		} else if (this._provider) {
 			this._enabled = value.decorations.enabled;
 			this._provider.dispose();

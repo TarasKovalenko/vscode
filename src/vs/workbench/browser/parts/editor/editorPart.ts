@@ -25,8 +25,8 @@ import { EditorInput, EditorOptions, ConfirmResult, IWorkbenchEditorConfiguratio
 import { EditorGroupsControl, Rochade, IEditorGroupsControl, ProgressState } from 'vs/workbench/browser/parts/editor/editorGroupsControl';
 import { WorkbenchProgressService } from 'vs/workbench/services/progress/browser/progressService';
 import { IEditorGroupService, GroupOrientation, GroupArrangement, IEditorTabOptions, IMoveOptions } from 'vs/workbench/services/group/common/groupService';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { IEditorPart } from 'vs/workbench/services/editor/browser/editorService';
+import { IConfigurationService, IConfigurationChangeEvent } from 'vs/platform/configuration/common/configuration';
+import { IEditorPart } from 'vs/workbench/services/editor/common/editorService';
 import { IPartService } from 'vs/workbench/services/part/common/partService';
 import { Position, POSITIONS, Direction, IEditor } from 'vs/platform/editor/common/editor';
 import { IStorageService } from 'vs/platform/storage/common/storage';
@@ -205,41 +205,45 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 		this.toUnbind.push(this.stacks.onEditorClosed(event => this.onEditorClosed(event)));
 		this.toUnbind.push(this.stacks.onGroupOpened(event => this.onEditorGroupOpenedOrClosed()));
 		this.toUnbind.push(this.stacks.onGroupClosed(event => this.onEditorGroupOpenedOrClosed()));
-		this.toUnbind.push(this.configurationService.onDidUpdateConfiguration(e => this.onConfigurationUpdated(this.configurationService.getConfiguration<IWorkbenchEditorConfiguration>())));
+		this.toUnbind.push(this.configurationService.onDidChangeConfiguration(e => this.onConfigurationUpdated(e)));
 	}
 
 	private onEditorGroupOpenedOrClosed(): void {
 		this.updateStyles();
 	}
 
-	private onConfigurationUpdated(configuration: IWorkbenchEditorConfiguration): void {
-		if (configuration && configuration.workbench && configuration.workbench.editor) {
-			const editorConfig = configuration.workbench.editor;
+	private onConfigurationUpdated(event: IConfigurationChangeEvent): void {
+		if (event.affectsConfiguration('workbench.editor')) {
+			const configuration = this.configurationService.getConfiguration<IWorkbenchEditorConfiguration>();
+			if (configuration && configuration.workbench && configuration.workbench.editor) {
+				const editorConfig = configuration.workbench.editor;
 
-			// Pin all preview editors of the user chose to disable preview
-			const newPreviewEditors = editorConfig.enablePreview;
-			if (this.tabOptions.previewEditors !== newPreviewEditors && !newPreviewEditors) {
-				this.stacks.groups.forEach(group => {
-					if (group.previewEditor) {
-						this.pinEditor(group, group.previewEditor);
-					}
-				});
+
+				// Pin all preview editors of the user chose to disable preview
+				const newPreviewEditors = editorConfig.enablePreview;
+				if (this.tabOptions.previewEditors !== newPreviewEditors && !newPreviewEditors) {
+					this.stacks.groups.forEach(group => {
+						if (group.previewEditor) {
+							this.pinEditor(group, group.previewEditor);
+						}
+					});
+				}
+
+				const oldTabOptions = objects.clone(this.tabOptions);
+				this.tabOptions = {
+					previewEditors: newPreviewEditors,
+					showIcons: editorConfig.showIcons,
+					tabCloseButton: editorConfig.tabCloseButton,
+					showTabs: this.forceHideTabs ? false : editorConfig.showTabs,
+					labelFormat: editorConfig.labelFormat,
+				};
+
+				if (!this.doNotFireTabOptionsChanged && !objects.equals(oldTabOptions, this.tabOptions)) {
+					this._onTabOptionsChanged.fire(this.tabOptions);
+				}
+
+				this.revealIfOpen = editorConfig.revealIfOpen;
 			}
-
-			const oldTabOptions = objects.clone(this.tabOptions);
-			this.tabOptions = {
-				previewEditors: newPreviewEditors,
-				showIcons: editorConfig.showIcons,
-				tabCloseButton: editorConfig.tabCloseButton,
-				showTabs: this.forceHideTabs ? false : editorConfig.showTabs,
-				labelFormat: editorConfig.labelFormat,
-			};
-
-			if (!this.doNotFireTabOptionsChanged && !objects.equals(oldTabOptions, this.tabOptions)) {
-				this._onTabOptionsChanged.fire(this.tabOptions);
-			}
-
-			this.revealIfOpen = editorConfig.revealIfOpen;
 		}
 	}
 
@@ -327,16 +331,16 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 
 		// Some conditions under which we prevent the request
 		if (
-			!input ||																		// no input
-			position === null ||															// invalid position
-			!this.editorGroupsControl ||													// too early
-			this.editorGroupsControl.isDragging()											// pending editor DND
+			!input ||								// no input
+			position === null ||					// invalid position
+			!this.editorGroupsControl ||			// too early
+			this.editorGroupsControl.isDragging()	// pending editor DND
 		) {
 			return TPromise.as<BaseEditor>(null);
 		}
 
 		// Editor opening event (can be prevented and overridden)
-		const event = new EditorOpeningEvent(input, position);
+		const event = new EditorOpeningEvent(input, options, position);
 		this._onEditorOpening.fire(event);
 		const prevented = event.isPrevented();
 		if (prevented) {
@@ -372,7 +376,7 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 		// This can however cause a race condition where the stacks model indicates the opened editor is there
 		// while the UI is not yet ready. Clients have to deal with this fact and we have to make sure that the
 		// stacks model gets updated if any of the UI updating fails with an error.
-		const group = this.ensureGroup(position, !options || !options.preserveFocus);
+		const [group, newGroupOpened] = this.ensureGroup(position, !options || !options.preserveFocus);
 		const pinned = !this.tabOptions.previewEditors || (options && (options.pinned || typeof options.index === 'number')) || input.isDirty();
 
 		const active = (group.count === 0) || !options || !options.inactive;
@@ -401,7 +405,19 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 		}
 
 		// Set input to editor
-		return this.doSetInput(group, editor, input, options, monitor);
+		const inputPromise = this.doSetInput(group, editor, input, options, monitor);
+
+		// A new active group got opened. Since this involves updating the title area controls to show
+		// the new editor and actions we trigger a direct update of title controls from here to avoid
+		// some UI flickering if we rely on the event handlers that all use schedulers.
+		// The reason we can trigger this now is that after the input is set to the editor group, the
+		// resource context is updated and the correct number of actions will be resolved from the title
+		// area.
+		if (newGroupOpened && this.stacks.isActive(group)) {
+			this.editorGroupsControl.updateTitleAreas(true /* refresh new active group */);
+		}
+
+		return inputPromise;
 	}
 
 	private doShowEditor(group: EditorGroup, descriptor: IEditorDescriptor, input: EditorInput, options: EditorOptions, ratio: number[], monitor: ProgressMonitor): BaseEditor {
@@ -643,6 +659,9 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 			// Explicitly trigger the focus changed handler because the side by side control will not trigger it unless
 			// the user is actively changing focus with the mouse from left/top to right/bottom.
 			this.onGroupFocusChanged();
+
+			// Update title area sync to avoid some flickering with actions
+			this.editorGroupsControl.updateTitleAreas();
 		}
 	}
 
@@ -1523,9 +1542,11 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 		array[from] = empty;
 	}
 
-	private ensureGroup(position: Position, activate = true): EditorGroup {
+	private ensureGroup(position: Position, activate = true): [EditorGroup, boolean /* new group opened */] {
+		let newGroupOpened = false;
 		let group = this.stacks.groupAt(position);
 		if (!group) {
+			newGroupOpened = true;
 
 			// Race condition: it could be that someone quickly opens editors one after
 			// the other and we are asked to open an editor in position 2 before position
@@ -1548,7 +1569,7 @@ export class EditorPart extends Part implements IEditorPart, IEditorGroupService
 			this.stacks.setActive(group);
 		}
 
-		return group;
+		return [group, newGroupOpened];
 	}
 
 	private modifyGroups(modification: () => void) {
