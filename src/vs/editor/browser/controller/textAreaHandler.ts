@@ -25,6 +25,7 @@ import { PartFingerprints, PartFingerprint, ViewPart } from 'vs/editor/browser/v
 import { Margin } from 'vs/editor/browser/viewParts/margin/margin';
 import { LineNumbersOverlay } from 'vs/editor/browser/viewParts/lineNumbers/lineNumbers';
 import { BareFontInfo } from 'vs/editor/common/config/fontInfo';
+import { RenderLineNumbersType } from 'vs/editor/common/config/editorOptions';
 
 export interface ITextAreaHandlerHelper {
 	visibleRangeForPositionRelativeToEditor(lineNumber: number, column: number): HorizontalRange;
@@ -54,8 +55,6 @@ export class TextAreaHandler extends ViewPart {
 
 	private readonly _viewController: ViewController;
 	private readonly _viewHelper: ITextAreaHandlerHelper;
-
-	private _pixelRatio: number;
 	private _accessibilitySupport: platform.AccessibilitySupport;
 	private _contentLeft: number;
 	private _contentWidth: number;
@@ -86,7 +85,6 @@ export class TextAreaHandler extends ViewPart {
 
 		const conf = this._context.configuration.editor;
 
-		this._pixelRatio = conf.pixelRatio;
 		this._accessibilitySupport = conf.accessibilitySupport;
 		this._contentLeft = conf.layoutInfo.contentLeft;
 		this._contentWidth = conf.layoutInfo.contentWidth;
@@ -306,9 +304,6 @@ export class TextAreaHandler extends ViewPart {
 		if (e.lineHeight) {
 			this._lineHeight = conf.lineHeight;
 		}
-		if (e.pixelRatio) {
-			this._pixelRatio = conf.pixelRatio;
-		}
 		if (e.accessibilitySupport) {
 			this._accessibilitySupport = conf.accessibilitySupport;
 			this._textAreaInput.writeScreenReaderContent('strategy changed');
@@ -487,7 +482,7 @@ export class TextAreaHandler extends ViewPart {
 		if (this._context.configuration.editor.viewInfo.glyphMargin) {
 			tac.setClassName('monaco-editor-background textAreaCover ' + Margin.CLASS_NAME);
 		} else {
-			if (this._context.configuration.editor.viewInfo.renderLineNumbers) {
+			if (this._context.configuration.editor.viewInfo.renderLineNumbers !== RenderLineNumbersType.Off) {
 				tac.setClassName('monaco-editor-background textAreaCover ' + LineNumbersOverlay.CLASS_NAME);
 			} else {
 				tac.setClassName('monaco-editor-background textAreaCover');

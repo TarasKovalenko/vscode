@@ -203,9 +203,15 @@ const editorConfiguration: IConfigurationNode = {
 		},
 		'editor.lineNumbers': {
 			'type': 'string',
-			'enum': ['off', 'on', 'relative'],
+			'enum': ['off', 'on', 'relative', 'interval'],
+			'enumDescriptions': [
+				nls.localize('lineNumbers.off', "Line numbers are not rendered."),
+				nls.localize('lineNumbers.on', "Line numbers are rendered as absolute number."),
+				nls.localize('lineNumbers.relative', "Line numbers are rendered as distance in lines to cursor position."),
+				nls.localize('lineNumbers.interval', "Line numbers are rendered every 10 lines.")
+			],
 			'default': 'on',
-			'description': nls.localize('lineNumbers', "Controls the display of line numbers. Possible values are 'on', 'off', and 'relative'. 'relative' shows the line count from the current cursor position.")
+			'description': nls.localize('lineNumbers', "Controls the display of line numbers. Possible values are 'on', 'off', and 'relative'.")
 		},
 		'editor.rulers': {
 			'type': 'array',
@@ -410,7 +416,7 @@ const editorConfiguration: IConfigurationNode = {
 		'editor.autoIndent': {
 			'type': 'boolean',
 			'default': EDITOR_DEFAULTS.autoIndent,
-			'description': nls.localize('autoIndent', "Controls if the editor should automatically adjust the indentation when users type, paste or move lines. Indentation rules of the language must be available. ")
+			'description': nls.localize('autoIndent', "Controls if the editor should automatically adjust the indentation when users type, paste or move lines. Indentation rules of the language must be available.")
 		},
 		'editor.suggestOnTriggerCharacters': {
 			'type': 'boolean',
