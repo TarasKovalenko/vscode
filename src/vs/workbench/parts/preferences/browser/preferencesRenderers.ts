@@ -117,11 +117,11 @@ export class UserSettingsRenderer extends Disposable implements IPreferencesRend
 
 		/* __GDPR__
 			"defaultSettingsActions.copySetting" : {
-				"userConfigurationKeys" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
-				"query" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
-				"fuzzy" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
-				"duration" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
-				"index" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+				"userConfigurationKeys" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+				"query" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+				"fuzzy" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+				"duration" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+				"index" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
 				"editableSide" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
 			}
 		*/
@@ -174,6 +174,7 @@ export class UserSettingsRenderer extends Disposable implements IPreferencesRend
 		const s = this.getSetting(setting);
 		if (s) {
 			this.settingHighlighter.highlight(s, true);
+			this.editor.setPosition({ lineNumber: s.keyRange.startLineNumber, column: s.keyRange.startColumn });
 		} else {
 			this.settingHighlighter.clear(true);
 		}
@@ -424,8 +425,7 @@ class DefaultSettingsHeaderRenderer extends Disposable {
 
 	constructor(editor: ICodeEditor, scope: ConfigurationScope) {
 		super();
-		const title = scope === ConfigurationScope.RESOURCE ? nls.localize('defaultFolderSettingsTitle', "Default Folder Settings") : nls.localize('defaultSettingsTitle', "Default Settings");
-		this.settingsHeaderWidget = this._register(new DefaultSettingsHeaderWidget(editor, title));
+		this.settingsHeaderWidget = this._register(new DefaultSettingsHeaderWidget(editor, ''));
 		this.onClick = this.settingsHeaderWidget.onClick;
 	}
 
@@ -579,8 +579,9 @@ export class FeedbackWidgetRenderer extends Disposable {
 	}
 
 	public render(result: IFilterResult): void {
+		const workbenchSettings = this.configurationService.getValue<IWorkbenchSettingsConfiguration>().workbench.settings;
 		this._currentResult = result;
-		if (result && result.metadata) {
+		if (result && result.metadata && workbenchSettings.enableNaturalLanguageSearchFeedback) {
 			this.showWidget();
 		} else if (this._feedbackWidget) {
 			this.disposeWidget();
@@ -656,7 +657,7 @@ export class FeedbackWidgetRenderer extends Disposable {
 		const altsAdded = expectedQuery.alts && expectedQuery.alts.length;
 		const alts = altsAdded ? expectedQuery.alts : undefined;
 		const workbenchSettings = this.configurationService.getValue<IWorkbenchSettingsConfiguration>().workbench.settings;
-		const autoIngest = workbenchSettings.experimentalFuzzySearchAutoIngestFeedback;
+		const autoIngest = workbenchSettings.naturalLanguageSearchAutoIngestFeedback;
 
 		/* __GDPR__
 			"settingsSearchResultFeedback" : {

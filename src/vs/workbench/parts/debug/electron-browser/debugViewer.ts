@@ -299,7 +299,7 @@ export class CallStackController extends BaseDebugController {
 		return true;
 	}
 
-	public focusStackFrame(stackFrame: debug.IStackFrame, event: IKeyboardEvent | IMouseEvent, preserveFocus: boolean): void {
+	public focusStackFrame(stackFrame: debug.IStackFrame, event: any, preserveFocus: boolean): void {
 		this.debugService.focusStackFrameAndEvaluate(stackFrame, undefined, true).then(() => {
 			const sideBySide = (event && (event.ctrlKey || event.metaKey));
 			return stackFrame.openInEditor(this.editorService, preserveFocus, sideBySide);
@@ -779,7 +779,8 @@ export class VariablesController extends BaseDebugController {
 
 	protected onLeftClick(tree: ITree, element: any, event: IMouseEvent): boolean {
 		// double click on primitive value: open input box to be able to set the value
-		if (element instanceof Variable && event.detail === 2) {
+		const process = this.debugService.getViewModel().focusedProcess;
+		if (element instanceof Variable && event.detail === 2 && process && process.session.capabilities.supportsSetVariable) {
 			const expression = <debug.IExpression>element;
 			this.debugService.getViewModel().setSelectedExpression(expression);
 			return true;
@@ -1290,7 +1291,7 @@ export class BreakpointsController extends BaseDebugController {
 		return super.onLeftClick(tree, element, event);
 	}
 
-	public openBreakpointSource(breakpoint: Breakpoint, event: IKeyboardEvent | IMouseEvent, preserveFocus: boolean): void {
+	public openBreakpointSource(breakpoint: Breakpoint, event: any, preserveFocus: boolean): void {
 		if (breakpoint.uri.scheme === debug.DEBUG_SCHEME && this.debugService.state === debug.State.Inactive) {
 			return;
 		}

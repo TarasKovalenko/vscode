@@ -103,10 +103,6 @@ export class Sash {
 		return this._onDidEnd.event;
 	}
 
-	public getHTMLElement(): HTMLElement {
-		return this.$e.getHTMLElement();
-	}
-
 	public setOrientation(orientation: Orientation): void {
 		this.orientation = orientation;
 
@@ -346,7 +342,7 @@ export class VSash extends Disposable implements IVerticalSashLayoutProvider {
 	}
 
 	private onSashReset(): void {
-		this.ratio = 0.5;
+		this.compute(0.5);
 		this._onPositionChange.fire(this.position);
 		this.sash.layout();
 	}

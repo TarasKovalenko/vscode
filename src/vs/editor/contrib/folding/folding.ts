@@ -12,7 +12,7 @@ import { RunOnceScheduler, Delayer } from 'vs/base/common/async';
 import { KeyCode, KeyMod, KeyChord } from 'vs/base/common/keyCodes';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { TPromise } from 'vs/base/common/winjs.base';
-import { ScrollType, IModel } from 'vs/editor/common/editorCommon';
+import { ScrollType, IModel, IEditorContribution } from 'vs/editor/common/editorCommon';
 import { registerEditorAction, registerEditorContribution, ServicesAccessor, EditorAction, registerInstantiatedEditorAction } from 'vs/editor/browser/editorExtensions';
 import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from 'vs/editor/browser/editorBrowser';
 import { FoldingModel, setCollapseStateAtLevel, CollapseMemento, setCollapseStateLevelsDown, setCollapseStateLevelsUp } from 'vs/editor/contrib/folding/foldingModel';
@@ -27,7 +27,7 @@ import { computeRanges as computeIndentRanges } from 'vs/editor/contrib/folding/
 
 export const ID = 'editor.contrib.folding';
 
-export class FoldingController {
+export class FoldingController implements IEditorContribution {
 
 	static MAX_FOLDING_REGIONS = 5000;
 
@@ -453,7 +453,7 @@ class FoldAction extends FoldingAction<FoldingArguments> {
 					{
 						name: 'Fold editor argument',
 						description: `Property-value pairs that can be passed through this argument:
-							* 'levels': Number of levels to fold. Defauts to 1
+							* 'levels': Number of levels to fold. Defaults to 1
 							* 'direction': If 'up', folds given number of levels up otherwise folds down
 							* 'selectionLines': The start lines (0-based) of the editor selections to apply the fold action to. If not set, the active selection(s) will be used.
 						`,

@@ -16,17 +16,13 @@ import { KeyCode } from 'vs/base/common/keyCodes';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import Event, { Emitter, EventBufferer, chain, mapEvent, fromCallback, anyEvent } from 'vs/base/common/event';
 import { domEvent } from 'vs/base/browser/event';
-import { IDelegate, IRenderer, IListEvent, IListMouseEvent, IListContextMenuEvent } from './list';
+import { IDelegate, IRenderer, IListEvent, IListMouseEvent, IListContextMenuEvent, ISpliceable } from './list';
 import { ListView, IListViewOptions } from './listView';
 import { Color } from 'vs/base/common/color';
 import { mixin } from 'vs/base/common/objects';
 
 export interface IIdentityProvider<T> {
 	(element: T): string;
-}
-
-export interface ISpliceable<T> {
-	splice(start: number, deleteCount: number, elements: T[]): void;
 }
 
 class CombinedSpliceable<T> implements ISpliceable<T> {
@@ -631,11 +627,11 @@ export class List<T> implements ISpliceable<T>, IDisposable {
 		return mapEvent(this._onPin.event, indexes => this.toListEvent({ indexes }));
 	}
 
-	readonly onDOMFocus: Event<void>;
-	readonly onDOMBlur: Event<void>;
+	readonly onDidFocus: Event<void>;
+	readonly onDidBlur: Event<void>;
 
-	private _onDispose = new Emitter<void>();
-	get onDispose(): Event<void> { return this._onDispose.event; }
+	private _onDidDispose = new Emitter<void>();
+	get onDidDispose(): Event<void> { return this._onDidDispose.event; }
 
 	constructor(
 		container: HTMLElement,
@@ -666,10 +662,10 @@ export class List<T> implements ISpliceable<T>, IDisposable {
 			this.view
 		]);
 
-		this.disposables = [this.focus, this.selection, this.view, this._onDispose];
+		this.disposables = [this.focus, this.selection, this.view, this._onDidDispose];
 
-		this.onDOMFocus = mapEvent(domEvent(this.view.domNode, 'focus', true), () => null);
-		this.onDOMBlur = mapEvent(domEvent(this.view.domNode, 'blur', true), () => null);
+		this.onDidFocus = mapEvent(domEvent(this.view.domNode, 'focus', true), () => null);
+		this.onDidBlur = mapEvent(domEvent(this.view.domNode, 'blur', true), () => null);
 
 		if (typeof options.keyboardSupport !== 'boolean' || options.keyboardSupport) {
 			const controller = new KeyboardController(this, this.view);
@@ -972,7 +968,7 @@ export class List<T> implements ISpliceable<T>, IDisposable {
 	}
 
 	dispose(): void {
-		this._onDispose.fire();
+		this._onDidDispose.fire();
 		this.disposables = dispose(this.disposables);
 	}
 }
