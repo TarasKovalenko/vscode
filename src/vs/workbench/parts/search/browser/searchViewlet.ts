@@ -65,8 +65,8 @@ import { isDiffEditor, isCodeEditor, ICodeEditor } from 'vs/editor/browser/edito
 
 export class SearchViewlet extends Viewlet {
 
-	private static MAX_TEXT_RESULTS = 10000;
-	private static SHOW_REPLACE_STORAGE_KEY = 'vs.search.show.replace';
+	private static readonly MAX_TEXT_RESULTS = 10000;
+	private static readonly SHOW_REPLACE_STORAGE_KEY = 'vs.search.show.replace';
 
 	private isDisposed: boolean;
 
@@ -898,13 +898,13 @@ export class SearchViewlet extends Viewlet {
 		}
 	}
 
-	public searchInFolder(resource: URI): void {
+	public searchInFolder(resource: URI, pathToRelative: (from: string, to: string) => string): void {
 		let folderPath = null;
 		const workspace = this.contextService.getWorkspace();
 		if (resource) {
 			if (this.contextService.getWorkbenchState() === WorkbenchState.FOLDER) {
 				// Show relative path from the root for single-root mode
-				folderPath = paths.relative(workspace.folders[0].uri.fsPath, resource.fsPath);
+				folderPath = paths.normalize(pathToRelative(workspace.folders[0].uri.fsPath, resource.fsPath));
 				if (folderPath && folderPath !== '.') {
 					folderPath = './' + folderPath;
 				}
@@ -916,7 +916,7 @@ export class SearchViewlet extends Viewlet {
 					// If this root is the only one with its basename, use a relative ./ path. If there is another, use an absolute path
 					const isUniqueFolder = workspace.folders.filter(folder => paths.basename(folder.uri.fsPath) === owningRootBasename).length === 1;
 					if (isUniqueFolder) {
-						folderPath = `./${owningRootBasename}/${paths.relative(owningFolder.uri.fsPath, resource.fsPath)}`;
+						folderPath = `./${owningRootBasename}/${paths.normalize(pathToRelative(owningFolder.uri.fsPath, resource.fsPath))}`;
 					} else {
 						folderPath = resource.fsPath;
 					}

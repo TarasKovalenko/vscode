@@ -32,7 +32,7 @@ const MAX_ELEMENTS_SHOWN = 18;
 
 export class DebugHoverWidget implements IContentWidget {
 
-	public static ID = 'debug.hoverWidget';
+	public static readonly ID = 'debug.hoverWidget';
 	// editor.IContentWidget.allowEditorOverflow
 	public allowEditorOverflow = true;
 
@@ -237,7 +237,8 @@ export class DebugHoverWidget implements IContentWidget {
 	}
 
 	private findExpressionInStackFrame(namesToFind: string[], expressionRange: Range): TPromise<IExpression> {
-		return this.debugService.getViewModel().focusedStackFrame.getMostSpecificScopes(expressionRange)
+		return this.debugService.getViewModel().focusedStackFrame.getScopes()
+			.then(scopes => scopes.filter(s => !s.expensive))
 			.then(scopes => TPromise.join(scopes.map(scope => this.doFindExpression(scope, namesToFind))))
 			.then(expressions => expressions.filter(exp => !!exp))
 			// only show if all expressions found have the same value

@@ -72,7 +72,7 @@ export class PreferencesEditorInput extends SideBySideEditorInput {
 }
 
 export class DefaultPreferencesEditorInput extends ResourceEditorInput {
-	public static ID = 'workbench.editorinputs.defaultpreferences';
+	public static readonly ID = 'workbench.editorinputs.defaultpreferences';
 	constructor(defaultSettingsResource: URI,
 		@ITextModelService textModelResolverService: ITextModelService,
 		@IHashService hashService: IHashService
@@ -643,7 +643,7 @@ class SideBySidePreferencesWidget extends Widget {
 		return TPromise.join([this.updateInput(this.defaultPreferencesEditor, defaultPreferencesEditorInput, DefaultSettingsEditorContribution.ID, editablePreferencesEditorInput.getResource(), options),
 		this.updateInput(this.editablePreferencesEditor, editablePreferencesEditorInput, SettingsEditorContribution.ID, defaultPreferencesEditorInput.getResource(), options)])
 			.then(([defaultPreferencesRenderer, editablePreferencesRenderer]) => {
-				this.defaultPreferencesHeader.textContent = (<DefaultSettingsEditorModel>defaultPreferencesRenderer.preferencesModel).configurationScope === ConfigurationScope.RESOURCE ? nls.localize('defaultFolderSettings', "Default Folder Settings") : nls.localize('defaultSettings', "Default Settings");
+				this.defaultPreferencesHeader.textContent = defaultPreferencesRenderer && (<DefaultSettingsEditorModel>defaultPreferencesRenderer.preferencesModel).configurationScope === ConfigurationScope.RESOURCE ? nls.localize('defaultFolderSettings', "Default Folder Settings") : nls.localize('defaultSettings', "Default Settings");
 				return { defaultPreferencesRenderer, editablePreferencesRenderer };
 			});
 	}
@@ -858,7 +858,7 @@ interface ISettingsEditorContribution extends editorCommon.IEditorContribution {
 
 }
 
-abstract class AbstractSettingsEditorContribution extends Disposable {
+abstract class AbstractSettingsEditorContribution extends Disposable implements ISettingsEditorContribution {
 
 	private preferencesRendererCreationPromise: TPromise<IPreferencesRenderer<ISetting>>;
 
@@ -934,6 +934,7 @@ abstract class AbstractSettingsEditorContribution extends Disposable {
 	}
 
 	protected abstract _createPreferencesRenderer(): TPromise<IPreferencesRenderer<ISetting>>;
+	abstract getId(): string;
 }
 
 class DefaultSettingsEditorContribution extends AbstractSettingsEditorContribution implements ISettingsEditorContribution {

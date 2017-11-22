@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { TPromise } from 'vs/base/common/winjs.base';
+import * as errors from 'vs/base/common/errors';
 import Event, { Emitter } from 'vs/base/common/event';
 import { ISettingsEditorModel, IFilterResult, ISetting, ISettingsGroup, IWorkbenchSettingsConfiguration, IFilterMetadata, IPreferencesSearchService } from 'vs/workbench/parts/preferences/common/preferences';
 import { IRange, Range } from 'vs/editor/common/core/range';
@@ -19,6 +20,7 @@ import { IInstantiationService } from 'vs/platform/instantiation/common/instanti
 import { IRequestService } from 'vs/platform/request/node/request';
 import { asJson } from 'vs/base/node/request';
 import { Disposable } from 'vs/base/common/lifecycle';
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 
 export interface IEndpointDetails {
 	urlBase: string;
@@ -78,7 +80,8 @@ export class PreferencesSearchModel {
 
 	constructor(
 		private provider: IPreferencesSearchService, private filter: string, remote: boolean,
-		@IInstantiationService instantiationService: IInstantiationService
+		@IInstantiationService instantiationService: IInstantiationService,
+		@ITelemetryService private telemetryService: ITelemetryService
 	) {
 		this._localProvider = new LocalSearchProvider(filter);
 
@@ -94,6 +97,15 @@ export class PreferencesSearchModel {
 
 		if (this._remoteProvider) {
 			return this._remoteProvider.filterPreferences(preferencesModel).then(null, err => {
+				const message = errors.getErrorMessage(err);
+
+				/* __GDPR__
+					"defaultSettings.searchError" : {
+						"message": { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+					}
+				*/
+				this.telemetryService.publicLog('defaultSettings.searchError', { message });
+
 				return this._localProvider.filterPreferences(preferencesModel);
 			});
 		} else {
@@ -176,7 +188,8 @@ class RemoteSearchProvider {
 				'User-Agent': 'request',
 				'Content-Type': 'application/json; charset=utf-8',
 				'api-key': endpoint.key
-			}
+			},
+			timeout: 4000
 		})
 			.then(context => {
 				if (context.res.statusCode >= 300) {
@@ -230,16 +243,25 @@ function prepareUrl(query: string, endpoint: IEndpointDetails, buildNumber: numb
 	query = escapeSpecialChars(query);
 	const boost = 10;
 	const userQuery = `(${query})^${boost}`;
+	const encodedQuery = encodeURIComponent(userQuery + ' || ' + query);
 
 	// Appending Fuzzy after each word.
 	query = query.replace(/\ +/g, '~ ') + '~';
 
-	let url = `${endpoint.urlBase}?search=${encodeURIComponent(userQuery + ' || ' + query)}`;
+	let url = `${endpoint.urlBase}?`;
 	if (endpoint.key) {
+		url += `search=${encodedQuery}`;
 		url += `&${API_VERSION}&${QUERY_TYPE}&${SCORING_PROFILE}`;
-	}
-	if (buildNumber) {
-		url += `&$filter startbuildno le ${buildNumber} and endbuildno ge ${buildNumber}`;
+
+		if (buildNumber) {
+			url += `&$filter startbuildno le ${buildNumber} and endbuildno ge ${buildNumber}`;
+		}
+	} else {
+		url += `query=${encodedQuery}`;
+
+		if (buildNumber) {
+			url += `&build=${buildNumber}`;
+		}
 	}
 
 	return url;

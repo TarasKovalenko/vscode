@@ -229,7 +229,10 @@ export class FoldingController implements IEditorContribution {
 		this.mouseDownInfo = null;
 
 		let range = e.target.range;
-		if (!this.hiddenRangeModel || !range || !e.event.leftButton) {
+		if (!this.hiddenRangeModel || !range) {
+			return;
+		}
+		if (!e.event.leftButton && !e.event.middleButton) {
 			return;
 		}
 		let iconClicked = false;
@@ -297,8 +300,13 @@ export class FoldingController implements IEditorContribution {
 			if (foldingModel) {
 				let region = foldingModel.getRegionAtLine(lineNumber);
 				if (region && region.startLineNumber === lineNumber) {
-					if (iconClicked || region.isCollapsed) {
-						foldingModel.toggleCollapseState([region]);
+					let isCollapsed = region.isCollapsed;
+					if (iconClicked || isCollapsed) {
+						let toToggle = [region];
+						if (e.event.middleButton || e.event.shiftKey) {
+							toToggle.push(...foldingModel.getRegionsInside(region, r => r.isCollapsed === isCollapsed));
+						}
+						foldingModel.toggleCollapseState(toToggle);
 						this.reveal(lineNumber);
 					}
 				}
@@ -541,8 +549,8 @@ class UnfoldAllAction extends FoldingAction<void> {
 }
 
 class FoldLevelAction extends FoldingAction<void> {
-	private static ID_PREFIX = 'editor.foldLevel';
-	public static ID = (level: number) => FoldLevelAction.ID_PREFIX + level;
+	private static readonly ID_PREFIX = 'editor.foldLevel';
+	public static readonly ID = (level: number) => FoldLevelAction.ID_PREFIX + level;
 
 	private getFoldingLevel() {
 		return parseInt(this.id.substr(FoldLevelAction.ID_PREFIX.length));

@@ -95,8 +95,8 @@ namespace ConfigureTaskAction {
 
 class CloseMessageAction extends Action {
 
-	public static ID = 'workbench.action.build.closeMessage';
-	public static TEXT = nls.localize('CloseMessageAction.label', 'Close');
+	public static readonly ID = 'workbench.action.build.closeMessage';
+	public static readonly TEXT = nls.localize('CloseMessageAction.label', 'Close');
 
 	public closeFunction: () => void;
 
@@ -443,9 +443,9 @@ interface TaskQuickPickEntry extends IPickOpenEntry {
 class TaskService implements ITaskService {
 
 	// private static autoDetectTelemetryName: string = 'taskServer.autoDetect';
-	private static RecentlyUsedTasks_Key = 'workbench.tasks.recentlyUsedTasks';
-	private static RanTaskBefore_Key = 'workbench.tasks.ranTaskBefore';
-	private static IgnoreTask010DonotShowAgain_key = 'workbench.tasks.ignoreTask010Shown';
+	private static readonly RecentlyUsedTasks_Key = 'workbench.tasks.recentlyUsedTasks';
+	private static readonly RanTaskBefore_Key = 'workbench.tasks.ranTaskBefore';
+	private static readonly IgnoreTask010DonotShowAgain_key = 'workbench.tasks.ignoreTask010Shown';
 
 	private static CustomizationTelemetryEventName: string = 'taskService.customize';
 	public static TemplateTelemetryEventName: string = 'taskService.template';
@@ -1188,7 +1188,7 @@ class TaskService implements ITaskService {
 				let executeResult = this.getTaskSystem().run(task, resolver);
 				let key = Task.getRecentlyUsedKey(task);
 				if (key) {
-					this.getRecentlyUsedTasks().set(key, key, Touch.First);
+					this.getRecentlyUsedTasks().set(key, key, Touch.AsOld);
 				}
 				if (executeResult.kind === TaskExecuteKind.Active) {
 					let active = executeResult.active;
@@ -1858,7 +1858,7 @@ class TaskService implements ITaskService {
 				entries.push(defaultEntry);
 			}
 			return entries;
-		}), { placeHolder, autoFocus: { autoFocusFirstEntry: true } }).then(entry => entry ? entry.task : undefined);
+		}), { placeHolder, autoFocus: { autoFocusFirstEntry: true }, matchOnDescription: true }).then(entry => entry ? entry.task : undefined);
 	}
 
 	private showIgnoredFoldersMessage(): TPromise<void> {
