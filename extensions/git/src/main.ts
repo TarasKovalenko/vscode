@@ -29,7 +29,7 @@ async function init(context: ExtensionContext, outputChannel: OutputChannel, dis
 	const askpass = new Askpass();
 	const env = await askpass.getEnv();
 	const git = new Git({ gitPath: info.path, version: info.version, env });
-	const model = new Model(git);
+	const model = new Model(git, context.globalState);
 	disposables.push(model);
 
 	const onRepository = () => commands.executeCommand('setContext', 'gitOpenRepositoryCount', `${model.repositories.length}`);
@@ -70,16 +70,16 @@ async function _activate(context: ExtensionContext, disposables: Disposable[]): 
 			throw err;
 		}
 
-		console.warn(err.message);
-		outputChannel.appendLine(err.message);
-		outputChannel.show();
-
 		const config = workspace.getConfiguration('git');
 		const shouldIgnore = config.get<boolean>('ignoreMissingGitWarning') === true;
 
 		if (shouldIgnore) {
 			return;
 		}
+
+		console.warn(err.message);
+		outputChannel.appendLine(err.message);
+		outputChannel.show();
 
 		const download = localize('downloadgit', "Download Git");
 		const neverShowAgain = localize('neverShowAgain', "Don't show again");

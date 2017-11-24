@@ -31,7 +31,6 @@ import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IMessageService } from 'vs/platform/message/common/message';
-import { IListService } from 'vs/platform/list/browser/listService';
 import { MenuItemAction, IMenuService, MenuId } from 'vs/platform/actions/common/actions';
 import { IAction, Action, IActionItem, ActionRunner } from 'vs/base/common/actions';
 import { MenuItemActionItem, fillInActions } from 'vs/platform/actions/browser/menuItemActionItem';
@@ -39,7 +38,7 @@ import { SCMMenus } from './scmMenus';
 import { ActionBar, IActionItemProvider, Separator, ActionItem } from 'vs/base/browser/ui/actionbar/actionbar';
 import { IThemeService, LIGHT } from 'vs/platform/theme/common/themeService';
 import { isSCMResource } from './scmUtil';
-import { attachListStyler, attachBadgeStyler, attachInputBoxStyler } from 'vs/platform/theme/common/styler';
+import { attachBadgeStyler, attachInputBoxStyler } from 'vs/platform/theme/common/styler';
 import Severity from 'vs/base/common/severity';
 import { IExtensionService } from 'vs/platform/extensions/common/extensions';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
@@ -56,6 +55,7 @@ import * as platform from 'vs/base/common/platform';
 import { format } from 'vs/base/common/strings';
 import { ISpliceable, ISequence, ISplice } from 'vs/base/common/sequence';
 import { firstIndex } from 'vs/base/common/arrays';
+import { WorkbenchList, IListService } from 'vs/platform/list/browser/listService';
 
 // TODO@Joao
 // Need to subclass MenuItemActionItem in order to respect
@@ -224,6 +224,7 @@ class MainPanel extends ViewletPanel {
 		@IInstantiationService private instantiationService: IInstantiationService,
 		@IThemeService private themeService: IThemeService,
 		@IContextKeyService private contextKeyService: IContextKeyService,
+		@IListService private listService: IListService,
 		@IMenuService private menuService: IMenuService
 	) {
 		super(localize('scm providers', "Source Control Providers"), {}, keybindingService, contextMenuService);
@@ -267,12 +268,11 @@ class MainPanel extends ViewletPanel {
 		const delegate = new ProvidersListDelegate();
 		const renderer = this.instantiationService.createInstance(ProviderRenderer);
 
-		this.list = new List<ISCMRepository>(container, delegate, [renderer], {
+		this.list = new WorkbenchList<ISCMRepository>(container, delegate, [renderer], {
 			identityProvider: repository => repository.provider.id
-		});
+		}, this.contextKeyService, this.listService, this.themeService);
 
 		this.disposables.push(this.list);
-		this.disposables.push(attachListStyler(this.list, this.themeService));
 		this.list.onSelectionChange(this.onListSelectionChange, this, this.disposables);
 		this.list.onContextMenu(this.onListContextMenu, this, this.disposables);
 
@@ -659,6 +659,7 @@ export class RepositoryPanel extends ViewletPanel {
 		@IMessageService protected messageService: IMessageService,
 		@IWorkbenchEditorService protected editorService: IWorkbenchEditorService,
 		@IEditorGroupService protected editorGroupService: IEditorGroupService,
+		@IContextKeyService protected contextKeyService: IContextKeyService,
 		@IInstantiationService protected instantiationService: IInstantiationService
 	) {
 		super(repository.provider.label, {}, keybindingService, contextMenuService);
@@ -753,13 +754,10 @@ export class RepositoryPanel extends ViewletPanel {
 			this.instantiationService.createInstance(ResourceRenderer, this.menus, actionItemProvider, () => this.getSelectedResources()),
 		];
 
-		this.list = new List(this.listContainer, delegate, renderers, {
+		this.list = new WorkbenchList(this.listContainer, delegate, renderers, {
 			identityProvider: scmResourceIdentityProvider,
 			keyboardSupport: false
-		});
-
-		this.disposables.push(attachListStyler(this.list, this.themeService));
-		this.disposables.push(this.listService.register(this.list));
+		}, this.contextKeyService, this.listService, this.themeService);
 
 		chain(this.list.onOpen)
 			.map(e => e.elements[0])
@@ -929,7 +927,6 @@ export class SCMViewlet extends PanelViewlet implements IViewModel {
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IKeybindingService protected keybindingService: IKeybindingService,
 		@IMessageService protected messageService: IMessageService,
-		@IListService protected listService: IListService,
 		@IContextMenuService contextMenuService: IContextMenuService,
 		@IThemeService protected themeService: IThemeService,
 		@ICommandService protected commandService: ICommandService,

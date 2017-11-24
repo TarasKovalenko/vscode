@@ -1230,6 +1230,16 @@ export class CommandCenter {
 		await repository.tag(name, message);
 	}
 
+	@command('git.fetch', { repository: true })
+	async fetch(repository: Repository): Promise<void> {
+		if (repository.remotes.length === 0) {
+			window.showWarningMessage(localize('no remotes to fetch', "This repository has no remotes configured to fetch from."));
+			return;
+		}
+
+		await repository.fetch();
+	}
+
 	@command('git.pullFrom', { repository: true })
 	async pullFrom(repository: Repository): Promise<void> {
 		const remotes = repository.remotes;
@@ -1543,7 +1553,7 @@ export class CommandCenter {
 						message = localize('clean repo', "Please clean your repository working tree before checkout.");
 						break;
 					case GitErrorCodes.PushRejected:
-						message = localize('cant push', "Can't push refs to remote. Run 'Pull' first to integrate your changes.");
+						message = localize('cant push', "Can't push refs to remote. Try running 'Pull' first to integrate your changes.");
 						break;
 					default:
 						const hint = (err.stderr || err.message || String(err))

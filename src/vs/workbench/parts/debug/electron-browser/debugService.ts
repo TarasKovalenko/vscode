@@ -609,10 +609,6 @@ export class DebugService implements debug.IDebugService {
 	}
 
 	public addReplExpression(name: string): TPromise<void> {
-		/* __GDPR__
-			"debugService/addReplExpression" : {}
-		*/
-		this.telemetryService.publicLog('debugService/addReplExpression');
 		return this.model.addReplExpression(this.viewModel.focusedProcess, this.viewModel.focusedStackFrame, name)
 			// Evaluate all watch expressions and fetch variables again since repl evaluation might have changed some.
 			.then(() => this.focusStackFrameAndEvaluate(this.viewModel.focusedStackFrame, this.viewModel.focusedProcess));
@@ -659,6 +655,7 @@ export class DebugService implements debug.IDebugService {
 				if (this.model.getProcesses().length === 0) {
 					this.removeReplExpressions();
 					this.allProcesses.clear();
+					this.model.getBreakpoints().forEach(bp => bp.verified = false);
 				}
 				this.launchJsonChanged = false;
 				const manager = this.getConfigurationManager();

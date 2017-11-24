@@ -16,8 +16,6 @@ import glob = require('vs/base/common/glob');
 import { Action, IAction } from 'vs/base/common/actions';
 import { prepareActions } from 'vs/workbench/browser/actions';
 import { memoize } from 'vs/base/common/decorators';
-import { ITree } from 'vs/base/parts/tree/browser/tree';
-import { Tree } from 'vs/base/parts/tree/browser/treeImpl';
 import { IFilesConfiguration, ExplorerFolderContext, FilesExplorerFocusedContext, ExplorerFocusedContext, SortOrderConfiguration, SortOrder, IExplorerView } from 'vs/workbench/parts/files/common/files';
 import { FileOperation, FileOperationEvent, IResolveFileOptions, FileChangeType, FileChangesEvent, IFileService, FILES_EXCLUDE_CONFIG } from 'vs/platform/files/common/files';
 import { RefreshViewExplorerAction, NewFolderAction, NewFileAction } from 'vs/workbench/parts/files/electron-browser/fileActions';
@@ -27,9 +25,8 @@ import { DiffEditorInput } from 'vs/workbench/common/editor/diffEditorInput';
 import { IEditorGroupService } from 'vs/workbench/services/group/common/groupService';
 import * as DOM from 'vs/base/browser/dom';
 import { CollapseAction } from 'vs/workbench/browser/viewlet';
-import { ViewsViewletPanel, IViewletViewOptions, IViewOptions } from 'vs/workbench/browser/parts/views/viewsViewlet';
+import { TreeViewsViewletPanel, IViewletViewOptions, IViewOptions } from 'vs/workbench/browser/parts/views/viewsViewlet';
 import { FileStat, Model } from 'vs/workbench/parts/files/common/explorerModel';
-import { IListService } from 'vs/platform/list/browser/listService';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IPartService } from 'vs/workbench/services/part/common/partService';
 import { ExplorerDecorationsProvider } from 'vs/workbench/parts/files/electron-browser/views/explorerDecorationsProvider';
@@ -45,14 +42,14 @@ import { ResourceContextKey } from 'vs/workbench/common/resources';
 import { ResourceGlobMatcher } from 'vs/workbench/electron-browser/resources';
 import { IWorkbenchThemeService, IFileIconTheme } from 'vs/workbench/services/themes/common/workbenchThemeService';
 import { isLinux } from 'vs/base/common/platform';
-import { attachListStyler } from 'vs/platform/theme/common/styler';
 import { IDecorationsService } from 'vs/workbench/services/decorations/browser/decorations';
+import { WorkbenchTree, IListService } from 'vs/platform/list/browser/listService';
 
 export interface IExplorerViewOptions extends IViewletViewOptions {
 	viewletState: FileViewletState;
 }
 
-export class ExplorerView extends ViewsViewletPanel implements IExplorerView {
+export class ExplorerView extends TreeViewsViewletPanel implements IExplorerView {
 
 	public static ID: string = 'workbench.explorer.fileView';
 	private static readonly EXPLORER_FILE_CHANGES_REACT_DELAY = 500; // delay in ms to react to file changes to give our internal events a chance to react first
@@ -63,7 +60,7 @@ export class ExplorerView extends ViewsViewletPanel implements IExplorerView {
 
 	public readonly id: string = ExplorerView.ID;
 
-	private explorerViewer: ITree;
+	private explorerViewer: WorkbenchTree;
 	private filter: FileFilter;
 	private viewletState: FileViewletState;
 
@@ -71,9 +68,6 @@ export class ExplorerView extends ViewsViewletPanel implements IExplorerView {
 
 	private resourceContext: ResourceContextKey;
 	private folderContext: IContextKey<boolean>;
-
-	private filesExplorerFocusedContext: IContextKey<boolean>;
-	private explorerFocusedContext: IContextKey<boolean>;
 
 	private fileEventsFilter: ResourceGlobMatcher;
 
@@ -95,7 +89,7 @@ export class ExplorerView extends ViewsViewletPanel implements IExplorerView {
 		@IFileService private fileService: IFileService,
 		@IPartService private partService: IPartService,
 		@IKeybindingService keybindingService: IKeybindingService,
-		@IContextKeyService contextKeyService: IContextKeyService,
+		@IContextKeyService private contextKeyService: IContextKeyService,
 		@IConfigurationService private configurationService: IConfigurationService,
 		@IWorkbenchThemeService private themeService: IWorkbenchThemeService,
 		@IDecorationsService decorationService: IDecorationsService
@@ -110,9 +104,6 @@ export class ExplorerView extends ViewsViewletPanel implements IExplorerView {
 
 		this.resourceContext = instantiationService.createInstance(ResourceContextKey);
 		this.folderContext = ExplorerFolderContext.bindTo(contextKeyService);
-
-		this.filesExplorerFocusedContext = FilesExplorerFocusedContext.bindTo(contextKeyService);
-		this.explorerFocusedContext = ExplorerFocusedContext.bindTo(contextKeyService);
 
 		this.fileEventsFilter = instantiationService.createInstance(
 			ResourceGlobMatcher,
@@ -406,7 +397,7 @@ export class ExplorerView extends ViewsViewletPanel implements IExplorerView {
 		return model;
 	}
 
-	public createViewer(container: Builder): ITree {
+	public createViewer(container: Builder): WorkbenchTree {
 		const dataSource = this.instantiationService.createInstance(FileDataSource);
 		const renderer = this.instantiationService.createInstance(FileRenderer, this.viewletState);
 		const controller = this.instantiationService.createInstance(FileController, this.viewletState);
@@ -417,7 +408,7 @@ export class ExplorerView extends ViewsViewletPanel implements IExplorerView {
 		const dnd = this.instantiationService.createInstance(FileDragAndDrop);
 		const accessibilityProvider = this.instantiationService.createInstance(FileAccessibilityProvider);
 
-		this.explorerViewer = new Tree(container.getHTMLElement(), {
+		this.explorerViewer = new WorkbenchTree(container.getHTMLElement(), {
 			dataSource,
 			renderer,
 			controller,
@@ -431,13 +422,11 @@ export class ExplorerView extends ViewsViewletPanel implements IExplorerView {
 				twistiePixels: 12,
 				showTwistie: false,
 				keyboardSupport: false
-			});
+			}, this.contextKeyService, this.listService, this.themeService);
 
-		// Theme styler
-		this.disposables.push(attachListStyler(this.explorerViewer, this.themeService));
-
-		// Register to list service
-		this.disposables.push(this.listService.register(this.explorerViewer, [this.explorerFocusedContext, this.filesExplorerFocusedContext]));
+		// Bind context keys
+		FilesExplorerFocusedContext.bindTo(this.explorerViewer.contextKeyService);
+		ExplorerFocusedContext.bindTo(this.explorerViewer.contextKeyService);
 
 		// Update Viewer based on File Change Events
 		this.disposables.push(this.fileService.onAfterOperation(e => this.onFileOperation(e)));
