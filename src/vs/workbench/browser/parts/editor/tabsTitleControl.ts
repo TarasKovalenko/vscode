@@ -156,6 +156,12 @@ export class TabsTitleControl extends TitleControl {
 			}
 		}));
 
+		this.toUnbind.push(DOM.addDisposableListener(this.tabsContainer, DOM.EventType.MOUSE_DOWN, (e: MouseEvent) => {
+			if (e.button === 1) {
+				e.preventDefault(); // required to prevent auto-scrolling (https://github.com/Microsoft/vscode/issues/16690)
+			}
+		}));
+
 		// Custom Scrollbar
 		this.scrollbar = new ScrollableElement(this.tabsContainer, {
 			horizontal: ScrollbarVisibility.Auto,
@@ -286,6 +292,10 @@ export class TabsTitleControl extends TitleControl {
 		// Tab label and styles
 		editorsOfGroup.forEach((editor, index) => {
 			const tabContainer = this.tabsContainer.children[index] as HTMLElement;
+			if (!tabContainer) {
+				return; // could be a race condition between updating tabs and creating tabs
+			}
+
 			const isPinned = group.isPinned(index);
 			const isTabActive = group.isActive(editor);
 			const isDirty = editor.isDirty();
@@ -303,9 +313,15 @@ export class TabsTitleControl extends TitleControl {
 			tabContainer.style.outlineColor = this.getColor(activeContrastBorder);
 
 			const tabOptions = this.editorGroupService.getTabOptions();
-			['off', 'left'].forEach(option => {
+
+			['off', 'left', 'right'].forEach(option => {
 				const domAction = tabOptions.tabCloseButton === option ? DOM.addClass : DOM.removeClass;
 				domAction(tabContainer, `close-button-${option}`);
+			});
+
+			['fit', 'shrink'].forEach(option => {
+				const domAction = tabOptions.tabSizing === option ? DOM.addClass : DOM.removeClass;
+				domAction(tabContainer, `sizing-${option}`);
 			});
 
 			// Label
@@ -611,7 +627,7 @@ export class TabsTitleControl extends TitleControl {
 
 			if (e instanceof MouseEvent && e.button !== 0) {
 				if (e.button === 1) {
-					return false; // required due to https://github.com/Microsoft/vscode/issues/16690
+					e.preventDefault(); // required to prevent auto-scrolling (https://github.com/Microsoft/vscode/issues/16690)
 				}
 
 				return void 0; // only for left mouse click
