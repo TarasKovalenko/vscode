@@ -15,6 +15,8 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { whenDeleted } from 'vs/base/node/pfs';
 import { findFreePort } from 'vs/base/node/ports';
+import { resolveTerminalEncoding } from 'vs/base/node/encoding';
+import * as iconv from 'iconv-lite';
 
 function shouldSpawnCliProcess(argv: ParsedArgs): boolean {
 	return !!argv['install-source']
@@ -65,7 +67,7 @@ export async function main(argv: string[]): TPromise<any> {
 
 		let processCallbacks: ((child: ChildProcess) => Thenable<any>)[] = [];
 
-		const verbose = args.verbose || args.ps;
+		const verbose = args.verbose || args.status;
 
 		if (verbose) {
 			env['ELECTRON_ENABLE_LOGGING'] = '1';
@@ -91,12 +93,15 @@ export async function main(argv: string[]): TPromise<any> {
 		let stdinFilePath: string;
 		if (isReadingFromStdin) {
 			let stdinFileError: Error;
-			stdinFilePath = paths.join(os.tmpdir(), `stdin-${Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 6)}.txt`);
+			stdinFilePath = paths.join(os.tmpdir(), `code-stdin-${Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 3)}.txt`);
 			try {
+				const stdinFileStream = fs.createWriteStream(stdinFilePath);
+				resolveTerminalEncoding(verbose).done(encoding => {
 
-				// Pipe into tmp file
-				process.stdin.setEncoding('utf8');
-				process.stdin.pipe(fs.createWriteStream(stdinFilePath));
+					// Pipe into tmp file using terminals encoding
+					const converterStream = iconv.decodeStream(encoding);
+					process.stdin.pipe(converterStream).pipe(stdinFileStream);
+				});
 
 				// Make sure to open tmp file
 				argv.push(stdinFilePath);

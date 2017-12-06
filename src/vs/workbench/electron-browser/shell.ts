@@ -21,11 +21,10 @@ import pkg from 'vs/platform/node/package';
 import { ContextViewService } from 'vs/platform/contextview/browser/contextViewService';
 import { Workbench, IWorkbenchStartedInfo } from 'vs/workbench/electron-browser/workbench';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { NullTelemetryService, configurationTelemetry, lifecycleTelemetry } from 'vs/platform/telemetry/common/telemetryUtils';
+import { NullTelemetryService, configurationTelemetry } from 'vs/platform/telemetry/common/telemetryUtils';
 import { IExperimentService, ExperimentService } from 'vs/platform/telemetry/common/experiments';
 import { ITelemetryAppenderChannel, TelemetryAppenderClient } from 'vs/platform/telemetry/common/telemetryIpc';
 import { TelemetryService, ITelemetryServiceConfig } from 'vs/platform/telemetry/common/telemetryService';
-import { IdleMonitor, UserStatus } from 'vs/platform/telemetry/browser/idleMonitor';
 import ErrorTelemetry from 'vs/platform/telemetry/browser/errorTelemetry';
 import { ElectronWindow } from 'vs/workbench/electron-browser/window';
 import { resolveWorkbenchCommonProperties } from 'vs/platform/telemetry/node/workbenchCommonProperties';
@@ -170,8 +169,10 @@ export class WorkbenchShell {
 			this.workbench.startup().done(startupInfos => this.onWorkbenchStarted(startupInfos, instantiationService));
 		} catch (error) {
 
-			// Print out error
-			console.error(toErrorMessage(error, true));
+			// Log to console and log
+			const msg = toErrorMessage(error, true);
+			console.error(msg);
+			this.logService.error(msg);
 
 			// Rethrow
 			throw error;
@@ -182,7 +183,9 @@ export class WorkbenchShell {
 
 		// Handle case where workbench is not starting up properly
 		const timeoutHandle = setTimeout(() => {
-			console.warn('Workbench did not finish loading in 10 seconds, that might be a problem that should be reported.');
+			const msg = 'Workbench did not finish loading in 10 seconds, that might be a problem that should be reported.';
+			console.warn(msg);
+			this.logService.warn(msg);
 		}, 10000);
 
 		this.lifecycleService.when(LifecyclePhase.Running).then(() => {
@@ -284,6 +287,8 @@ export class WorkbenchShell {
 		serviceCollection.set(IConfigurationService, this.configurationService);
 		serviceCollection.set(IEnvironmentService, this.environmentService);
 		serviceCollection.set(ILogService, this.logService);
+		disposables.push(this.logService);
+
 		serviceCollection.set(ITimerService, this.timerService);
 		serviceCollection.set(IStorageService, this.storageService);
 		this.mainProcessServices.forEach((serviceIdentifier, serviceInstance) => {
@@ -330,21 +335,8 @@ export class WorkbenchShell {
 			this.telemetryService = telemetryService;
 
 			const errorTelemetry = new ErrorTelemetry(telemetryService);
-			const idleMonitor = new IdleMonitor(2 * 60 * 1000); // 2 minutes
 
-			const listener = idleMonitor.onStatusChange(status =>
-				/* __GDPR__
-					"UserIdleStart" : {}
-				*/
-				/* __GDPR__
-					"UserIdleStop" : {}
-				*/
-				this.telemetryService.publicLog(status === UserStatus.Active
-					? TelemetryService.IDLE_STOP_EVENT_NAME
-					: TelemetryService.IDLE_START_EVENT_NAME
-				));
-
-			disposables.push(telemetryService, errorTelemetry, listener, idleMonitor);
+			disposables.push(telemetryService, errorTelemetry);
 		} else {
 			this.telemetryService = NullTelemetryService;
 		}
@@ -366,7 +358,6 @@ export class WorkbenchShell {
 		this.toUnbind.push(lifecycleService.onShutdown(reason => dispose(disposables)));
 		this.toUnbind.push(lifecycleService.onShutdown(reason => saveFontInfo(this.storageService)));
 		serviceCollection.set(ILifecycleService, lifecycleService);
-		disposables.push(lifecycleTelemetry(this.telemetryService, lifecycleService));
 		this.lifecycleService = lifecycleService;
 
 		const extensionManagementChannel = getDelayedChannel<IExtensionManagementChannel>(sharedProcess.then(c => c.getChannel('extensions')));
@@ -460,8 +451,9 @@ export class WorkbenchShell {
 		this.previousErrorTime = now;
 		this.previousErrorValue = errorMsg;
 
-		// Log to console
+		// Log to console and log
 		console.error(errorMsg);
+		this.logService.error(errorMsg);
 
 		// Show to user if friendly message provided
 		if (error && error.friendlyMessage && this.messageService) {

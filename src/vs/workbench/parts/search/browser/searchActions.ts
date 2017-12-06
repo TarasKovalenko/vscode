@@ -15,7 +15,6 @@ import { Match, FileMatch, FileMatchOrMatch, FolderMatch, RenderableMatch } from
 import { IReplaceService } from 'vs/workbench/parts/search/common/replace';
 import * as Constants from 'vs/workbench/parts/search/common/constants';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
-import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { ResolvedKeybinding, createKeybinding } from 'vs/base/common/keyCodes';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
@@ -331,60 +330,103 @@ export class CloseReplaceAction extends Action {
 	}
 }
 
-export class RefreshAction extends Action {
+export abstract class SearchAction extends Action {
 
-	constructor(private viewlet: SearchViewlet) {
-		super('refresh');
-
-		this.label = nls.localize('RefreshAction.label', "Refresh");
-		this.enabled = false;
-		this.class = 'search-action refresh';
+	constructor(id: string, label: string, @IViewletService protected viewletService: IViewletService) {
+		super(id, label);
 	}
 
-	public run(): TPromise<void> {
-		this.viewlet.onQueryChanged(true);
+	abstract update(): void;
 
-		return TPromise.as(null);
-	}
-}
-
-export class CollapseDeepestExpandedLevelAction extends Action {
-	private viewer: ITree;
-
-	constructor(viewlet: SearchViewlet, enabled: boolean = false) {
-		super('vs.tree.collapse', nls.localize('collapse', "Collapse"), 'monaco-tree-action collapse-all', enabled);
-		this.viewer = viewlet.getControl();
-		this.class = 'search-action collapse';
-	}
-
-	public run(context?: any): TPromise<any> {
-		if (this.viewer.getHighlight()) {
-			return TPromise.as(null); // Global action disabled if user is in edit mode from another action
+	protected getSearchViewlet(): SearchViewlet {
+		const activeViewlet = this.viewletService.getActiveViewlet();
+		if (activeViewlet && activeViewlet.getId() === Constants.VIEWLET_ID) {
+			return activeViewlet as SearchViewlet;
 		}
+		return null;
+	}
+}
 
-		this.viewer.collapseDeepestExpandedLevel();
-		this.viewer.clearSelection();
-		this.viewer.clearFocus();
-		this.viewer.DOMFocus();
-		this.viewer.focusFirst();
+export class RefreshAction extends SearchAction {
 
+	static ID: string = 'search.action.refreshSearchResults';
+	static LABEL: string = nls.localize('RefreshAction.label', "Refresh");
+
+	constructor(id: string, label: string, @IViewletService viewletService: IViewletService) {
+		super(id, label, viewletService);
+		this.class = 'search-action refresh';
+		this.update();
+	}
+
+	update(): void {
+		const searchViewlet = this.getSearchViewlet();
+		this.enabled = searchViewlet && searchViewlet.isSearchSubmitted();
+	}
+
+	public run(): TPromise<void> {
+		const searchViewlet = this.getSearchViewlet();
+		if (searchViewlet) {
+			searchViewlet.onQueryChanged(true);
+		}
 		return TPromise.as(null);
 	}
 }
 
-export class ClearSearchResultsAction extends Action {
+export class CollapseDeepestExpandedLevelAction extends SearchAction {
 
-	constructor(private viewlet: SearchViewlet) {
-		super('clearSearchResults');
+	static ID: string = 'search.action.collapseSearchResults';
+	static LABEL: string = nls.localize('CollapseDeepestExpandedLevelAction.label', "Collapse All");
 
-		this.label = nls.localize('ClearSearchResultsAction.label', "Clear Search Results");
-		this.enabled = false;
-		this.class = 'search-action clear-search-results';
+	constructor(id: string, label: string, @IViewletService viewletService: IViewletService) {
+		super(id, label, viewletService);
+		this.class = 'search-action collapse';
+		this.update();
+	}
+
+	update(): void {
+		const searchViewlet = this.getSearchViewlet();
+		this.enabled = searchViewlet && searchViewlet.hasSearchResults();
 	}
 
 	public run(): TPromise<void> {
-		this.viewlet.clearSearchResults();
+		const searchViewlet = this.getSearchViewlet();
+		if (searchViewlet) {
+			const viewer = searchViewlet.getControl();
+			if (viewer.getHighlight()) {
+				return TPromise.as(null); // Global action disabled if user is in edit mode from another action
+			}
 
+			viewer.collapseDeepestExpandedLevel();
+			viewer.clearSelection();
+			viewer.clearFocus();
+			viewer.DOMFocus();
+			viewer.focusFirst();
+		}
+		return TPromise.as(null);
+	}
+}
+
+export class ClearSearchResultsAction extends SearchAction {
+
+	static ID: string = 'search.action.clearSearchResults';
+	static LABEL: string = nls.localize('ClearSearchResultsAction.label', "Clear");
+
+	constructor(id: string, label: string, @IViewletService viewletService: IViewletService) {
+		super(id, label, viewletService);
+		this.class = 'search-action clear-search-results';
+		this.update();
+	}
+
+	update(): void {
+		const searchViewlet = this.getSearchViewlet();
+		this.enabled = searchViewlet && searchViewlet.hasSearchResults();
+	}
+
+	public run(): TPromise<void> {
+		const searchViewlet = this.getSearchViewlet();
+		if (searchViewlet) {
+			searchViewlet.clearSearchResults();
+		}
 		return TPromise.as(null);
 	}
 }
@@ -501,16 +543,11 @@ export class RemoveAction extends AbstractSearchAndReplaceAction {
 export class ReplaceAllAction extends AbstractSearchAndReplaceAction {
 
 	constructor(private viewer: ITree, private fileMatch: FileMatch, private viewlet: SearchViewlet,
-		@IKeybindingService keyBindingService: IKeybindingService,
-		@ITelemetryService private telemetryService: ITelemetryService) {
+		@IKeybindingService keyBindingService: IKeybindingService) {
 		super(Constants.ReplaceAllInFileActionId, appendKeyBindingLabel(nls.localize('file.replaceAll.label', "Replace All"), keyBindingService.lookupKeybinding(Constants.ReplaceAllInFileActionId), keyBindingService), 'action-replace-all');
 	}
 
 	public run(): TPromise<any> {
-		/* __GDPR__
-			"replaceAll.action.selected" : {}
-		*/
-		this.telemetryService.publicLog('replaceAll.action.selected');
 		let nextFocusElement = this.getElementToFocusAfterRemoved(this.viewer, this.fileMatch);
 		return this.fileMatch.parent().replace(this.fileMatch).then(() => {
 			if (nextFocusElement) {
@@ -525,17 +562,12 @@ export class ReplaceAllAction extends AbstractSearchAndReplaceAction {
 export class ReplaceAllInFolderAction extends AbstractSearchAndReplaceAction {
 
 	constructor(private viewer: ITree, private folderMatch: FolderMatch,
-		@IKeybindingService keyBindingService: IKeybindingService,
-		@ITelemetryService private telemetryService: ITelemetryService
+		@IKeybindingService keyBindingService: IKeybindingService
 	) {
 		super(Constants.ReplaceAllInFolderActionId, nls.localize('file.replaceAll.label', "Replace All"), 'action-replace-all');
 	}
 
 	public async run(): TPromise<any> {
-		/* __GDPR__
-			"replaceAllInFolder.action.selected" : {}
-		*/
-		this.telemetryService.publicLog('replaceAllInFolder.action.selected');
 		let nextFocusElement = this.getElementToFocusAfterRemoved(this.viewer, this.folderMatch);
 		await this.folderMatch.replaceAll();
 
@@ -551,17 +583,12 @@ export class ReplaceAction extends AbstractSearchAndReplaceAction {
 	constructor(private viewer: ITree, private element: Match, private viewlet: SearchViewlet,
 		@IReplaceService private replaceService: IReplaceService,
 		@IKeybindingService keyBindingService: IKeybindingService,
-		@IWorkbenchEditorService private editorService: IWorkbenchEditorService,
-		@ITelemetryService private telemetryService: ITelemetryService) {
+		@IWorkbenchEditorService private editorService: IWorkbenchEditorService) {
 		super(Constants.ReplaceActionId, appendKeyBindingLabel(nls.localize('match.replace.label', "Replace"), keyBindingService.lookupKeybinding(Constants.ReplaceActionId), keyBindingService), 'action-replace');
 	}
 
 	public run(): TPromise<any> {
 		this.enabled = false;
-		/* __GDPR__
-			"replace.action.selected" : {}
-		*/
-		this.telemetryService.publicLog('replace.action.selected');
 
 		return this.element.parent().replace(this.element).then(() => {
 			let elementToFocus = this.getElementToFocusAfterReplace();

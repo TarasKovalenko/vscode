@@ -5,7 +5,7 @@
 
 'use strict';
 
-import { WorkspaceStats, collectWorkspaceStats } from 'vs/base/node/stats';
+import { WorkspaceStats, collectWorkspaceStats, collectLaunchConfigs, WorkspaceStatItem } from 'vs/base/node/stats';
 import { IMainProcessInfo } from 'vs/code/electron-main/launch';
 import { ProcessItem, listProcesses } from 'vs/base/node/ps';
 import product from 'vs/platform/node/product';
@@ -15,27 +15,63 @@ import { virtualMachineHint } from 'vs/base/node/id';
 import { repeat, pad } from 'vs/base/common/strings';
 import { isWindows } from 'vs/base/common/platform';
 import { app } from 'electron';
+import { basename } from 'path';
 
 export function printDiagnostics(info: IMainProcessInfo): Promise<any> {
 	return listProcesses(info.mainPID).then(rootProcess => {
+
+		// Environment Info
+		console.log('');
+		console.log(formatEnvironment(info));
+
+		// Process List
+		console.log('');
 		console.log(formatProcessList(info, rootProcess));
 
-		console.log('\n');
-		console.log('\n');
+		// Workspace Stats
+		if (info.windows.some(window => window.folders && window.folders.length > 0)) {
+			console.log('');
+			console.log('Workspace Stats: ');
+			info.windows.forEach(window => {
+				if (window.folders.length === 0) {
+					return;
+				}
 
-		let stats = collectWorkspaceStats('.', ['node_modules', '.git']); // TODO call for each root folder
-		console.log(formatWorkspaceStats(stats));
+				console.log(`|  Window (${window.title})`);
+
+				window.folders.forEach(folder => {
+					console.log(`|    Folder (${basename(folder)})`);
+
+					try {
+						const stats = collectWorkspaceStats(folder, ['node_modules', '.git']);
+						console.log(formatWorkspaceStats(stats));
+
+						const launchConfigs = collectLaunchConfigs(folder);
+						if (launchConfigs.length > 0) {
+							console.log(formatLaunchConfigs(launchConfigs));
+						}
+					} catch (error) {
+						console.log(`|      Error: Unable to collect workpsace stats for this folder (${error.toString()})`);
+					}
+				});
+			});
+		}
+		console.log('');
+		console.log('');
 	});
 }
 
 function formatWorkspaceStats(workspaceStats: WorkspaceStats): string {
-	let output: string[] = [];
+	const output: string[] = [];
+	const lineLength = 60;
+	let col = 0;
 
-	let appendAndWrap = (index: string, value: number) => {
-		let item = ` ${index}(${value})`;
+	const appendAndWrap = (name: string, count: number) => {
+		const item = count > 1 ? ` ${name}(${count})` : ` ${name}`;
+
 		if (col + item.length > lineLength) {
 			output.push(line);
-			line = '    ';
+			line = '|                 ';
 			col = line.length;
 		}
 		else {
@@ -44,31 +80,42 @@ function formatWorkspaceStats(workspaceStats: WorkspaceStats): string {
 		line += item;
 	};
 
-	output.push('Workspace:');
-	const lineLength = 60;
 
-	let line = '  File types:';
-	let col = 0;
-	workspaceStats.fileTypes.forEach((item) => {
-		if (item.value > 20) {
-			appendAndWrap(item.name, item.value);
-		}
-	});
+	// File Types
+	let line = '|      File types:';
+	const maxShown = 10;
+	let max = workspaceStats.fileTypes.length > maxShown ? maxShown : workspaceStats.fileTypes.length;
+	for (let i = 0; i < max; i++) {
+		const item = workspaceStats.fileTypes[i];
+		appendAndWrap(item.name, item.count);
+	}
 	output.push(line);
-	output.push('');
-	line = '  Configuration files:';
-	col = 0;
-	workspaceStats.configFiles.forEach((item) => {
-		appendAndWrap(item.name, item.value);
+
+	// Conf Files
+	if (workspaceStats.configFiles.length >= 0) {
+		line = '|      Conf files:';
+		col = 0;
+		workspaceStats.configFiles.forEach((item) => {
+			appendAndWrap(item.name, item.count);
+		});
+		output.push(line);
+	}
+
+	return output.join('\n');
+}
+
+function formatLaunchConfigs(configs: WorkspaceStatItem[]): string {
+	const output: string[] = [];
+	let line = '|      Launch Configs:';
+	configs.forEach(each => {
+		const item = each.count > 1 ? ` ${each.name}(${each.count})` : ` ${each.name}`;
+		line += item;
 	});
 	output.push(line);
 	return output.join('\n');
 }
 
-function formatProcessList(info: IMainProcessInfo, rootProcess: ProcessItem): string {
-	const mapPidToWindowTitle = new Map<number, string>();
-	info.windows.forEach(window => mapPidToWindowTitle.set(window.pid, window.title));
-
+function formatEnvironment(info: IMainProcessInfo): string {
 	const MB = 1024 * 1024;
 	const GB = 1024 * MB;
 
@@ -85,7 +132,16 @@ function formatProcessList(info: IMainProcessInfo, rootProcess: ProcessItem): st
 	}
 	output.push(`VM:               ${Math.round((virtualMachineHint.value() * 100))}%`);
 	output.push(`Screen Reader:    ${app.isAccessibilitySupportEnabled() ? 'yes' : 'no'}`);
-	output.push('');
+
+	return output.join('\n');
+}
+
+function formatProcessList(info: IMainProcessInfo, rootProcess: ProcessItem): string {
+	const mapPidToWindowTitle = new Map<number, string>();
+	info.windows.forEach(window => mapPidToWindowTitle.set(window.pid, window.title));
+
+	const output: string[] = [];
+
 	output.push('CPU %\tMem MB\tProcess');
 
 	formatProcessItem(mapPidToWindowTitle, output, rootProcess, 0);
@@ -105,11 +161,12 @@ function formatProcessItem(mapPidToWindowTitle: Map<number, string>, output: str
 	} else {
 		name = `${repeat('  ', indent)} ${item.name}`;
 
-		if (item.name === 'renderer') {
+		if (item.name === 'window') {
 			name = `${name} (${mapPidToWindowTitle.get(item.pid)})`;
 		}
 	}
-	output.push(`${pad(Number(item.load.toFixed(0)), 5, ' ')}\t${pad(Number(((os.totalmem() * (item.mem / 100)) / MB).toFixed(0)), 6, ' ')}\t${name}`);
+	const memory = process.platform === 'win32' ? item.mem : (os.totalmem() * (item.mem / 100));
+	output.push(`${pad(Number(item.load.toFixed(0)), 5, ' ')}\t${pad(Number((memory / MB).toFixed(0)), 6, ' ')}\t${name}`);
 
 	// Recurse into children if any
 	if (Array.isArray(item.children)) {

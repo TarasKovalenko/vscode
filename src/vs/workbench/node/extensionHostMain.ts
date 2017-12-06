@@ -21,8 +21,11 @@ import { IInitData, IEnvironment, IWorkspaceData, MainContext } from 'vs/workben
 import * as errors from 'vs/base/common/errors';
 import * as watchdog from 'native-watchdog';
 import * as glob from 'vs/base/common/glob';
+import { ExtensionActivatedByEvent } from 'vs/workbench/api/node/extHostExtensionActivator';
 import { EnvironmentService } from 'vs/platform/environment/node/environmentService';
-import { SpdLogService } from 'vs/platform/log/node/spdlogService';
+import { createLogService } from 'vs/platform/log/node/spdlogService';
+import { registerGlobalLogService } from 'vs/platform/log/common/log';
+import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 
 // const nativeExit = process.exit.bind(process);
 function patchProcess(allowExit: boolean) {
@@ -74,6 +77,7 @@ export class ExtensionHostMain {
 	private _environment: IEnvironment;
 	private _extensionService: ExtHostExtensionService;
 	private _extHostConfiguration: ExtHostConfiguration;
+	private disposables: IDisposable[] = [];
 
 	constructor(rpcProtocol: RPCProtocol, initData: IInitData) {
 		this._environment = initData.environment;
@@ -86,10 +90,15 @@ export class ExtensionHostMain {
 		const threadService = new ExtHostThreadService(rpcProtocol);
 		const extHostWorkspace = new ExtHostWorkspace(threadService, initData.workspace);
 		const environmentService = new EnvironmentService(initData.args, initData.execPath);
-		const logService = new SpdLogService('exthost', environmentService);
+		const logService = createLogService(`exthost${initData.windowId}`, environmentService);
+
+		registerGlobalLogService(logService);
+		this.disposables.push(logService);
+
+		logService.info('main', initData);
 
 		this._extHostConfiguration = new ExtHostConfiguration(threadService.get(MainContext.MainThreadConfiguration), extHostWorkspace, initData.configuration);
-		this._extensionService = new ExtHostExtensionService(initData, threadService, extHostWorkspace, this._extHostConfiguration, logService);
+		this._extensionService = new ExtHostExtensionService(initData, threadService, extHostWorkspace, this._extHostConfiguration);
 
 		// error forwarding and stack trace scanning
 		const extensionErrors = new WeakMap<Error, IExtensionDescription>();
@@ -110,11 +119,16 @@ export class ExtensionHostMain {
 				return `${error.name || 'Error'}: ${error.message || ''}${stackTraceMessage}`;
 			};
 		});
+		const mainThreadExtensions = threadService.get(MainContext.MainThreadExtensionService);
 		const mainThreadErrors = threadService.get(MainContext.MainThreadErrors);
 		errors.setUnexpectedErrorHandler(err => {
 			const data = errors.transformErrorForSerialization(err);
 			const extension = extensionErrors.get(err);
-			mainThreadErrors.$onUnexpectedError(data, extension && extension.id);
+			if (extension) {
+				mainThreadExtensions.$onExtensionRuntimeError(extension.id, data);
+			} else {
+				mainThreadErrors.$onUnexpectedError(data);
+			}
 		});
 
 		// Configure the watchdog to kill our process if the JS event loop is unresponsive for more than 10s
@@ -135,6 +149,8 @@ export class ExtensionHostMain {
 			return;
 		}
 		this._isTerminating = true;
+
+		this.disposables = dispose(this.disposables);
 
 		errors.setUnexpectedErrorHandler((err) => {
 			// TODO: write to log once we have one
@@ -218,7 +234,7 @@ export class ExtensionHostMain {
 			if (await pfs.exists(join(uri.fsPath, fileName))) {
 				// the file was found
 				return (
-					this._extensionService.activateById(extensionId, true)
+					this._extensionService.activateById(extensionId, new ExtensionActivatedByEvent(true, `workspaceContains:${fileName}`))
 						.done(null, err => console.error(err))
 				);
 			}
@@ -260,7 +276,7 @@ export class ExtensionHostMain {
 		if (result.limitHit) {
 			// a file was found matching one of the glob patterns
 			return (
-				this._extensionService.activateById(extensionId, true)
+				this._extensionService.activateById(extensionId, new ExtensionActivatedByEvent(true, `workspaceContains:${globPatterns.join(',')}`))
 					.done(null, err => console.error(err))
 			);
 		}
