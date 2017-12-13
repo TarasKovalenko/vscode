@@ -8,7 +8,7 @@
 import { IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import Event, { Emitter } from 'vs/base/common/event';
 import { ISCMService, ISCMProvider, ISCMInput, ISCMRepository } from './scm';
-import { log, LogLevel } from 'vs/platform/log/common/log';
+import { ILogService } from 'vs/platform/log/common/log';
 
 class SCMInput implements ISCMInput {
 
@@ -39,6 +39,8 @@ class SCMInput implements ISCMInput {
 
 	private _onDidChangePlaceholder = new Emitter<string>();
 	get onDidChangePlaceholder(): Event<string> { return this._onDidChangePlaceholder.event; }
+
+	public lineWarningLength: number | undefined = undefined;
 }
 
 class SCMRepository implements ISCMRepository {
@@ -77,8 +79,11 @@ export class SCMService implements ISCMService {
 	private _onDidRemoveProvider = new Emitter<ISCMRepository>();
 	get onDidRemoveRepository(): Event<ISCMRepository> { return this._onDidRemoveProvider.event; }
 
-	@log(LogLevel.Info, 'SCMService')
+	constructor( @ILogService private logService: ILogService) { }
+
 	registerSCMProvider(provider: ISCMProvider): ISCMRepository {
+		this.logService.trace('SCMService#registerSCMProvider');
+
 		if (this._providerIds.has(provider.id)) {
 			throw new Error(`SCM Provider ${provider.id} already exists.`);
 		}

@@ -17,7 +17,7 @@ import { sortedDiff } from 'vs/base/common/arrays';
 import { comparePaths } from 'vs/base/common/comparers';
 import * as vscode from 'vscode';
 import { ISplice } from 'vs/base/common/sequence';
-import { log, LogLevel } from 'vs/platform/log/common/log';
+import { ILogService } from 'vs/platform/log/common/log';
 
 type ProviderHandle = number;
 type GroupHandle = number;
@@ -110,7 +110,7 @@ function compareResourceStates(a: vscode.SourceControlResourceState, b: vscode.S
 	return result;
 }
 
-export class ExtHostSCMInputBox {
+export class ExtHostSCMInputBox implements vscode.SourceControlInputBox {
 
 	private _value: string = '';
 
@@ -138,6 +138,17 @@ export class ExtHostSCMInputBox {
 	set placeholder(placeholder: string) {
 		this._proxy.$setInputBoxPlaceholder(this._sourceControlHandle, placeholder);
 		this._placeholder = placeholder;
+	}
+
+	private _lineWarningLength: number | undefined;
+
+	get lineWarningLength(): number | undefined {
+		return this._lineWarningLength;
+	}
+
+	set lineWarningLength(lineWarningLength: number) {
+		this._proxy.$setLineWarningLength(this._sourceControlHandle, lineWarningLength);
+		this._lineWarningLength = lineWarningLength;
 	}
 
 	constructor(private _proxy: MainThreadSCMShape, private _sourceControlHandle: number) {
@@ -444,7 +455,8 @@ export class ExtHostSCM {
 
 	constructor(
 		mainContext: IMainContext,
-		private _commands: ExtHostCommands
+		private _commands: ExtHostCommands,
+		@ILogService private logService: ILogService
 	) {
 		this._proxy = mainContext.get(MainContext.MainThreadSCM);
 
@@ -487,8 +499,9 @@ export class ExtHostSCM {
 		});
 	}
 
-	@log(LogLevel.Trace, 'ExtHostSCM', (msg, extension, id, label, rootUri) => `${msg}(${extension.id}, ${id}, ${label}, ${rootUri})`)
 	createSourceControl(extension: IExtensionDescription, id: string, label: string, rootUri: vscode.Uri | undefined): vscode.SourceControl {
+		this.logService.trace('ExtHostSCM#createSourceControl', extension.id, id, label, rootUri);
+
 		const handle = ExtHostSCM._handlePool++;
 		const sourceControl = new ExtHostSourceControl(this._proxy, this._commands, id, label, rootUri);
 		this._sourceControls.set(handle, sourceControl);
@@ -501,8 +514,9 @@ export class ExtHostSCM {
 	}
 
 	// Deprecated
-	@log(LogLevel.Trace, 'ExtHostSCM', (msg, extension) => `${msg}(${extension.id})`)
 	getLastInputBox(extension: IExtensionDescription): ExtHostSCMInputBox {
+		this.logService.trace('ExtHostSCM#getLastInputBox', extension.id);
+
 		const sourceControls = this._sourceControlsByExtension.get(extension.id);
 		const sourceControl = sourceControls && sourceControls[sourceControls.length - 1];
 		const inputBox = sourceControl && sourceControl.inputBox;
@@ -510,8 +524,9 @@ export class ExtHostSCM {
 		return inputBox;
 	}
 
-	@log(LogLevel.Trace, 'ExtHostSCM', (msg, handle, uri) => `${msg}(${handle}, ${uri})`)
 	$provideOriginalResource(sourceControlHandle: number, uri: URI): TPromise<URI> {
+		this.logService.trace('ExtHostSCM#$provideOriginalResource', sourceControlHandle, uri);
+
 		const sourceControl = this._sourceControls.get(sourceControlHandle);
 
 		if (!sourceControl || !sourceControl.quickDiffProvider) {
@@ -524,8 +539,9 @@ export class ExtHostSCM {
 		});
 	}
 
-	@log(LogLevel.Trace, 'ExtHostSCM', (msg, handle) => `${msg}(${handle})`)
 	$onInputBoxValueChange(sourceControlHandle: number, value: string): TPromise<void> {
+		this.logService.trace('ExtHostSCM#$onInputBoxValueChange', sourceControlHandle);
+
 		const sourceControl = this._sourceControls.get(sourceControlHandle);
 
 		if (!sourceControl) {
@@ -536,8 +552,9 @@ export class ExtHostSCM {
 		return TPromise.as(null);
 	}
 
-	@log(LogLevel.Trace, 'ExtHostSCM', (msg, h1, h2, h3) => `${msg}(${h1}, ${h2}, ${h3})`)
 	async $executeResourceCommand(sourceControlHandle: number, groupHandle: number, handle: number): TPromise<void> {
+		this.logService.trace('ExtHostSCM#$executeResourceCommand', sourceControlHandle, groupHandle, handle);
+
 		const sourceControl = this._sourceControls.get(sourceControlHandle);
 
 		if (!sourceControl) {

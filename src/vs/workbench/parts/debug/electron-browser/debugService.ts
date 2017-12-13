@@ -686,7 +686,7 @@ export class DebugService implements debug.IDebugService {
 					return TPromise.join(compound.configurations.map(name => name !== compound.name ? this.startDebugging(root, name, noDebug, topCompoundName || compound.name) : TPromise.as(null)));
 				}
 				if (configOrName && !config) {
-					const message = !!launch ? nls.localize('configMissing', "Configuration '{0}' is missing in 'launch.json' or 'launch.json' does not.", configOrName) :
+					const message = !!launch ? nls.localize('configMissing', "Configuration '{0}' is missing in 'launch.json'.", configOrName) :
 						nls.localize('launchJsonDoesNotExist', "'launch.json' does not exist.");
 					return TPromise.wrapError(new Error(message));
 				}
@@ -720,7 +720,7 @@ export class DebugService implements debug.IDebugService {
 								return this.createProcess(root, config, sessionId);
 							}
 							if (launch) {
-								return launch.openConfigFile(false, type).then(editor => undefined);
+								return launch.openConfigFile(false, type).then(() => undefined);
 							}
 
 							return undefined;
@@ -797,8 +797,8 @@ export class DebugService implements debug.IDebugService {
 					return undefined;
 				}
 
-				return this.configurationManager.selectedLaunch.openConfigFile(false).then(openend => {
-					if (openend) {
+				return this.configurationManager.selectedLaunch.openConfigFile(false).then(result => {
+					if (result.configFileCreated) {
 						this.messageService.show(severity.Info, nls.localize('NewLaunchConfig', "Please set up the launch configuration file for your application. {0}", err.message));
 					}
 					return undefined;
@@ -870,8 +870,8 @@ export class DebugService implements debug.IDebugService {
 				if (session.disconnected) {
 					return TPromise.as(null);
 				}
-				this._onDidNewProcess.fire(process);
 				this.focusStackFrameAndEvaluate(null, process);
+				this._onDidNewProcess.fire(process);
 
 				const internalConsoleOptions = configuration.internalConsoleOptions || this.configurationService.getValue<debug.IDebugConfiguration>('debug').internalConsoleOptions;
 				if (internalConsoleOptions === 'openOnSessionStart' || (this.firstSessionStart && internalConsoleOptions === 'openOnFirstSessionStart')) {

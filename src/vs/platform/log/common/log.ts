@@ -7,7 +7,6 @@
 
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { createDecorator as createServiceDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { createDecorator } from 'vs/base/common/decorators';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { isWindows } from 'vs/base/common/platform';
 
@@ -120,6 +119,62 @@ export class ConsoleLogMainService implements ILogService {
 	}
 }
 
+export class ConsoleLogService implements ILogService {
+
+	_serviceBrand: any;
+	private level: LogLevel = LogLevel.Error;
+
+	constructor( @IEnvironmentService environmentService: IEnvironmentService) {
+		this.setLevel(environmentService.logLevel);
+	}
+
+	setLevel(level: LogLevel): void {
+		this.level = level;
+	}
+
+	getLevel(): LogLevel {
+		return this.level;
+	}
+
+	trace(message: string, ...args: any[]): void {
+		if (this.level <= LogLevel.Trace) {
+			console.log('%cTRACE', 'color: #888', message, ...args);
+		}
+	}
+
+	debug(message: string, ...args: any[]): void {
+		if (this.level <= LogLevel.Debug) {
+			console.log('%cDEBUG', 'background: #eee; color: #888', message, ...args);
+		}
+	}
+
+	info(message: string, ...args: any[]): void {
+		if (this.level <= LogLevel.Info) {
+			console.log('%c INFO', 'color: #33f', message, ...args);
+		}
+	}
+
+	warn(message: string | Error, ...args: any[]): void {
+		if (this.level <= LogLevel.Warning) {
+			console.log('%c WARN', 'color: #993', message, ...args);
+		}
+	}
+
+	error(message: string, ...args: any[]): void {
+		if (this.level <= LogLevel.Error) {
+			console.log('%c  ERR', 'color: #f33', message, ...args);
+		}
+	}
+
+	critical(message: string, ...args: any[]): void {
+		if (this.level <= LogLevel.Critical) {
+			console.log('%cCRITI', 'background: #f33; color: white', message, ...args);
+		}
+	}
+
+	dispose(): void { }
+}
+
 export class MultiplexLogService implements ILogService {
 	_serviceBrand: any;
 
@@ -181,7 +236,7 @@ export class MultiplexLogService implements ILogService {
 	}
 }
 
-export class NoopLogService implements ILogService {
+export class NullLogService implements ILogService {
 	_serviceBrand: any;
 	setLevel(level: LogLevel): void { }
 	getLevel(): LogLevel { return LogLevel.Info; }
@@ -192,35 +247,4 @@ export class NoopLogService implements ILogService {
 	error(message: string | Error, ...args: any[]): void { }
 	critical(message: string | Error, ...args: any[]): void { }
 	dispose(): void { }
-}
-
-let globalLogService: ILogService = new NoopLogService();
-
-export function registerGlobalLogService(logService: ILogService): void {
-	globalLogService = logService;
-}
-
-export function log(level: LogLevel, prefix: string, logFn?: (message: string, ...args: any[]) => string): Function {
-	return createDecorator((fn, key) => {
-		// TODO@Joao: load-time log level? return fn;
-
-		return function (this: any, ...args: any[]) {
-			let message = `${prefix} - ${key}`;
-
-			if (logFn) {
-				message = logFn(message, ...args);
-			}
-
-			switch (level) {
-				case LogLevel.Trace: globalLogService.trace(message); break;
-				case LogLevel.Debug: globalLogService.debug(message); break;
-				case LogLevel.Info: globalLogService.info(message); break;
-				case LogLevel.Warning: globalLogService.warn(message); break;
-				case LogLevel.Error: globalLogService.error(message); break;
-				case LogLevel.Critical: globalLogService.critical(message); break;
-			}
-
-			return fn.apply(this, args);
-		};
-	});
 }

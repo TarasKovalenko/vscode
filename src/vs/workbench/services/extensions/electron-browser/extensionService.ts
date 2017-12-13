@@ -40,6 +40,7 @@ import { Barrier } from 'vs/base/common/async';
 import Event, { Emitter } from 'vs/base/common/event';
 import { ExtensionHostProfiler } from 'vs/workbench/services/extensions/electron-browser/extensionHostProfiler';
 import { ReloadWindowAction } from 'vs/workbench/electron-browser/actions';
+import product from 'vs/platform/node/product';
 
 const SystemExtensionsRoot = path.normalize(path.join(URI.parse(require.toUrl('')).fsPath, '..', 'extensions'));
 
@@ -538,8 +539,15 @@ export class ExtensionService extends Disposable implements IExtensionService {
 			return ExtensionScanner.scanExtensions(input, log);
 		}
 
+		try {
+			const folderStat = await pfs.stat(input.absoluteFolderPath);
+			input.mtime = folderStat.mtime.getTime();
+		} catch (err) {
+			// That's ok...
+		}
+
 		const cacheContents = await this._readExtensionCache(environmentService, cacheKey);
-		if (cacheContents && ExtensionScannerInput.equals(cacheContents.input, input)) {
+		if (cacheContents && cacheContents.input && ExtensionScannerInput.equals(cacheContents.input, input)) {
 			// Validate the cache asynchronously after 5s
 			setTimeout(async () => {
 				try {
@@ -567,6 +575,7 @@ export class ExtensionService extends Disposable implements IExtensionService {
 
 	private static _scanInstalledExtensions(instantiationService: IInstantiationService, messageService: IMessageService, environmentService: IEnvironmentService, log: ILog): TPromise<{ system: IExtensionDescription[], user: IExtensionDescription[], development: IExtensionDescription[] }> {
 		const version = pkg.version;
+		const commit = product.commit;
 		const devMode = !!process.env['VSCODE_DEV'];
 		const locale = platform.locale;
 
@@ -575,7 +584,7 @@ export class ExtensionService extends Disposable implements IExtensionService {
 			messageService,
 			environmentService,
 			BUILTIN_MANIFEST_CACHE_FILE,
-			new ExtensionScannerInput(version, locale, devMode, SystemExtensionsRoot, true),
+			new ExtensionScannerInput(version, commit, locale, devMode, SystemExtensionsRoot, true),
 			log
 		);
 
@@ -587,7 +596,7 @@ export class ExtensionService extends Disposable implements IExtensionService {
 					messageService,
 					environmentService,
 					USER_MANIFEST_CACHE_FILE,
-					new ExtensionScannerInput(version, locale, devMode, environmentService.extensionsPath, false),
+					new ExtensionScannerInput(version, commit, locale, devMode, environmentService.extensionsPath, false),
 					log
 				)
 		);
@@ -596,7 +605,7 @@ export class ExtensionService extends Disposable implements IExtensionService {
 		const developedExtensions = (
 			environmentService.isExtensionDevelopment
 				? ExtensionScanner.scanOneOrMultipleExtensions(
-					new ExtensionScannerInput(version, locale, devMode, environmentService.extensionDevelopmentPath, false), log
+					new ExtensionScannerInput(version, commit, locale, devMode, environmentService.extensionDevelopmentPath, false), log
 				)
 				: TPromise.as([])
 		);
