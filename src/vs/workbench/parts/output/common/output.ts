@@ -22,6 +22,11 @@ export const OUTPUT_MIME = 'text/x-code-output';
 export const OUTPUT_SCHEME = 'output';
 
 /**
+ * Output resource scheme.
+ */
+export const LOG_SCHEME = 'log';
+
+/**
  * Id used by the output editor.
  */
 export const OUTPUT_MODE_ID = 'Log';
@@ -30,6 +35,11 @@ export const OUTPUT_MODE_ID = 'Log';
  * Output panel id
  */
 export const OUTPUT_PANEL_ID = 'workbench.panel.output';
+
+/**
+ * Open log viewer command id
+ */
+export const COMMAND_OPEN_LOG_VIEWER = 'workbench.action.openLogViewer';
 
 export const Extensions = {
 	OutputChannels: 'workbench.contributions.outputChannels'
@@ -40,14 +50,6 @@ export const OUTPUT_SERVICE_ID = 'outputService';
 export const MAX_OUTPUT_LENGTH = 10000 /* Max. number of output lines to show in output */ * 100 /* Guestimated chars per line */;
 
 export const CONTEXT_IN_OUTPUT = new RawContextKey<boolean>('inOutput', false);
-
-/**
- * The output event informs when new output got received.
- */
-export interface IOutputEvent {
-	channelId: string;
-	isClear: boolean;
-}
 
 export const IOutputService = createDecorator<IOutputService>(OUTPUT_SERVICE_ID);
 
@@ -80,25 +82,9 @@ export interface IOutputService {
 	showChannel(id: string, preserveFocus?: boolean): TPromise<void>;
 
 	/**
-	 * Show the channel with the give id in editor
-	 */
-	showChannelInEditor(id: string): TPromise<void>;
-
-	/**
-	 * Allows to register on Output events.
-	 */
-	onOutput: Event<IOutputEvent>;
-
-	/**
 	 * Allows to register on active output channel change.
 	 */
 	onActiveOutputChannel: Event<string>;
-}
-
-export interface IOutputDelta {
-	readonly value: string;
-	readonly id: number;
-	readonly append?: boolean;
 }
 
 export interface IOutputChannel {

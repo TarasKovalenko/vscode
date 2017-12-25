@@ -441,9 +441,17 @@ export class FileService implements IFileService {
 					}
 				};
 
+				let currentPosition: number = (options && options.position) || null;
+
 				const readChunk = () => {
-					fs.read(fd, chunkBuffer, 0, chunkBuffer.length, null, (err, bytesRead) => {
+					fs.read(fd, chunkBuffer, 0, chunkBuffer.length, currentPosition, (err, bytesRead) => {
 						totalBytesRead += bytesRead;
+
+						if (typeof currentPosition === 'number') {
+							// if we received a position argument as option we need to ensure that
+							// we advance the position by the number of bytesread
+							currentPosition += bytesRead;
+						}
 
 						if (totalBytesRead > MAX_FILE_SIZE) {
 							// stop when reading too much
@@ -613,9 +621,9 @@ export class FileService implements IFileService {
 
 						const sudoCommand: string[] = [`"${this.options.elevationSupport.cliPath}"`];
 						if (options.overwriteReadonly) {
-							sudoCommand.push('--sudo-chmod');
+							sudoCommand.push('--file-chmod');
 						}
-						sudoCommand.push('--sudo-write', `"${tmpPath}"`, `"${absolutePath}"`);
+						sudoCommand.push('--file-write', `"${tmpPath}"`, `"${absolutePath}"`);
 
 						sudoPrompt.exec(sudoCommand.join(' '), promptOptions, (error: string, stdout: string, stderr: string) => {
 							if (error || stderr) {
@@ -627,8 +635,12 @@ export class FileService implements IFileService {
 					});
 				}).then(() => {
 
-					// 3.) resolve again
-					return this.resolve(resource);
+					// 3.) delete temp file
+					return pfs.del(tmpPath, this.tmpPath).then(() => {
+
+						// 4.) resolve again
+						return this.resolve(resource);
+					});
 				});
 			});
 		}).then(null, error => {
