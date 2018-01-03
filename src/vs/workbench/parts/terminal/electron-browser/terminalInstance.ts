@@ -267,7 +267,8 @@ export class TerminalInstance implements ITerminalInstance {
 			fontFamily: font.fontFamily,
 			fontSize: font.fontSize,
 			lineHeight: font.lineHeight,
-			enableBold: this._configHelper.config.enableBold
+			enableBold: this._configHelper.config.enableBold,
+			bellStyle: this._configHelper.config.enableBell ? 'sound' : 'none'
 		});
 		if (this._shellLaunchConfig.initialText) {
 			this._xterm.writeln(this._shellLaunchConfig.initialText);
@@ -326,6 +327,11 @@ export class TerminalInstance implements ITerminalInstance {
 
 				// If tab focus mode is on, tab is not passed to the terminal
 				if (TabFocus.getTabFocusMode() && event.keyCode === 9) {
+					return false;
+				}
+				// Always have alt+F4 skip the terminal on Windows and allow it to be handled by the
+				// system
+				if (platform.isWindows && event.altKey && event.key === 'F4' && !event.ctrlKey) {
 					return false;
 				}
 
@@ -693,6 +699,7 @@ export class TerminalInstance implements ITerminalInstance {
 		this._isExiting = true;
 		this._process = null;
 		let exitCodeMessage: string;
+
 		if (exitCode) {
 			exitCodeMessage = nls.localize('terminal.integrated.exitedWithCode', 'The terminal process terminated with exit code: {0}', exitCode);
 		}
@@ -744,7 +751,11 @@ export class TerminalInstance implements ITerminalInstance {
 					}
 					this._messageService.show(Severity.Error, nls.localize('terminal.integrated.launchFailed', 'The terminal process command `{0}{1}` failed to launch (exit code: {2})', this._shellLaunchConfig.executable, args, exitCode));
 				} else {
-					this._messageService.show(Severity.Error, exitCodeMessage);
+					if (this._configHelper.config.showExitAlert) {
+						this._messageService.show(Severity.Error, exitCodeMessage);
+					} else {
+						console.warn(exitCodeMessage);
+					}
 				}
 			}
 		}
@@ -949,6 +960,7 @@ export class TerminalInstance implements ITerminalInstance {
 		this._setCursorStyle(this._configHelper.config.cursorStyle);
 		this._setCommandsToSkipShell(this._configHelper.config.commandsToSkipShell);
 		this._setScrollback(this._configHelper.config.scrollback);
+		this._setEnableBell(this._configHelper.config.enableBell);
 	}
 
 	private _setCursorBlink(blink: boolean): void {
@@ -973,6 +985,20 @@ export class TerminalInstance implements ITerminalInstance {
 	private _setScrollback(lineCount: number): void {
 		if (this._xterm && this._xterm.getOption('scrollback') !== lineCount) {
 			this._xterm.setOption('scrollback', lineCount);
+		}
+	}
+
+	private _setEnableBell(isEnabled: boolean): void {
+		if (this._xterm) {
+			if (this._xterm.getOption('bellStyle') === 'sound') {
+				if (!this._configHelper.config.enableBell) {
+					this._xterm.setOption('bellStyle', 'none');
+				}
+			} else {
+				if (this._configHelper.config.enableBell) {
+					this._xterm.setOption('bellStyle', 'sound');
+				}
+			}
 		}
 	}
 
