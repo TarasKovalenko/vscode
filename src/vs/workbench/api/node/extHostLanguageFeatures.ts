@@ -10,7 +10,7 @@ import { mixin } from 'vs/base/common/objects';
 import * as vscode from 'vscode';
 import * as TypeConverters from 'vs/workbench/api/node/extHostTypeConverters';
 import { Range, Disposable, CompletionList, SnippetString, Color } from 'vs/workbench/api/node/extHostTypes';
-import { ISingleEditOperation } from 'vs/editor/common/editorCommon';
+import { ISingleEditOperation } from 'vs/editor/common/model';
 import * as modes from 'vs/editor/common/modes';
 import { ExtHostHeapService } from 'vs/workbench/api/node/extHostHeapService';
 import { ExtHostDocuments } from 'vs/workbench/api/node/extHostDocuments';
@@ -289,9 +289,8 @@ class CodeActionAdapter {
 			}
 		});
 
-		return asWinJsPromise(token => this._provider.provideCodeActions2
-			? this._provider.provideCodeActions2(doc, ran, { diagnostics: allDiagnostics }, token)
-			: this._provider.provideCodeActions(doc, ran, { diagnostics: allDiagnostics }, token)
+		return asWinJsPromise(token =>
+			this._provider.provideCodeActions(doc, ran, { diagnostics: allDiagnostics }, token)
 		).then(commandsOrActions => {
 			if (isFalsyOrEmpty(commandsOrActions)) {
 				return undefined;
@@ -314,7 +313,7 @@ class CodeActionAdapter {
 						title: candidate.title,
 						command: candidate.command && this._commands.toInternal(candidate.command),
 						diagnostics: candidate.diagnostics && candidate.diagnostics.map(DiagnosticCollection.toMarkerData),
-						edits: candidate.edit && TypeConverters.WorkspaceEdit.from(candidate.edit),
+						edit: candidate.edit && TypeConverters.WorkspaceEdit.from(candidate.edit),
 					});
 				}
 			}

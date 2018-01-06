@@ -4,20 +4,28 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-import { IStringStream } from 'vs/platform/files/common/files';
-import * as crypto from 'crypto';
 import * as strings from 'vs/base/common/strings';
-import { TPromise } from 'vs/base/common/winjs.base';
 import { CharCode } from 'vs/base/common/charCode';
-import { IRawTextSource } from 'vs/editor/common/model/textSource';
+import { ITextBufferBuilder, ITextBufferFactory, ITextBuffer, DefaultEndOfLine } from 'vs/editor/common/model';
+import { IRawTextSource, TextSource } from 'vs/editor/common/model/linesTextBuffer/textSource';
+import { LinesTextBuffer } from 'vs/editor/common/model/linesTextBuffer/linesTextBuffer';
 
-const AVOID_SLICED_STRINGS = true;
+export class TextBufferFactory implements ITextBufferFactory {
 
-export interface ModelBuilderResult {
-	readonly hash: string;
-	readonly value: IRawTextSource;
+	constructor(public readonly rawTextSource: IRawTextSource) {
+	}
+
+	public create(defaultEOL: DefaultEndOfLine): ITextBuffer {
+		const textSource = TextSource.fromRawTextSource(this.rawTextSource, defaultEOL);
+		return new LinesTextBuffer(textSource);
+	}
+
+	public getFirstLineText(lengthLimit: number): string {
+		return this.rawTextSource.lines[0].substr(0, lengthLimit);
+	}
 }
 
+const AVOID_SLICED_STRINGS = true;
 const PREALLOC_BUFFER_CHARS = 1000;
 
 const emptyString = '';
@@ -58,18 +66,12 @@ function optimizeStringMemory(buff: Buffer, s: string): string {
 
 class ModelLineBasedBuilder {
 
-	private computeHash: boolean;
-	private hash: crypto.Hash;
 	private buff: Buffer;
 	private BOM: string;
 	private lines: string[];
 	private currLineIndex: number;
 
-	constructor(computeHash: boolean) {
-		this.computeHash = computeHash;
-		if (this.computeHash) {
-			this.hash = crypto.createHash('sha1');
-		}
+	constructor() {
 		this.BOM = '';
 		this.lines = [];
 		this.currLineIndex = 0;
@@ -88,75 +90,33 @@ class ModelLineBasedBuilder {
 		for (let i = 0, len = lines.length; i < len; i++) {
 			this.lines[this.currLineIndex++] = optimizeStringMemory(this.buff, lines[i]);
 		}
-		if (this.computeHash) {
-			this.hash.update(lines.join('\n') + '\n');
-		}
 	}
 
-	public finish(length: number, carriageReturnCnt: number, containsRTL: boolean, isBasicASCII: boolean): ModelBuilderResult {
-		return {
-			hash: this.computeHash ? this.hash.digest('hex') : null,
-			value: {
-				BOM: this.BOM,
-				lines: this.lines,
-				length,
-				containsRTL: containsRTL,
-				totalCRCount: carriageReturnCnt,
-				isBasicASCII,
-			}
-		};
+	public finish(carriageReturnCnt: number, containsRTL: boolean, isBasicASCII: boolean): TextBufferFactory {
+		return new TextBufferFactory({
+			BOM: this.BOM,
+			lines: this.lines,
+			containsRTL: containsRTL,
+			totalCRCount: carriageReturnCnt,
+			isBasicASCII,
+		});
 	}
 }
 
-export function computeHash(rawText: IRawTextSource): string {
-	let hash = crypto.createHash('sha1');
-	for (let i = 0, len = rawText.lines.length; i < len; i++) {
-		hash.update(rawText.lines[i] + '\n');
-	}
-	return hash.digest('hex');
-}
-
-export class ModelBuilder {
+export class LinesTextBufferBuilder implements ITextBufferBuilder {
 
 	private leftoverPrevChunk: string;
 	private leftoverEndsInCR: boolean;
 	private totalCRCount: number;
 	private lineBasedBuilder: ModelLineBasedBuilder;
-	private totalLength: number;
 	private containsRTL: boolean;
 	private isBasicASCII: boolean;
 
-	public static fromStringStream(stream: IStringStream): TPromise<ModelBuilderResult> {
-		return new TPromise<ModelBuilderResult>((c, e, p) => {
-			let done = false;
-			let builder = new ModelBuilder(false);
-
-			stream.on('data', (chunk) => {
-				builder.acceptChunk(chunk);
-			});
-
-			stream.on('error', (error) => {
-				if (!done) {
-					done = true;
-					e(error);
-				}
-			});
-
-			stream.on('end', () => {
-				if (!done) {
-					done = true;
-					c(builder.finish());
-				}
-			});
-		});
-	}
-
-	constructor(computeHash: boolean) {
+	constructor() {
 		this.leftoverPrevChunk = '';
 		this.leftoverEndsInCR = false;
 		this.totalCRCount = 0;
-		this.lineBasedBuilder = new ModelLineBasedBuilder(computeHash);
-		this.totalLength = 0;
+		this.lineBasedBuilder = new ModelLineBasedBuilder();
 		this.containsRTL = false;
 		this.isBasicASCII = true;
 	}
@@ -175,7 +135,6 @@ export class ModelBuilder {
 		if (chunk.length === 0) {
 			return;
 		}
-		this.totalLength += chunk.length;
 
 		this._updateCRCount(chunk);
 
@@ -210,12 +169,12 @@ export class ModelBuilder {
 		this.leftoverPrevChunk = lines[lines.length - 1];
 	}
 
-	public finish(): ModelBuilderResult {
+	public finish(): TextBufferFactory {
 		let finalLines = [this.leftoverPrevChunk];
 		if (this.leftoverEndsInCR) {
 			finalLines.push('');
 		}
 		this.lineBasedBuilder.acceptLines(finalLines);
-		return this.lineBasedBuilder.finish(this.totalLength, this.totalCRCount, this.containsRTL, this.isBasicASCII);
+		return this.lineBasedBuilder.finish(this.totalCRCount, this.containsRTL, this.isBasicASCII);
 	}
 }
