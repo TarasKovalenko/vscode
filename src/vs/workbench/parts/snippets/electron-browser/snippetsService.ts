@@ -17,7 +17,7 @@ import { IEnvironmentService } from 'vs/platform/environment/common/environment'
 import { IExtensionService } from 'vs/platform/extensions/common/extensions';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { join, basename, extname } from 'path';
-import { mkdirp, readdir } from 'vs/base/node/pfs';
+import { mkdirp, readdir, exists } from 'vs/base/node/pfs';
 import { watch } from 'fs';
 import { SnippetFile, Snippet } from 'vs/workbench/parts/snippets/electron-browser/snippetsFile';
 import { ISnippetsService } from 'vs/workbench/parts/snippets/electron-browser/snippets.contribution';
@@ -163,27 +163,33 @@ class SnippetsService implements ISnippetsService {
 						continue;
 					}
 
-					const file = new SnippetFile(contribution.path, contribution.language, extension.description);
-					this._files.set(file.filepath, file);
+					if (this._files.has(contribution.path)) {
+						this._files.get(contribution.path).defaultScopes.push(contribution.language);
 
-					if (this._environmentService.isExtensionDevelopment) {
-						file.load().then(file => {
-							// warn about bad tabstop/variable usage
-							if (file.data.some(snippet => snippet.isBogous)) {
+					} else {
+						const file = new SnippetFile(contribution.path, [contribution.language], extension.description);
+						this._files.set(file.filepath, file);
+
+						if (this._environmentService.isExtensionDevelopment) {
+							file.load().then(file => {
+								// warn about bad tabstop/variable usage
+								if (file.data.some(snippet => snippet.isBogous)) {
+									extension.collector.warn(localize(
+										'badVariableUse',
+										"One or more snippets from the extension '{0}' very likely confuse snippet-variables and snippet-placeholders (see https://code.visualstudio.com/docs/editor/userdefinedsnippets#_snippet-syntax for more details)",
+										extension.description.name
+									));
+								}
+							}, err => {
+								// generic error
 								extension.collector.warn(localize(
-									'badVariableUse',
-									"One or more snippets from the extension '{0}' very likely confuse snippet-variables and snippet-placeholders (see https://code.visualstudio.com/docs/editor/userdefinedsnippets#_snippet-syntax for more details)",
-									extension.description.name
+									'badFile',
+									"The snippet file \"{0}\" could not be read.",
+									file.filepath
 								));
-							}
-						}, err => {
-							// generic error
-							extension.collector.warn(localize(
-								'badFile',
-								"The snippet file \"{0}\" could not be read.",
-								file.filepath
-							));
-						});
+							});
+						}
+
 					}
 				}
 			}
@@ -195,7 +201,7 @@ class SnippetsService implements ISnippetsService {
 			const ext = extname(filepath);
 			if (ext === '.json') {
 				const langName = basename(filepath, '.json');
-				this._files.set(filepath, new SnippetFile(filepath, langName, undefined));
+				this._files.set(filepath, new SnippetFile(filepath, [langName], undefined));
 
 			} else if (ext === '.code-snippets') {
 				this._files.set(filepath, new SnippetFile(filepath, undefined, undefined));
@@ -218,19 +224,19 @@ class SnippetsService implements ISnippetsService {
 					return;
 				}
 				const filepath = join(userSnippetsFolder, filename);
-				if (type === 'change') {
-					// `changed` file
-					if (this._files.has(filepath)) {
-						this._files.get(filepath).reset();
-					}
-				} else if (type === 'rename') {
-					// `created` or `deleted` file
-					if (!this._files.has(filepath)) {
-						addUserSnippet(filepath);
+				exists(filepath).then(value => {
+					if (value) {
+						// file created or changed
+						if (this._files.has(filepath)) {
+							this._files.get(filepath).reset();
+						} else {
+							addUserSnippet(filepath);
+						}
 					} else {
+						// file not found
 						this._files.delete(filepath);
 					}
-				}
+				});
 			});
 		}).then(undefined, err => {
 			this._logService.error('Failed to load user snippets', err);
