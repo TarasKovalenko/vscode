@@ -55,6 +55,8 @@ import { getPathLabel } from 'vs/base/common/labels';
 import { extractResources } from 'vs/workbench/browser/editor';
 import { relative } from 'path';
 import { DataTransfers } from 'vs/base/browser/dnd';
+import { distinctParents } from 'vs/base/common/resources';
+import { WorkbenchTree } from 'vs/platform/list/browser/listService';
 
 export class FileDataSource implements IDataSource {
 	constructor(
@@ -278,16 +280,15 @@ export class FileRenderer implements IRenderer {
 		inputBox.select({ start: 0, end: lastDot > 0 && !stat.isDirectory ? lastDot : value.length });
 		inputBox.focus();
 
-		const done = once((commit: boolean) => {
+		const done = once((commit: boolean, blur: boolean) => {
 			tree.clearHighlight();
 
 			if (commit && inputBox.value) {
 				editableData.action.run({ value: inputBox.value });
 			}
 
-			const restoreFocus = document.activeElement === inputBox.inputElement; // https://github.com/Microsoft/vscode/issues/20269
 			setTimeout(() => {
-				if (restoreFocus) {
+				if (!blur) { // https://github.com/Microsoft/vscode/issues/20269
 					tree.DOMFocus();
 				}
 				lifecycle.dispose(toDispose);
@@ -300,14 +301,14 @@ export class FileRenderer implements IRenderer {
 			DOM.addStandardDisposableListener(inputBox.inputElement, DOM.EventType.KEY_DOWN, (e: IKeyboardEvent) => {
 				if (e.equals(KeyCode.Enter)) {
 					if (inputBox.validate()) {
-						done(true);
+						done(true, false);
 					}
 				} else if (e.equals(KeyCode.Escape)) {
-					done(false);
+					done(false, false);
 				}
 			}),
 			DOM.addDisposableListener(inputBox.inputElement, DOM.EventType.BLUR, () => {
-				done(inputBox.isInputValid());
+				done(inputBox.isInputValid(), true);
 			}),
 			label,
 			styler
@@ -333,14 +334,12 @@ export class FileController extends DefaultController implements IDisposable {
 	constructor( @IWorkbenchEditorService private editorService: IWorkbenchEditorService,
 		@IContextMenuService private contextMenuService: IContextMenuService,
 		@ITelemetryService private telemetryService: ITelemetryService,
-		@IMenuService menuService: IMenuService,
+		@IMenuService private menuService: IMenuService,
 		@IContextKeyService contextKeyService: IContextKeyService
 	) {
 		super({ clickBehavior: ClickBehavior.ON_MOUSE_UP /* do not change to not break DND */, keyboardSupport: false /* handled via IListService */ });
 
 		this.toDispose = [];
-		this.contributedContextMenu = menuService.createMenu(MenuId.ExplorerContext, contextKeyService);
-		this.toDispose.push(this.contributedContextMenu);
 	}
 
 	public onLeftClick(tree: ITree, stat: FileStat | Model, event: IMouseEvent, origin: string = 'mouse'): boolean {
@@ -426,7 +425,7 @@ export class FileController extends DefaultController implements IDisposable {
 		return true;
 	}
 
-	public onContextMenu(tree: ITree, stat: FileStat | Model, event: ContextMenuEvent): boolean {
+	public onContextMenu(tree: WorkbenchTree, stat: FileStat | Model, event: ContextMenuEvent): boolean {
 		if (event.target && event.target.tagName && event.target.tagName.toLowerCase() === 'input') {
 			return false;
 		}
@@ -435,6 +434,11 @@ export class FileController extends DefaultController implements IDisposable {
 		event.stopPropagation();
 
 		tree.setFocus(stat);
+
+		if (!this.contributedContextMenu) {
+			this.contributedContextMenu = this.menuService.createMenu(MenuId.ExplorerContext, tree.contextKeyService);
+			this.toDispose.push(this.contributedContextMenu);
+		}
 
 		const anchor = { x: event.posx, y: event.posy };
 		const selection = tree.getSelection();
@@ -450,7 +454,7 @@ export class FileController extends DefaultController implements IDisposable {
 					tree.DOMFocus();
 				}
 			},
-			getActionsContext: () => selection ? selection.map((fs: FileStat) => fs.resource) : undefined
+			getActionsContext: () => selection && selection.indexOf(stat) >= 0 ? selection.map((fs: FileStat) => fs.resource) : [stat]
 		});
 
 		return true;
@@ -706,12 +710,12 @@ export class FileDragAndDrop extends SimpleFileResourceDragAndDrop {
 			});
 
 			// Apply some datatransfer types to allow for dragging the element outside of the application
+			originalEvent.dataTransfer.setData(DataTransfers.TEXT, sources.map(fs => fs.resource.scheme === 'file' ? getPathLabel(fs.resource) : fs.resource.toString()).join('\n'));
 			if (sources.length === 1) {
 				if (!sources[0].isDirectory) {
 					originalEvent.dataTransfer.setData(DataTransfers.DOWNLOAD_URL, [MIME_BINARY, sources[0].name, sources[0].resource.toString()].join(':'));
 				}
 
-				originalEvent.dataTransfer.setData(DataTransfers.TEXT, getPathLabel(sources[0].resource));
 			} else {
 				originalEvent.dataTransfer.setData(DataTransfers.URLS, JSON.stringify(sources.filter(s => !s.isDirectory).map(s => s.resource.toString())));
 			}
@@ -865,7 +869,7 @@ export class FileDragAndDrop extends SimpleFileResourceDragAndDrop {
 	}
 
 	private handleExplorerDrop(tree: ITree, data: IDragAndDropData, target: FileStat, originalEvent: DragMouseEvent): TPromise<void> {
-		const sources: FileStat[] = data.getData();
+		const sources: FileStat[] = distinctParents(data.getData(), s => s.resource);
 		const isCopy = (originalEvent.ctrlKey && !isMacintosh) || (originalEvent.altKey && isMacintosh);
 
 		let confirmPromise: TPromise<IConfirmationResult>;

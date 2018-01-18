@@ -41,7 +41,7 @@ import { IMessageService, IMessageWithAction, IConfirmation, Severity, CancelAct
 import { ITextModel } from 'vs/editor/common/model';
 import { IBackupFileService } from 'vs/workbench/services/backup/common/backup';
 import { IWindowsService } from 'vs/platform/windows/common/windows';
-import { COPY_PATH_COMMAND_ID, REVEAL_IN_EXPLORER_COMMAND_ID, SAVE_ALL_COMMAND_ID, SAVE_ALL_LABEL, SAVE_FILES_COMMAND_ID, SAVE_FILES_LABEL, SAVE_ALL_IN_GROUP_COMMAND_ID } from 'vs/workbench/parts/files/electron-browser/fileCommands';
+import { COPY_PATH_COMMAND_ID, REVEAL_IN_EXPLORER_COMMAND_ID, SAVE_ALL_COMMAND_ID, SAVE_ALL_LABEL, SAVE_ALL_IN_GROUP_COMMAND_ID } from 'vs/workbench/parts/files/electron-browser/fileCommands';
 import { ITextModelService, ITextModelContentProvider } from 'vs/editor/common/services/resolverService';
 import { IConfigurationService, ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
 import { once } from 'vs/base/common/event';
@@ -51,6 +51,7 @@ import { IModelService } from 'vs/editor/common/services/modelService';
 import { ICommandService, CommandsRegistry } from 'vs/platform/commands/common/commands';
 import { IListService, ListWidget } from 'vs/platform/list/browser/listService';
 import { RawContextKey, IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
+import { distinctParents } from 'vs/base/common/resources';
 
 export interface IEditableData {
 	action: IAction;
@@ -63,10 +64,10 @@ export interface IFileViewletState {
 	clearEditable(stat: IFileStat): void;
 }
 
-export const NEW_FILE_COMMAND_ID = 'workbench.command.files.newFile';
+export const NEW_FILE_COMMAND_ID = 'explorer.newFile';
 export const NEW_FILE_LABEL = nls.localize('newFile', "New File");
 
-export const NEW_FOLDER_COMMAND_ID = 'workbench.command.files.newFolder';
+export const NEW_FOLDER_COMMAND_ID = 'explorer.newFolder';
 export const NEW_FOLDER_LABEL = nls.localize('newFolder', "New Folder");
 
 export const TRIGGER_RENAME_LABEL = nls.localize('rename', "Rename");
@@ -537,26 +538,6 @@ export class GlobalNewUntitledFileAction extends Action {
 	}
 }
 
-/* Create new file from anywhere */
-export class GlobalNewFileAction extends BaseGlobalNewAction {
-	public static readonly ID = 'explorer.newFile';
-	public static readonly LABEL = nls.localize('newFile', "New File");
-
-	protected getAction(): IConstructorSignature2<ITree, IFileStat, Action> {
-		return NewFileAction;
-	}
-}
-
-/* Create new folder from anywhere */
-export class GlobalNewFolderAction extends BaseGlobalNewAction {
-	public static readonly ID = 'explorer.newFolder';
-	public static readonly LABEL = nls.localize('newFolder', "New Folder");
-
-	protected getAction(): IConstructorSignature2<ITree, IFileStat, Action> {
-		return NewFolderAction;
-	}
-}
-
 /* Create New File/Folder (only used internally by explorerViewer) */
 export abstract class BaseCreateAction extends BaseRenameAction {
 
@@ -659,14 +640,16 @@ class BaseDeleteFileAction extends BaseFileAction {
 			primaryButton = nls.localize({ key: 'deleteButtonLabel', comment: ['&& denotes a mnemonic'] }, "&&Delete");
 		}
 
+		const distinctElements = distinctParents(this.elements, e => e.resource);
+
 		// Handle dirty
 		let confirmDirtyPromise: TPromise<boolean> = TPromise.as(true);
-		const dirty = this.textFileService.getDirty().filter(d => this.elements.some(e => resources.isEqualOrParent(d, e.resource, !isLinux /* ignorecase */)));
+		const dirty = this.textFileService.getDirty().filter(d => distinctElements.some(e => resources.isEqualOrParent(d, e.resource, !isLinux /* ignorecase */)));
 		if (dirty.length) {
 			let message: string;
-			if (this.elements.length > 1) {
+			if (distinctElements.length > 1) {
 				message = nls.localize('dirtyMessageFilesDelete', "You are deleting files with unsaved changes. Do you want to continue?");
-			} else if (this.elements[0].isDirectory) {
+			} else if (distinctElements[0].isDirectory) {
 				if (dirty.length === 1) {
 					message = nls.localize('dirtyMessageFolderOneDelete', "You are deleting a folder with unsaved changes in 1 file. Do you want to continue?");
 				} else {
@@ -706,9 +689,9 @@ class BaseDeleteFileAction extends BaseFileAction {
 
 			// Confirm for moving to trash
 			else if (this.useTrash) {
-				const message = this.elements.length > 1 ? getConfirmMessage(nls.localize('confirmMoveTrashMessageMultiple', "Are you sure you want to delete the following {0} files?", this.elements.length), this.elements.map(e => e.resource))
-					: this.elements[0].isDirectory ? nls.localize('confirmMoveTrashMessageFolder', "Are you sure you want to delete '{0}' and its contents?", this.elements[0].name)
-						: nls.localize('confirmMoveTrashMessageFile', "Are you sure you want to delete '{0}'?", this.elements[0].name);
+				const message = distinctElements.length > 1 ? getConfirmMessage(nls.localize('confirmMoveTrashMessageMultiple', "Are you sure you want to delete the following {0} files?", distinctElements.length), distinctElements.map(e => e.resource))
+					: distinctElements[0].isDirectory ? nls.localize('confirmMoveTrashMessageFolder', "Are you sure you want to delete '{0}' and its contents?", distinctElements[0].name)
+						: nls.localize('confirmMoveTrashMessageFile', "Are you sure you want to delete '{0}'?", distinctElements[0].name);
 				confirmDeletePromise = this.messageService.confirmWithCheckbox({
 					message,
 					detail: isWindows ? nls.localize('undoBin', "You can restore from the recycle bin.") : nls.localize('undoTrash', "You can restore from the trash."),
@@ -722,9 +705,9 @@ class BaseDeleteFileAction extends BaseFileAction {
 
 			// Confirm for deleting permanently
 			else {
-				const message = this.elements.length > 1 ? getConfirmMessage(nls.localize('confirmDeleteMessageMultiple', "Are you sure you want to permanently delete the following {0} files?", this.elements.length), this.elements.map(e => e.resource))
-					: this.elements[0].isDirectory ? nls.localize('confirmDeleteMessageFolder', "Are you sure you want to permanently delete '{0}' and its contents?", this.elements[0].name)
-						: nls.localize('confirmDeleteMessageFile', "Are you sure you want to permanently delete '{0}'?", this.elements[0].name);
+				const message = distinctElements.length > 1 ? getConfirmMessage(nls.localize('confirmDeleteMessageMultiple', "Are you sure you want to permanently delete the following {0} files?", distinctElements.length), distinctElements.map(e => e.resource))
+					: distinctElements[0].isDirectory ? nls.localize('confirmDeleteMessageFolder', "Are you sure you want to permanently delete '{0}' and its contents?", distinctElements[0].name)
+						: nls.localize('confirmDeleteMessageFile', "Are you sure you want to permanently delete '{0}'?", distinctElements[0].name);
 				confirmDeletePromise = this.messageService.confirmWithCheckbox({
 					message,
 					detail: nls.localize('irreversible', "This action is irreversible!"),
@@ -749,20 +732,19 @@ class BaseDeleteFileAction extends BaseFileAction {
 					}
 
 					// Call function
-					const servicePromise = TPromise.join(this.elements.map(e => this.fileService.del(e.resource, this.useTrash))).then(() => {
-						if (this.elements[0].parent) {
-							this.tree.setFocus(this.elements[0].parent); // move focus to parent
+					const servicePromise = TPromise.join(distinctElements.map(e => this.fileService.del(e.resource, this.useTrash))).then(() => {
+						if (distinctElements[0].parent) {
+							this.tree.setFocus(distinctElements[0].parent); // move focus to parent
 						}
 					}, (error: any) => {
-						if (this.elements.length === 1) {
-							// Allow to retry
-							let extraAction: Action;
-							if (this.useTrash) {
-								extraAction = new Action('permanentDelete', nls.localize('permDelete', "Delete Permanently"), null, true, () => { this.useTrash = false; this.skipConfirm = true; return this.run(); });
-							}
 
-							this.onErrorWithRetry(error, () => this.run(), extraAction);
+						// Allow to retry
+						let extraAction: Action;
+						if (this.useTrash) {
+							extraAction = new Action('permanentDelete', nls.localize('permDelete', "Delete Permanently"), null, true, () => { this.useTrash = false; this.skipConfirm = true; return this.run(); });
 						}
+
+						this.onErrorWithRetry(error, () => this.run(), extraAction);
 
 						// Focus back to tree
 						this.tree.DOMFocus();
@@ -1217,20 +1199,6 @@ export class SaveAllInGroupAction extends BaseSaveAllAction {
 	}
 }
 
-export class SaveFilesAction extends BaseSaveAllAction {
-
-	public static readonly ID = 'workbench.action.files.saveFiles';
-	public static readonly LABEL = SAVE_FILES_LABEL;
-
-	protected doRun(context: any): TPromise<any> {
-		return this.commandService.executeCommand(SAVE_FILES_COMMAND_ID, false);
-	}
-
-	protected includeUntitled(): boolean {
-		return false;
-	}
-}
-
 export class FocusOpenEditorsView extends Action {
 
 	public static readonly ID = 'workbench.files.action.focusOpenEditorsView';
@@ -1621,7 +1589,7 @@ export const pasteFileHandler = (accessor: ServicesAccessor) => {
 	const listService = accessor.get(IListService);
 	const explorerContext = getContext(listService.lastFocusedList, accessor.get(IViewletService));
 
-	return TPromise.join(filesToCopy.map(toCopy => {
+	return TPromise.join(distinctParents(filesToCopy, s => s.resource).map(toCopy => {
 		const pasteFileAction = instantationService.createInstance(PasteFileAction, listService.lastFocusedList, explorerContext.stat);
 		return pasteFileAction.run(toCopy);
 	}));
