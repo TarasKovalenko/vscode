@@ -112,6 +112,7 @@ export class PreferencesEditor extends BaseEditor {
 
 	private delayedFilterLogging: Delayer<void>;
 	private remoteSearchThrottle: ThrottledDelayer<IFilterOrSearchResult>;
+	private _lastReportedFilter: string;
 
 	private lastFocusedWidget: SearchWidget | SideBySidePreferencesWidget = null;
 
@@ -294,7 +295,7 @@ export class PreferencesEditor extends BaseEditor {
 	}
 
 	private reportFilteringUsed(filter: string, counts: IStringDictionary<number>, metadata?: IFilterMetadata): void {
-		if (filter) {
+		if (filter && filter !== this._lastReportedFilter) {
 			let data = {
 				filter,
 				fuzzy: !!metadata,
@@ -313,6 +314,7 @@ export class PreferencesEditor extends BaseEditor {
 				}
 			*/
 			this.telemetryService.publicLog('defaultSettings.filter', data);
+			this._lastReportedFilter = filter;
 		}
 	}
 }
@@ -911,7 +913,8 @@ abstract class AbstractSettingsEditorContribution extends Disposable implements 
 
 	private _hasAssociatedPreferencesModelChanged(associatedPreferencesModelUri: URI): TPromise<boolean> {
 		return this.preferencesRendererCreationPromise.then(preferencesRenderer => {
-			return !(preferencesRenderer && preferencesRenderer.associatedPreferencesModel && preferencesRenderer.associatedPreferencesModel.uri.toString() === associatedPreferencesModelUri.toString());
+			const associatedPreferencesModel = preferencesRenderer.getAssociatedPreferencesModel();
+			return !(preferencesRenderer && associatedPreferencesModel && associatedPreferencesModel.uri.toString() === associatedPreferencesModelUri.toString());
 		});
 	}
 
@@ -920,10 +923,11 @@ abstract class AbstractSettingsEditorContribution extends Disposable implements 
 			.then(associatedPreferencesEditorModel => {
 				return this.preferencesRendererCreationPromise.then(preferencesRenderer => {
 					if (preferencesRenderer) {
-						if (preferencesRenderer.associatedPreferencesModel) {
-							preferencesRenderer.associatedPreferencesModel.dispose();
+						const associatedPreferencesModel = preferencesRenderer.getAssociatedPreferencesModel();
+						if (associatedPreferencesModel) {
+							associatedPreferencesModel.dispose();
 						}
-						preferencesRenderer.associatedPreferencesModel = associatedPreferencesEditorModel;
+						preferencesRenderer.setAssociatedPreferencesModel(associatedPreferencesEditorModel);
 					}
 					return preferencesRenderer;
 				});
@@ -934,8 +938,9 @@ abstract class AbstractSettingsEditorContribution extends Disposable implements 
 		if (this.preferencesRendererCreationPromise) {
 			this.preferencesRendererCreationPromise.then(preferencesRenderer => {
 				if (preferencesRenderer) {
-					if (preferencesRenderer.associatedPreferencesModel) {
-						preferencesRenderer.associatedPreferencesModel.dispose();
+					const associatedPreferencesModel = preferencesRenderer.getAssociatedPreferencesModel();
+					if (associatedPreferencesModel) {
+						associatedPreferencesModel.dispose();
 					}
 					preferencesRenderer.preferencesModel.dispose();
 					preferencesRenderer.dispose();
