@@ -6,6 +6,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const remote = require('electron').remote;
 
 function parseURLQueryArgs() {
@@ -34,6 +35,18 @@ function uriFromPath(_path) {
 	}
 
 	return encodeURI('file://' + pathName);
+}
+
+function readFile(file) {
+	return new Promise(function(resolve, reject) {
+		fs.readFile(file, 'utf8', function(err, data) {
+			if (err) {
+				reject(err);
+				return;
+			}
+			resolve(data);
+		});
+	});
 }
 
 function main() {
@@ -65,6 +78,43 @@ function main() {
 	// Load the loader and start loading the workbench
 	const rootUrl = uriFromPath(configuration.appRoot) + '/out';
 
+	// Get the nls configuration into the process.env as early as possible.
+	var nlsConfig = { availableLanguages: {} };
+	const config = process.env['VSCODE_NLS_CONFIG'];
+	if (config) {
+		process.env['VSCODE_NLS_CONFIG'] = config;
+		try {
+			nlsConfig = JSON.parse(config);
+		} catch (e) { /*noop*/ }
+	}
+
+	if (nlsConfig._resolvedLanguagePackCoreLocation) {
+		let bundles = Object.create(null);
+		nlsConfig.loadBundle = function(bundle, language, cb) {
+			let result = bundles[bundle];
+			if (result) {
+				cb(undefined, result);
+				return;
+			}
+			let bundleFile = path.join(nlsConfig._resolvedLanguagePackCoreLocation, bundle.replace(/\//g, '!') + '.nls.json');
+			readFile(bundleFile).then(function (content) {
+				let json = JSON.parse(content);
+				bundles[bundle] = json;
+				cb(undefined, json);
+			})
+			.catch(cb);
+		};
+	}
+
+	var locale = nlsConfig.availableLanguages['*'] || 'en';
+	if (locale === 'zh-tw') {
+		locale = 'zh-Hant';
+	} else if (locale === 'zh-cn') {
+		locale = 'zh-Hans';
+	}
+
+	window.document.documentElement.setAttribute('lang', locale);
+
 	// In the bundled version the nls plugin is packaged with the loader so the NLS Plugins
 	// loads as soon as the loader loads. To be able to have pseudo translation
 	createScript(rootUrl + '/vs/loader.js', function () {
@@ -72,13 +122,18 @@ function main() {
 
 		window.MonacoEnvironment = {};
 
-		var nlsConfig = { availableLanguages: {} };
 		require.config({
 			baseUrl: rootUrl,
 			'vs/nls': nlsConfig,
 			nodeCachedDataDir: configuration.nodeCachedDataDir,
 			nodeModules: [/*BUILD->INSERT_NODE_MODULES*/]
 		});
+
+		if (nlsConfig.pseudo) {
+			require(['vs/nls'], function (nlsPlugin) {
+				nlsPlugin.setPseudoTranslation(nlsConfig.pseudo);
+			});
+		}
 
 		require(['vs/code/electron-browser/issue/issueReporterMain'], (issueReporter) => {
 			issueReporter.startup(configuration);
