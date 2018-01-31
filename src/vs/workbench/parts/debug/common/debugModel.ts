@@ -24,6 +24,7 @@ import {
 } from 'vs/workbench/parts/debug/common/debug';
 import { Source } from 'vs/workbench/parts/debug/common/debugSource';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { mixin } from 'vs/base/common/objects';
 
 const MAX_REPL_LENGTH = 10000;
 
@@ -380,9 +381,9 @@ export class StackFrame implements IStackFrame {
 		return `${this.name} (${this.source.inMemory ? this.source.name : this.source.uri.fsPath}:${this.range.startLineNumber})`;
 	}
 
-	public openInEditor(editorService: IWorkbenchEditorService, preserveFocus?: boolean, sideBySide?: boolean): TPromise<any> {
+	public openInEditor(editorService: IWorkbenchEditorService, preserveFocus?: boolean, sideBySide?: boolean, pinned?: boolean): TPromise<any> {
 		return !this.source.available ? TPromise.as(null) :
-			this.source.openInEditor(editorService, this.range, preserveFocus, sideBySide);
+			this.source.openInEditor(editorService, this.range, preserveFocus, sideBySide, pinned);
 	}
 }
 
@@ -560,7 +561,7 @@ export class Process implements IProcess {
 		let source = new Source(raw, this.getId());
 		if (this.sources.has(source.uri.toString())) {
 			source = this.sources.get(source.uri.toString());
-			source.raw = raw;
+			source.raw = mixin(source.raw, raw);
 		} else {
 			this.sources.set(source.uri.toString(), source);
 		}

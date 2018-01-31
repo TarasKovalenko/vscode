@@ -29,8 +29,8 @@ import { InstantiationService } from 'vs/platform/instantiation/common/instantia
 import { resolveCommonProperties } from 'vs/platform/telemetry/node/commonProperties';
 import { WindowsChannelClient } from 'vs/platform/windows/common/windowsIpc';
 import { EnvironmentService } from 'vs/platform/environment/node/environmentService';
-import { IssueReporterModel, IssueType } from 'vs/code/electron-browser/issue/issueReporterModel';
-import { IssueReporterData, IssueReporterStyles } from 'vs/platform/issue/common/issue';
+import { IssueReporterModel } from 'vs/code/electron-browser/issue/issueReporterModel';
+import { IssueReporterData, IssueReporterStyles, IssueType } from 'vs/platform/issue/common/issue';
 import BaseHtml from 'vs/code/electron-browser/issue/issueReporterPage';
 import { ILocalExtension } from 'vs/platform/extensionManagement/common/extensionManagement';
 import { debounce } from 'vs/base/common/decorators';
@@ -56,9 +56,10 @@ export class IssueReporter extends Disposable {
 		super();
 
 		this.initServices(configuration);
+		console.log((<any>require).getStats());
 
 		this.issueReporterModel = new IssueReporterModel({
-			issueType: IssueType.Bug,
+			issueType: configuration.data.issueType || IssueType.Bug,
 			includeSystemInfo: true,
 			includeWorkspaceInfo: true,
 			includeProcessInfo: true,
@@ -68,7 +69,7 @@ export class IssueReporter extends Disposable {
 				os: `${os.type()} ${os.arch()} ${os.release()}`
 			},
 			extensionsDisabled: this.environmentService.disableExtensions,
-			reprosWithoutExtensions: true
+			reprosWithoutExtensions: false
 		});
 
 		ipcRenderer.on('issueInfoResponse', (event, info) => {
@@ -94,6 +95,7 @@ export class IssueReporter extends Disposable {
 	}
 
 	render(): void {
+		(<HTMLSelectElement>document.getElementById('issue-type')).value = this.issueReporterModel.getData().issueType.toString();
 		this.renderBlocks();
 	}
 
@@ -320,7 +322,7 @@ export class IssueReporter extends Disposable {
 
 			descriptionTitle.innerHTML = `${localize('stepsToReproduce', "Steps to Reproduce")} <span class="required-input">*</span>`;
 			show(descriptionSubtitle);
-			descriptionSubtitle.innerHTML = localize('bugDescription', "How did you encounter this problem? Please provide clear steps to reproduce the problem during our investigation. What did you expect to happen and what actually did happen?");
+			descriptionSubtitle.innerHTML = localize('bugDescription', "How did you encounter this problem? What steps do you need to perform to reliably reproduce the problem? What did you expect to happen and what actually did happen?");
 		} else if (issueType === IssueType.PerformanceIssue) {
 			show(systemBlock);
 			show(processBlock);
@@ -391,7 +393,8 @@ export class IssueReporter extends Disposable {
 		}
 
 		const issueTitle = (<HTMLInputElement>document.getElementById('issue-title')).value;
-		const baseUrl = `https://github.com/microsoft/vscode/issues/new?title=${issueTitle}&body=`;
+		const queryStringPrefix = product.reportIssueUrl.indexOf('?') === -1 ? '?' : '&';
+		const baseUrl = `${product.reportIssueUrl}${queryStringPrefix}title=${issueTitle}&body=`;
 		const issueBody = this.issueReporterModel.serialize();
 		shell.openExternal(baseUrl + encodeURIComponent(issueBody));
 		return true;

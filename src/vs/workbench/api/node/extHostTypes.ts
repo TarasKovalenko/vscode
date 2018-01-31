@@ -1200,6 +1200,12 @@ export enum ColorFormat {
 	HSL = 2
 }
 
+export enum SourceControlInputBoxValidationType {
+	Error = 0,
+	Warning = 1,
+	Information = 2
+}
+
 export enum TaskRevealKind {
 	Always = 1,
 
@@ -1607,6 +1613,16 @@ export class FunctionBreakpoint extends Breakpoint {
 	constructor(functionName: string, enabled?: boolean, condition?: string, hitCondition?: string) {
 		super(enabled, condition, hitCondition);
 		this.functionName = functionName;
+	}
+}
+
+export class DebugAdapterExecutable implements vscode.DebugAdapterExecutable {
+	readonly command: string;
+	readonly args: string[];
+
+	constructor(command: string, args?: string[]) {
+		this.command = command;
+		this.args = args;
 	}
 }
 

@@ -34,6 +34,7 @@ const i18n = require('./lib/i18n');
 const glob = require('glob');
 const deps = require('./dependencies');
 const getElectronVersion = require('./lib/electron').getElectronVersion;
+// const createAsar = require('./lib/asar').createAsar;
 
 const productionDependencies = deps.getProductionDependencies(path.dirname(__dirname));
 const baseModules = Object.keys(process.binding('natives')).filter(n => !/^_|\//.test(n));
@@ -92,7 +93,7 @@ const BUNDLED_FILE_HEADER = [
 	' *--------------------------------------------------------*/'
 ].join('\n');
 
-const languages = i18n.defaultLanguages.concat(process.env.VSCODE_QUALITY !== 'stable' ? i18n.extraLanguages: []);
+const languages = i18n.defaultLanguages.concat([]);  // i18n.defaultLanguages.concat(process.env.VSCODE_QUALITY !== 'stable' ? i18n.extraLanguages : []);
 
 gulp.task('clean-optimized-vscode', util.rimraf('out-vscode'));
 gulp.task('optimize-vscode', ['clean-optimized-vscode', 'compile-build', 'compile-extensions-build'], common.optimizeTask({
@@ -301,9 +302,10 @@ function packageTask(platform, arch, opts) {
 			.pipe(util.cleanNodeModule('windows-process-tree', ['binding.gyp', 'build/**', 'src/**'], ['**/*.node']))
 			.pipe(util.cleanNodeModule('gc-signals', ['binding.gyp', 'build/**', 'src/**', 'deps/**'], ['**/*.node', 'src/index.js']))
 			.pipe(util.cleanNodeModule('keytar', ['binding.gyp', 'build/**', 'src/**', 'script/**', 'node_modules/**'], ['**/*.node']))
-			.pipe(util.cleanNodeModule('node-pty', ['binding.gyp', 'build/**', 'src/**', 'tools/**'], ['build/Release/**']))
+			.pipe(util.cleanNodeModule('node-pty', ['binding.gyp', 'build/**', 'src/**', 'tools/**'], ['build/Release/*.exe', 'build/Release/*.dll', 'build/Release/*.node']))
 			.pipe(util.cleanNodeModule('nsfw', ['binding.gyp', 'build/**', 'src/**', 'openpa/**', 'includes/**'], ['**/*.node', '**/*.a']))
 			.pipe(util.cleanNodeModule('vsda', ['binding.gyp', 'README.md', 'build/**', '*.bat', '*.sh', '*.cpp', '*.h'], ['build/Release/vsda.node']));
+			// .pipe(createAsar(path.join(process.cwd(), 'node_modules'), ['**/*.node', '**/vscode-ripgrep/bin/*', '**/node-pty/build/Release/*'], 'app/node_modules.asar'));
 
 		let all = es.merge(
 			packageJsonStream,
@@ -399,7 +401,7 @@ const apiHostname = process.env.TRANSIFEX_API_URL;
 const apiName = process.env.TRANSIFEX_API_NAME;
 const apiToken = process.env.TRANSIFEX_API_TOKEN;
 
-gulp.task('vscode-translations-push', function () {
+gulp.task('vscode-translations-push', [ 'optimize-vscode' ], function () {
 	const pathToMetadata = './out-vscode/nls.metadata.json';
 	const pathToExtensions = './extensions/*';
 	const pathToSetup = 'build/win32/**/{Default.isl,messages.en.isl}';
@@ -409,10 +411,10 @@ gulp.task('vscode-translations-push', function () {
 		gulp.src(pathToSetup).pipe(i18n.createXlfFilesForIsl()),
 		gulp.src(pathToExtensions).pipe(i18n.createXlfFilesForExtensions())
 	).pipe(i18n.findObsoleteResources(apiHostname, apiName, apiToken)
-	).pipe(i18n.pushXlfFiles(apiHostname, apiName, apiToken));
+		).pipe(i18n.pushXlfFiles(apiHostname, apiName, apiToken));
 });
 
-gulp.task('vscode-translations-push-test', function () {
+gulp.task('vscode-translations-push-test', [ 'optimize-vscode' ], function () {
 	const pathToMetadata = './out-vscode/nls.metadata.json';
 	const pathToExtensions = './extensions/*';
 	const pathToSetup = 'build/win32/**/{Default.isl,messages.en.isl}';
@@ -422,7 +424,7 @@ gulp.task('vscode-translations-push-test', function () {
 		gulp.src(pathToSetup).pipe(i18n.createXlfFilesForIsl()),
 		gulp.src(pathToExtensions).pipe(i18n.createXlfFilesForExtensions())
 	).pipe(i18n.findObsoleteResources(apiHostname, apiName, apiToken)
-	).pipe(vfs.dest('../vscode-transifex-input'));
+		).pipe(vfs.dest('../vscode-transifex-input'));
 });
 
 gulp.task('vscode-translations-pull', function () {
@@ -597,17 +599,3 @@ gulp.task('generate-vscode-configuration', () => {
 		console.error(e.toString());
 	});
 });
-
-//#region Built-In Extensions
-gulp.task('clean-builtin-extensions', util.rimraf('.build/builtInExtensions'));
-gulp.task('download-builtin-extensions', ['clean-builtin-extensions'], function () {
-	const marketplaceExtensions = es.merge(...builtInExtensions.map(extension => {
-		return ext.fromMarketplace(extension.name, extension.version)
-			.pipe(rename(p => p.dirname = `${extension.name}/${p.dirname}`));
-	}));
-
-	return marketplaceExtensions
-		.pipe(util.setExecutableBit(['**/*.sh']))
-		.pipe(vfs.dest('.build/builtInExtensions'));
-});
-//#endregion

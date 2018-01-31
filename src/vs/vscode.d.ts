@@ -1954,7 +1954,7 @@ declare module 'vscode' {
 		/**
 		 * Creates a new code action.
 		 *
-		 * A code action must have at least a [title](#CodeAction.title) and either [edits](#CodeAction.edits)
+		 * A code action must have at least a [title](#CodeAction.title) and either [edits](#CodeAction.edit)
 		 * or a [command](#CodeAction.command).
 		 *
 		 * @param title The title of the code action.
@@ -5495,13 +5495,14 @@ declare module 'vscode' {
 		 * will be matched against the file paths of resulting matches relative to their workspace. Use a [relative pattern](#RelativePattern)
 		 * to restrict the search results to a [workspace folder](#WorkspaceFolder).
 		 * @param exclude  A [glob pattern](#GlobPattern) that defines files and folders to exclude. The glob pattern
-		 * will be matched against the file paths of resulting matches relative to their workspace.
+		 * will be matched against the file paths of resulting matches relative to their workspace. When `undefined` only default excludes will
+		 * apply, when `null` no excludes will apply.
 		 * @param maxResults An upper-bound for the result.
 		 * @param token A token that can be used to signal cancellation to the underlying search engine.
 		 * @return A thenable that resolves to an array of resource identifiers. Will return no results if no
 		 * [workspace folders](#workspace.workspaceFolders) are opened.
 		 */
-		export function findFiles(include: GlobPattern, exclude?: GlobPattern, maxResults?: number, token?: CancellationToken): Thenable<Uri[]>;
+		export function findFiles(include: GlobPattern, exclude?: GlobPattern | null, maxResults?: number, token?: CancellationToken): Thenable<Uri[]>;
 
 		/**
 		 * Save all dirty files.
@@ -5584,7 +5585,7 @@ declare module 'vscode' {
 		 * An event that is emitted when a [text document](#TextDocument) is opened.
 		 *
 		 * To add an event listener when a visible text document is opened, use the [TextEditor](#TextEditor) events in the
-		 * [window](#_window) namespace. Note that:
+		 * [window](#window) namespace. Note that:
 		 *
 		 * - The event is emitted before the [document](#TextDocument) is updated in the
 		 * [active text editor](#window.activeTextEditor)
@@ -5597,7 +5598,7 @@ declare module 'vscode' {
 		 * An event that is emitted when a [text document](#TextDocument) is disposed.
 		 *
 		 * To add an event listener when a visible text document is closed, use the [TextEditor](#TextEditor) events in the
-		 * [window](#_window) namespace. Note that this event is not emitted when a [TextEditor](#TextEditor) is closed
+		 * [window](#window) namespace. Note that this event is not emitted when a [TextEditor](#TextEditor) is closed
 		 * but the document remains open in another [visible text editor](#window.visibleTextEditors).
 		 */
 		export const onDidCloseTextDocument: Event<TextDocument>;
@@ -6024,11 +6025,6 @@ declare module 'vscode' {
 		 * A string to show as place holder in the input box to guide the user.
 		 */
 		placeholder: string;
-
-		/**
-		 * The warning threshold for lines in the input box.
-		 */
-		lineWarningLength: number | undefined;
 	}
 
 	interface QuickDiffProvider {

@@ -266,6 +266,7 @@ export class PreferencesEditor extends BaseEditor {
 			return this.remoteSearchThrottle.trigger(() => this.preferencesRenderers.remoteSearchPreferences(query));
 		} else {
 			// When clearing the input, update immediately to clear it
+			this.remoteSearchThrottle.cancel();
 			return this.preferencesRenderers.remoteSearchPreferences(query);
 		}
 	}
@@ -315,14 +316,16 @@ export class PreferencesEditor extends BaseEditor {
 			let data = {
 				filter,
 				durations,
-				counts
+				counts,
+				requestCount: metadata && metadata['nlpResult'] && metadata['nlpResult'].requestCount
 			};
 
 			/* __GDPR__
 				"defaultSettings.filter" : {
 					"filter": { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
 					"durations" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
-					"counts" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+					"counts" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" },
+					"requestCount" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
 				}
 			*/
 			this.telemetryService.publicLog('defaultSettings.filter', data);
@@ -1035,8 +1038,7 @@ abstract class AbstractSettingsEditorContribution extends Disposable implements 
 
 	private _hasAssociatedPreferencesModelChanged(associatedPreferencesModelUri: URI): TPromise<boolean> {
 		return this.preferencesRendererCreationPromise.then(preferencesRenderer => {
-			const associatedPreferencesModel = preferencesRenderer.getAssociatedPreferencesModel();
-			return !(preferencesRenderer && associatedPreferencesModel && associatedPreferencesModel.uri.toString() === associatedPreferencesModelUri.toString());
+			return !(preferencesRenderer && preferencesRenderer.getAssociatedPreferencesModel() && preferencesRenderer.getAssociatedPreferencesModel().uri.toString() === associatedPreferencesModelUri.toString());
 		});
 	}
 
