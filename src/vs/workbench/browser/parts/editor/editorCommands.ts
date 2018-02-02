@@ -275,6 +275,10 @@ function registerEditorCommands() {
 			const model = editorGroupService.getStacksModel();
 			const editorService = accessor.get(IWorkbenchEditorService);
 			const contexts = getMultiSelectedEditorContexts(context, accessor.get(IListService));
+			if (contexts.length === 0 && model.activeGroup) {
+				// If command is triggered from the command palette use the active group
+				contexts.push({ groupId: model.activeGroup.id });
+			}
 
 			let positionOne: { unmodifiedOnly: boolean } = void 0;
 			let positionTwo: { unmodifiedOnly: boolean } = void 0;
@@ -516,18 +520,19 @@ function positionAndInput(editorGroupService: IEditorGroupService, editorService
 }
 
 export function getMultiSelectedEditorContexts(editorContext: IEditorCommandsContext, listService: IListService): IEditorCommandsContext[] {
-	const elementToContext = (element: IEditorIdentifier | EditorGroup) =>
-		element instanceof EditorGroup ? { groupId: element.id, editorIndex: undefined } : { groupId: element.group.id, editorIndex: element.group.indexOf(element.editor) };
-
 	// First check for a focused list to return the selected items from
 	const list = listService.lastFocusedList;
 	if (list instanceof List && list.isDOMFocused()) {
-		const focusedElements: (IEditorIdentifier | EditorGroup)[] = list.getFocusedElements();
+		const elementToContext = (element: IEditorIdentifier | EditorGroup) =>
+			element instanceof EditorGroup ? { groupId: element.id, editorIndex: undefined } : { groupId: element.group.id, editorIndex: element.group.indexOf(element.editor) };
+		const onlyEditorGroupAndEditor = (e) => e instanceof EditorGroup || ('editor' in e && 'group' in e);
+
+		const focusedElements: (IEditorIdentifier | EditorGroup)[] = list.getFocusedElements().filter(onlyEditorGroupAndEditor);
 		// need to take into account when editor context is { group: group }
 		const focus = editorContext ? editorContext : focusedElements.length ? focusedElements.map(elementToContext)[0] : undefined;
 
 		if (focus) {
-			const selection: (IEditorIdentifier | EditorGroup)[] = list.getSelectedElements();
+			const selection: (IEditorIdentifier | EditorGroup)[] = list.getSelectedElements().filter(onlyEditorGroupAndEditor);
 			// Only respect selection if it contains focused element
 			if (selection && selection.some(s => s instanceof EditorGroup ? s.id === focus.groupId : s.group.id === focus.groupId && s.group.indexOf(s.editor) === focus.editorIndex)) {
 				return selection.map(elementToContext);
