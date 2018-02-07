@@ -36,6 +36,8 @@ import { ILocalExtension } from 'vs/platform/extensionManagement/common/extensio
 import { debounce } from 'vs/base/common/decorators';
 import * as platform from 'vs/base/common/platform';
 
+const MAX_URL_LENGTH = 5400;
+
 export interface IssueReporterConfiguration extends IWindowConfiguration {
 	data: IssueReporterData;
 }
@@ -52,6 +54,8 @@ export class IssueReporter extends Disposable {
 	private telemetryService: ITelemetryService;
 	private issueReporterModel: IssueReporterModel;
 	private shouldQueueSearch = true;
+	private receivedSystemInfo = false;
+	private receivedPerformanceInfo = false;
 
 	constructor(configuration: IssueReporterConfiguration) {
 		super();
@@ -72,17 +76,26 @@ export class IssueReporter extends Disposable {
 			reprosWithoutExtensions: false
 		});
 
-		ipcRenderer.on('issueInfoResponse', (event, info) => {
+		ipcRenderer.on('issuePerformanceInfoResponse', (event, info) => {
 			this.issueReporterModel.update(info);
+			this.receivedPerformanceInfo = true;
 
-			this.updateAllBlocks(this.issueReporterModel.getData());
-
-			const submitButton = <HTMLButtonElement>document.getElementById('github-submit-btn');
-			submitButton.disabled = false;
-			submitButton.textContent = localize('previewOnGitHub', "Preview on GitHub");
+			const state = this.issueReporterModel.getData();
+			this.updateProcessInfo(state);
+			this.updateWorkspaceInfo(state);
+			this.updatePreviewButtonState();
 		});
 
-		ipcRenderer.send('issueInfoRequest');
+		ipcRenderer.on('issueSystemInfoResponse', (event, info) => {
+			this.issueReporterModel.update({ systemInfo: info });
+			this.receivedSystemInfo = true;
+
+			this.updateSystemInfo(this.issueReporterModel.getData());
+			this.updatePreviewButtonState();
+		});
+
+		ipcRenderer.send('issueSystemInfoRequest');
+		ipcRenderer.send('issuePerformanceInfoRequest');
 
 		if (window.document.documentElement.lang !== 'en') {
 			show(document.getElementById('english'));
@@ -155,6 +168,18 @@ export class IssueReporter extends Disposable {
 			content.push(`a { color: ${styles.textLinkColor}; }`);
 		}
 
+		if (styles.sliderBackgroundColor) {
+			content.push(`body::-webkit-scrollbar-thumb { background-color: ${styles.sliderBackgroundColor}; }`);
+		}
+
+		if (styles.sliderActiveColor) {
+			content.push(`body::-webkit-scrollbar-thumb:active { background-color: ${styles.sliderActiveColor}; }`);
+		}
+
+		if (styles.sliderHoverColor) {
+			content.push(`body::-webkit-scrollbar-thumb:hover { background-color: ${styles.sliderHoverColor}; }`);
+		}
+
 		styleTag.innerHTML = content.join('\n');
 		document.head.appendChild(styleTag);
 		document.body.style.color = styles.color;
@@ -209,6 +234,7 @@ export class IssueReporter extends Disposable {
 	private setEventHandlers(): void {
 		document.getElementById('issue-type').addEventListener('change', (event: Event) => {
 			this.issueReporterModel.update({ issueType: parseInt((<HTMLInputElement>event.target).value) });
+			this.updatePreviewButtonState();
 			this.render();
 		});
 
@@ -218,6 +244,24 @@ export class IssueReporter extends Disposable {
 				this.issueReporterModel.update({ [elementId]: !this.issueReporterModel.getData()[elementId] });
 			});
 		});
+
+		const labelElements = document.getElementsByClassName('caption');
+		for (let i = 0; i < labelElements.length; i++) {
+			const label = labelElements.item(i);
+			label.addEventListener('click', (e) => {
+				e.stopPropagation();
+
+				// Stop propgagation not working as expected in this case https://bugs.chromium.org/p/chromium/issues/detail?id=809801
+				// preventDefault does prevent outer details tag from toggling, so use that and manually toggle the checkbox
+				e.preventDefault();
+				const containingDiv = (<HTMLLabelElement>e.target).parentElement;
+				const checkbox = <HTMLInputElement>containingDiv.firstElementChild;
+				if (checkbox) {
+					checkbox.checked = !checkbox.checked;
+					this.issueReporterModel.update({ [checkbox.id]: !this.issueReporterModel.getData()[checkbox.id] });
+				}
+			});
+		}
 
 		document.getElementById('reproducesWithoutExtensions').addEventListener('click', (e) => {
 			this.issueReporterModel.update({ reprosWithoutExtensions: true });
@@ -235,13 +279,28 @@ export class IssueReporter extends Disposable {
 
 		document.getElementById('github-submit-btn').addEventListener('click', () => this.createIssue());
 
-		document.getElementById('disableExtensions').addEventListener('click', () => {
+		const disableExtensions = document.getElementById('disableExtensions');
+		disableExtensions.addEventListener('click', () => {
 			ipcRenderer.send('workbenchCommand', 'workbench.extensions.action.disableAll');
 			ipcRenderer.send('workbenchCommand', 'workbench.action.reloadWindow');
 		});
 
-		document.getElementById('showRunning').addEventListener('click', () => {
+		disableExtensions.addEventListener('keydown', (e) => {
+			if (e.keyCode === 13 || e.keyCode === 32) {
+				ipcRenderer.send('workbenchCommand', 'workbench.extensions.action.disableAll');
+				ipcRenderer.send('workbenchCommand', 'workbench.action.reloadWindow');
+			}
+		});
+
+		const showRunning = document.getElementById('showRunning');
+		showRunning.addEventListener('click', () => {
 			ipcRenderer.send('workbenchCommand', 'workbench.action.showRuntimeExtensions');
+		});
+
+		showRunning.addEventListener('keydown', (e) => {
+			if (e.keyCode === 13 || e.keyCode === 32) {
+				ipcRenderer.send('workbenchCommand', 'workbench.action.showRuntimeExtensions');
+			}
 		});
 
 		// Cmd+Enter or Mac or Ctrl+Enter on other platforms previews issue and closes window
@@ -265,6 +324,34 @@ export class IssueReporter extends Disposable {
 				}
 			};
 		}
+	}
+
+	private updatePreviewButtonState() {
+		const submitButton = <HTMLButtonElement>document.getElementById('github-submit-btn');
+		if (this.isPreviewEnabled()) {
+			submitButton.disabled = false;
+			submitButton.textContent = localize('previewOnGitHub', "Preview on GitHub");
+		} else {
+			submitButton.disabled = true;
+			submitButton.textContent = localize('loadingData', "Loading data...");
+		}
+	}
+
+	private isPreviewEnabled() {
+		const issueType = this.issueReporterModel.getData().issueType;
+		if (issueType === IssueType.Bug && this.receivedSystemInfo) {
+			return true;
+		}
+
+		if (issueType === IssueType.PerformanceIssue && this.receivedSystemInfo && this.receivedPerformanceInfo) {
+			return true;
+		}
+
+		if (issueType === IssueType.FeatureRequest) {
+			return true;
+		}
+
+		return false;
 	}
 
 	@debounce(300)
@@ -428,15 +515,15 @@ export class IssueReporter extends Disposable {
 			this.telemetryService.publicLog('issueReporterSubmit', { issueType: this.issueReporterModel.getData().issueType });
 		}
 
-		const issueTitle = (<HTMLInputElement>document.getElementById('issue-title')).value;
+		const issueTitle = encodeURIComponent((<HTMLInputElement>document.getElementById('issue-title')).value);
 		const queryStringPrefix = product.reportIssueUrl.indexOf('?') === -1 ? '?' : '&';
 		const baseUrl = `${product.reportIssueUrl}${queryStringPrefix}title=${issueTitle}&body=`;
 		const issueBody = this.issueReporterModel.serialize();
 		const url = baseUrl + encodeURIComponent(issueBody);
 
 		const lengthValidationElement = document.getElementById('url-length-validation-error');
-		if (url.length > 5400) {
-			lengthValidationElement.textContent = localize('urlLengthError', "The data exceeds the length limit of 2081. The data is length {0}.", url.length);
+		if (url.length > MAX_URL_LENGTH) {
+			lengthValidationElement.textContent = localize('urlLengthError', "The data exceeds the length limit of {0} characters. The data is length {1}.", MAX_URL_LENGTH, url.length);
 			show(lengthValidationElement);
 			return false;
 		} else {
@@ -445,16 +532,6 @@ export class IssueReporter extends Disposable {
 
 		shell.openExternal(url);
 		return true;
-	}
-
-	/**
-	 * Update blocks
-	 */
-
-	private updateAllBlocks(state) {
-		this.updateSystemInfo(state);
-		this.updateProcessInfo(state);
-		this.updateWorkspaceInfo(state);
 	}
 
 	private updateSystemInfo = (state) => {

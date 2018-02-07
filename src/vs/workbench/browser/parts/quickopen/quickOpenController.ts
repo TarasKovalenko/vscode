@@ -11,7 +11,6 @@ import nls = require('vs/nls');
 import * as browser from 'vs/base/browser/browser';
 import { Dimension, withElementById } from 'vs/base/browser/builder';
 import strings = require('vs/base/common/strings');
-import filters = require('vs/base/common/filters');
 import DOM = require('vs/base/browser/dom');
 import URI from 'vs/base/common/uri';
 import * as resources from 'vs/base/common/resources';
@@ -55,6 +54,7 @@ import { FileKind, IFileService } from 'vs/platform/files/common/files';
 import { scoreItem, ScorerCache, compareItemsByScore, prepareQuery } from 'vs/base/parts/quickopen/common/quickOpenScorer';
 import { getBaseLabel } from 'vs/base/common/labels';
 import { WorkbenchTree } from 'vs/platform/list/browser/listService';
+import { matchesFuzzyOcticonAware } from 'vs/base/common/filters';
 
 const HELP_PREFIX = '?';
 
@@ -180,7 +180,7 @@ export class QuickOpenController extends Component implements IQuickOpenService 
 
 			// open quick pick with just one choice. we will recurse whenever
 			// the validation/success message changes
-			this.doPick(TPromise.as([{ label: currentPick }]), {
+			this.doPick(TPromise.as([{ label: currentPick, tooltip: currentPick /* make sure message/validation can be read through the hover */ }]), {
 				ignoreFocusLost: options.ignoreFocusLost,
 				autoFocus: { autoFocusFirstEntry: true },
 				password: options.password,
@@ -431,12 +431,12 @@ export class QuickOpenController extends Component implements IQuickOpenService 
 							});
 						}
 
-						// Filter by value
+						// Filter by value (since we support octicons, use octicon aware fuzzy matching)
 						else {
 							entries.forEach(entry => {
-								const labelHighlights = filters.matchesFuzzy(value, entry.getLabel());
-								const descriptionHighlights = options.matchOnDescription && filters.matchesFuzzy(value, entry.getDescription());
-								const detailHighlights = options.matchOnDetail && entry.getDetail() && filters.matchesFuzzy(value, entry.getDetail());
+								const labelHighlights = matchesFuzzyOcticonAware(value, entry.getLabel());
+								const descriptionHighlights = options.matchOnDescription && matchesFuzzyOcticonAware(value, entry.getDescription());
+								const detailHighlights = options.matchOnDetail && entry.getDetail() && matchesFuzzyOcticonAware(value, entry.getDetail());
 
 								if (entry.shouldAlwaysShow() || labelHighlights || descriptionHighlights || detailHighlights) {
 									entry.setHighlights(labelHighlights, descriptionHighlights, detailHighlights);
@@ -1024,6 +1024,7 @@ class PickOpenEntry extends PlaceholderQuickOpenEntry implements IPickOpenItem {
 	private _shouldRunWithContext: IEntryRunContext;
 	private description: string;
 	private detail: string;
+	private tooltip: string;
 	private hasSeparator: boolean;
 	private separatorLabel: string;
 	private alwaysShow: boolean;
@@ -1045,6 +1046,7 @@ class PickOpenEntry extends PlaceholderQuickOpenEntry implements IPickOpenItem {
 
 		this.description = item.description;
 		this.detail = item.detail;
+		this.tooltip = item.tooltip;
 		this.hasSeparator = item.separator && item.separator.border;
 		this.separatorLabel = item.separator && item.separator.label;
 		this.alwaysShow = item.alwaysShow;
@@ -1095,6 +1097,10 @@ class PickOpenEntry extends PlaceholderQuickOpenEntry implements IPickOpenItem {
 
 	public getDetail(): string {
 		return this.detail;
+	}
+
+	public getTooltip(): string {
+		return this.tooltip;
 	}
 
 	public showBorder(): boolean {
