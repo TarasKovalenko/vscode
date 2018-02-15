@@ -23,7 +23,7 @@ import { Emitter } from 'vs/base/common/event';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { NullTelemetryService } from 'vs/platform/telemetry/common/telemetryUtils';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
-import { TestTextResourceConfigurationService, TestContextService, TestLifecycleService } from 'vs/workbench/test/workbenchTestServices';
+import { TestTextResourceConfigurationService, TestContextService, TestLifecycleService, TestEnvironmentService } from 'vs/workbench/test/workbenchTestServices';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import URI from 'vs/base/common/uri';
 import { testWorkspace } from 'vs/platform/workspace/test/common/testWorkspace';
@@ -227,7 +227,7 @@ suite('ExtensionsTipsService Test', () => {
 			}
 		});
 
-		testConfigurationService.setUserConfiguration(ConfigurationKey, { ignoreRecommendations: false });
+		testConfigurationService.setUserConfiguration(ConfigurationKey, { ignoreRecommendations: false, showRecommendationsOnlyOnDemand: false });
 		instantiationService.stub(IStorageService, { get: (a, b, c) => c, getBoolean: (a, b, c) => c, store: () => { } });
 		instantiationService.stub(IModelService, <IModelService>{
 			getModels(): any { return []; },
@@ -261,7 +261,7 @@ suite('ExtensionsTipsService Test', () => {
 			const myWorkspace = testWorkspace(URI.from({ scheme: 'file', path: folderDir }));
 			workspaceService = new TestContextService(myWorkspace);
 			instantiationService.stub(IWorkspaceContextService, workspaceService);
-			instantiationService.stub(IFileService, new FileService(workspaceService, new TestTextResourceConfigurationService(), new TestConfigurationService(), new TestLifecycleService(), { disableWatcher: true }));
+			instantiationService.stub(IFileService, new FileService(workspaceService, TestEnvironmentService, new TestTextResourceConfigurationService(), new TestConfigurationService(), new TestLifecycleService(), { disableWatcher: true }));
 		});
 	}
 
@@ -331,6 +331,17 @@ suite('ExtensionsTipsService Test', () => {
 	test('ExtensionTipsService: No Prompt for valid workspace recommendations if ignoreRecommendations is set', () => {
 		testConfigurationService.setUserConfiguration(ConfigurationKey, { ignoreRecommendations: true });
 		return testNoPromptForValidRecommendations(mockTestData.validRecommendedExtensions);
+	});
+
+	test('ExtensionTipsService: No Prompt for valid workspace recommendations if showRecommendationsOnlyOnDemand is set', () => {
+		testConfigurationService.setUserConfiguration(ConfigurationKey, { showRecommendationsOnlyOnDemand: true });
+		return setUpFolderWorkspace('myFolder', mockTestData.validRecommendedExtensions).then(() => {
+			testObject = instantiationService.createInstance(ExtensionTipsService);
+			return testObject.promptWorkspaceRecommendationsPromise.then(() => {
+				assert.equal(Object.keys(testObject.getAllRecommendationsWithReason()).length, 0);
+				assert.ok(!prompted);
+			});
+		});
 	});
 
 	test('ExtensionTipsService: No Prompt for valid workspace recommendations if ignoreRecommendations is set for current workspace', () => {

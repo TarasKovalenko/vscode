@@ -83,7 +83,7 @@ export interface IInitData {
 }
 
 export interface IConfigurationInitData extends IConfigurationData {
-	configurationScopes: ConfigurationScope[];
+	configurationScopes: { [key: string]: ConfigurationScope };
 }
 
 export interface IWorkspaceConfigurationChangeEventData {
@@ -214,7 +214,7 @@ export interface MainThreadEditorsShape extends IDisposable {
 }
 
 export interface MainThreadTreeViewsShape extends IDisposable {
-	$registerView(treeViewId: string): void;
+	$registerTreeViewDataProvider(treeViewId: string): void;
 	$refresh(treeViewId: string, itemsToRefresh?: { [treeItemHandle: string]: ITreeItem }): void;
 }
 
@@ -345,6 +345,21 @@ export interface MainThreadTelemetryShape extends IDisposable {
 	$publicLog(eventName: string, data?: any): void;
 }
 
+export interface MainThreadWebviewShape extends IDisposable {
+	$createWebview(handle: number): void;
+	$disposeWebview(handle: number): void;
+	$show(handle: number, column: EditorPosition): void;
+	$setTitle(handle: number, value: string): void;
+	$setHtml(handle: number, value: string): void;
+	$setOptions(handle: number, value: vscode.WebviewOptions): void;
+	$sendMessage(handle: number, value: any): Thenable<boolean>;
+}
+export interface ExtHostWebviewsShape {
+	$onMessage(handle: number, message: any): void;
+	$onBecameActive(handle: number): void;
+	$onBecameInactive(handle: number): void;
+}
+
 export interface MainThreadWorkspaceShape extends IDisposable {
 	$startSearch(includePattern: string, includeFolder: string, excludePatternOrDisregardExcludes: string | false, maxResults: number, requestId: number): Thenable<UriComponents[]>;
 	$cancelSearch(requestId: number): Thenable<boolean>;
@@ -395,7 +410,7 @@ export interface SCMGroupFeatures {
 
 export type SCMRawResource = [
 	number /*handle*/,
-	string /*resourceUri*/,
+	UriComponents /*resourceUri*/,
 	string[] /*icons: light, dark*/,
 	string /*tooltip*/,
 	boolean /*strike through*/,
@@ -418,7 +433,7 @@ export type SCMRawResourceSplices = [
 ];
 
 export interface MainThreadSCMShape extends IDisposable {
-	$registerSourceControl(handle: number, id: string, label: string, rootUri: string | undefined): void;
+	$registerSourceControl(handle: number, id: string, label: string, rootUri: UriComponents | undefined): void;
 	$updateSourceControl(handle: number, features: SCMProviderFeatures): void;
 	$unregisterSourceControl(handle: number): void;
 
@@ -479,10 +494,10 @@ export interface IModelAddedData {
 	isDirty: boolean;
 }
 export interface ExtHostDocumentsShape {
-	$acceptModelModeChanged(strURL: string, oldModeId: string, newModeId: string): void;
-	$acceptModelSaved(strURL: string): void;
-	$acceptDirtyStateChanged(strURL: string, isDirty: boolean): void;
-	$acceptModelChanged(strURL: string, e: IModelChangedEvent, isDirty: boolean): void;
+	$acceptModelModeChanged(strURL: UriComponents, oldModeId: string, newModeId: string): void;
+	$acceptModelSaved(strURL: UriComponents): void;
+	$acceptDirtyStateChanged(strURL: UriComponents, isDirty: boolean): void;
+	$acceptModelChanged(strURL: UriComponents, e: IModelChangedEvent, isDirty: boolean): void;
 }
 
 export interface ExtHostDocumentSaveParticipantShape {
@@ -506,7 +521,7 @@ export interface ExtHostEditorsShape {
 }
 
 export interface IDocumentsAndEditorsDelta {
-	removedDocuments?: string[];
+	removedDocuments?: UriComponents[];
 	addedDocuments?: IModelAddedData[];
 	removedEditors?: string[];
 	addedEditors?: ITextEditorAddData[];
@@ -518,8 +533,7 @@ export interface ExtHostDocumentsAndEditorsShape {
 }
 
 export interface ExtHostTreeViewsShape {
-	$getElements(treeViewId: string): TPromise<ITreeItem[]>;
-	$getChildren(treeViewId: string, treeItemHandle: string): TPromise<ITreeItem[]>;
+	$getChildren(treeViewId: string, treeItemHandle?: string): TPromise<ITreeItem[]>;
 }
 
 export interface ExtHostWorkspaceShape {
@@ -691,7 +705,7 @@ export interface ExtHostTerminalServiceShape {
 }
 
 export interface ExtHostSCMShape {
-	$provideOriginalResource(sourceControlHandle: number, uri: string): TPromise<string>;
+	$provideOriginalResource(sourceControlHandle: number, uri: UriComponents): TPromise<UriComponents>;
 	$onInputBoxValueChange(sourceControlHandle: number, value: string): TPromise<void>;
 	$executeResourceCommand(sourceControlHandle: number, groupHandle: number, handle: number): TPromise<void>;
 	$validateInput(sourceControlHandle: number, value: string, cursorPosition: number): TPromise<[string, number] | undefined>;
@@ -797,6 +811,7 @@ export const MainContext = {
 	MainThreadStorage: createMainId<MainThreadStorageShape>('MainThreadStorage'),
 	MainThreadTelemetry: createMainId<MainThreadTelemetryShape>('MainThreadTelemetry'),
 	MainThreadTerminalService: createMainId<MainThreadTerminalServiceShape>('MainThreadTerminalService'),
+	MainThreadWebview: createMainId<MainThreadWebviewShape>('MainThreadWebview'),
 	MainThreadWorkspace: createMainId<MainThreadWorkspaceShape>('MainThreadWorkspace'),
 	MainThreadFileSystem: createMainId<MainThreadFileSystemShape>('MainThreadFileSystem'),
 	MainThreadExtensionService: createMainId<MainThreadExtensionServiceShape>('MainThreadExtensionService'),
@@ -829,4 +844,5 @@ export const ExtHostContext = {
 	ExtHostTask: createExtId<ExtHostTaskShape>('ExtHostTask'),
 	ExtHostWorkspace: createExtId<ExtHostWorkspaceShape>('ExtHostWorkspace'),
 	ExtHostWindow: createExtId<ExtHostWindowShape>('ExtHostWindow'),
+	ExtHostWebviews: createExtId<ExtHostWebviewsShape>('ExtHostWebviews')
 };

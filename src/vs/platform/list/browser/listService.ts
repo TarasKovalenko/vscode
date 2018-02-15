@@ -83,6 +83,7 @@ const RawWorkbenchListFocusContextKey = new RawContextKey<boolean>('listFocus', 
 export const WorkbenchListSupportsMultiSelectContextKey = new RawContextKey<boolean>('listSupportsMultiselect', true);
 export const WorkbenchListFocusContextKey = ContextKeyExpr.and(RawWorkbenchListFocusContextKey, ContextKeyExpr.not(InputFocusedContextKey));
 export const WorkbenchListDoubleSelection = new RawContextKey<boolean>('listDoubleSelection', false);
+export const WorkbenchListMultiSelection = new RawContextKey<boolean>('listMultiSelection', false);
 
 export type Widget = List<any> | PagedList<any> | ITree;
 
@@ -125,15 +126,18 @@ class MultipleSelectionController<T> implements IMultipleSelectionController<T> 
 	}
 }
 
-class OpenController implements IOpenController {
+class WorkbenchOpenController implements IOpenController {
 
 	constructor(private configurationService: IConfigurationService) { }
 
 	shouldOpen(event: UIEvent): boolean {
 		if (event instanceof MouseEvent) {
 			const isDoubleClick = event.detail === 2;
+			if (!useSingleClickToOpen(this.configurationService) && !isDoubleClick) {
+				return false;
+			}
 
-			return useSingleClickToOpen(this.configurationService) || isDoubleClick;
+			return event.button === 0 /* left mouse button */ || event.button === 1 /* middle mouse button */;
 		}
 
 		return true;
@@ -145,7 +149,7 @@ function handleListControllers<T>(options: IListOptions<T>, configurationService
 		options.multipleSelectionController = new MultipleSelectionController(configurationService);
 	}
 
-	options.openController = new OpenController(configurationService);
+	options.openController = new WorkbenchOpenController(configurationService);
 
 	return options;
 }
@@ -163,6 +167,7 @@ export class WorkbenchList<T> extends List<T> {
 	readonly contextKeyService: IContextKeyService;
 
 	private listDoubleSelection: IContextKey<boolean>;
+	private listMultiSelection: IContextKey<boolean>;
 
 	private _useAltAsMultipleSelectionModifier: boolean;
 
@@ -180,6 +185,7 @@ export class WorkbenchList<T> extends List<T> {
 
 		this.contextKeyService = createScopedContextKeyService(contextKeyService, this);
 		this.listDoubleSelection = WorkbenchListDoubleSelection.bindTo(this.contextKeyService);
+		this.listMultiSelection = WorkbenchListMultiSelection.bindTo(this.contextKeyService);
 
 		this._useAltAsMultipleSelectionModifier = useAltAsMultipleSelectionModifier(configurationService);
 
@@ -187,7 +193,11 @@ export class WorkbenchList<T> extends List<T> {
 			this.contextKeyService,
 			(listService as ListService).register(this),
 			attachListStyler(this, themeService),
-			this.onSelectionChange(() => this.listDoubleSelection.set(this.getSelection().length === 2))
+			this.onSelectionChange(() => {
+				const selection = this.getSelection();
+				this.listMultiSelection.set(selection.length > 1);
+				this.listDoubleSelection.set(selection.length === 2);
+			})
 		]));
 
 		this.registerListeners();
@@ -263,6 +273,7 @@ export class WorkbenchTree extends Tree {
 	protected disposables: IDisposable[] = [];
 
 	private listDoubleSelection: IContextKey<boolean>;
+	private listMultiSelection: IContextKey<boolean>;
 
 	private _openOnSingleClick: boolean;
 	private _useAltAsMultipleSelectionModifier: boolean;
@@ -281,6 +292,7 @@ export class WorkbenchTree extends Tree {
 
 		this.contextKeyService = createScopedContextKeyService(contextKeyService, this);
 		this.listDoubleSelection = WorkbenchListDoubleSelection.bindTo(this.contextKeyService);
+		this.listMultiSelection = WorkbenchListMultiSelection.bindTo(this.contextKeyService);
 
 		this._openOnSingleClick = useSingleClickToOpen(configurationService);
 		this._useAltAsMultipleSelectionModifier = useAltAsMultipleSelectionModifier(configurationService);
@@ -306,6 +318,7 @@ export class WorkbenchTree extends Tree {
 		this.disposables.push(this.onDidChangeSelection(() => {
 			const selection = this.getSelection();
 			this.listDoubleSelection.set(selection && selection.length === 2);
+			this.listMultiSelection.set(selection && selection.length > 1);
 		}));
 
 		this.disposables.push(this.configurationService.onDidChangeConfiguration(e => {

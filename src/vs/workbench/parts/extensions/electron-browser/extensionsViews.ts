@@ -36,6 +36,7 @@ import { CountBadge } from 'vs/base/browser/ui/countBadge/countBadge';
 import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
 import { InstallWorkspaceRecommendedExtensionsAction, ConfigureWorkspaceFolderRecommendedExtensionsAction } from 'vs/workbench/parts/extensions/browser/extensionsActions';
 import { WorkbenchPagedList } from 'vs/platform/list/browser/listService';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 
 export class ExtensionsListView extends ViewsViewletPanel {
 
@@ -58,9 +59,10 @@ export class ExtensionsListView extends ViewsViewletPanel {
 		@IEditorGroupService private editorInputService: IEditorGroupService,
 		@IExtensionTipsService private tipsService: IExtensionTipsService,
 		@IModeService private modeService: IModeService,
-		@ITelemetryService private telemetryService: ITelemetryService
+		@ITelemetryService private telemetryService: ITelemetryService,
+		@IConfigurationService configurationService: IConfigurationService
 	) {
-		super({ ...(options as IViewOptions), ariaHeaderLabel: options.name }, keybindingService, contextMenuService);
+		super({ ...(options as IViewOptions), ariaHeaderLabel: options.name }, keybindingService, contextMenuService, configurationService);
 	}
 
 	renderHeader(container: HTMLElement): void {
@@ -276,10 +278,11 @@ export class ExtensionsListView extends ViewsViewletPanel {
 			.then(local => {
 				const installedExtensions = local.map(x => `${x.publisher}.${x.name}`);
 				let fileBasedRecommendations = this.tipsService.getFileBasedRecommendations();
-				let others = this.tipsService.getOtherRecommendations();
+				const othersPromise = this.tipsService.getOtherRecommendations();
+				const workspacePromise = this.tipsService.getWorkspaceRecommendations();
 
-				return this.tipsService.getWorkspaceRecommendations()
-					.then(workspaceRecommendations => {
+				return TPromise.join([othersPromise, workspacePromise])
+					.then(([others, workspaceRecommendations]) => {
 						const names = this.getTrimmedRecommendations(installedExtensions, value, fileBasedRecommendations, others, workspaceRecommendations);
 
 						/* __GDPR__
@@ -309,10 +312,11 @@ export class ExtensionsListView extends ViewsViewletPanel {
 			.then(local => {
 				const installedExtensions = local.map(x => `${x.publisher}.${x.name}`);
 				let fileBasedRecommendations = this.tipsService.getFileBasedRecommendations();
-				let others = this.tipsService.getOtherRecommendations();
+				const othersPromise = this.tipsService.getOtherRecommendations();
+				const workspacePromise = this.tipsService.getWorkspaceRecommendations();
 
-				return this.tipsService.getWorkspaceRecommendations()
-					.then(workspaceRecommendations => {
+				return TPromise.join([othersPromise, workspacePromise])
+					.then(([others, workspaceRecommendations]) => {
 						workspaceRecommendations = workspaceRecommendations.map(x => x.toLowerCase());
 						fileBasedRecommendations = fileBasedRecommendations.filter(x => workspaceRecommendations.indexOf(x.toLowerCase()) === -1);
 						others = others.filter(x => workspaceRecommendations.indexOf(x.toLowerCase()) === -1);
