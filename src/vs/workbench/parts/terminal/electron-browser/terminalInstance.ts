@@ -243,14 +243,6 @@ export class TerminalInstance implements ITerminalInstance {
 		// The panel is minimized
 		if (!height) {
 			return TerminalInstance._lastKnownDimensions;
-		} else {
-			// Trigger scroll event manually so that the viewport's scroll area is synced. This
-			// needs to happen otherwise its scrollTop value is invalid when the panel is toggled as
-			// it gets removed and then added back to the DOM (resetting scrollTop to 0).
-			// Upstream issue: https://github.com/sourcelair/xterm.js/issues/291
-			if (this._xterm) {
-				this._xterm.emit('scroll', this._xterm.buffer.ydisp);
-			}
 		}
 
 		if (!this._wrapperElement) {
@@ -260,10 +252,10 @@ export class TerminalInstance implements ITerminalInstance {
 		const wrapperElementStyle = getComputedStyle(this._wrapperElement);
 		const marginLeft = parseInt(wrapperElementStyle.marginLeft.split('px')[0], 10);
 		const marginRight = parseInt(wrapperElementStyle.marginRight.split('px')[0], 10);
-		const paddingBottom = parseInt(wrapperElementStyle.paddingBottom.split('px')[0], 10);
+		const bottom = parseInt(wrapperElementStyle.bottom.split('px')[0], 10);
 
-		const innerWidth = width - (marginLeft + marginRight);
-		const innerHeight = height - paddingBottom;
+		const innerWidth = width - marginLeft - marginRight;
+		const innerHeight = height - bottom;
 
 		TerminalInstance._lastKnownDimensions = new Dimension(innerWidth, innerHeight);
 		return TerminalInstance._lastKnownDimensions;
