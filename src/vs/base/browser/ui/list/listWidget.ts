@@ -358,6 +358,10 @@ export function isSelectionRangeChangeEvent(event: IListMouseEvent<any> | IListT
 	return event.browserEvent.shiftKey;
 }
 
+function isMouseRightClick(event: UIEvent): boolean {
+	return event instanceof MouseEvent && event.button === 2;
+}
+
 const DefaultMultipleSelectionContoller = {
 	isSelectionSingleChangeEvent,
 	isSelectionRangeChangeEvent
@@ -366,7 +370,7 @@ const DefaultMultipleSelectionContoller = {
 const DefaultOpenController = {
 	shouldOpen: (event: UIEvent) => {
 		if (event instanceof MouseEvent) {
-			return event.button === 0 /* left mouse button */ || event.button === 1 /* middle mouse button */;
+			return !isMouseRightClick(event);
 		}
 
 		return true;
@@ -478,7 +482,7 @@ class MouseController<T> implements IDisposable {
 			return this.changeSelection(e, reference);
 		}
 
-		if (this.options.selectOnMouseDown) {
+		if (this.options.selectOnMouseDown && !isMouseRightClick(e.browserEvent)) {
 			this.list.setSelection([focus]);
 
 			if (this.openController.shouldOpen(e.browserEvent)) {
@@ -1019,6 +1023,7 @@ export class List<T> implements ISpliceable<T>, IDisposable {
 
 		if (styles.listFocusBackground) {
 			content.push(`.monaco-list.${this.idPrefix}:focus .monaco-list-row.focused { background-color: ${styles.listFocusBackground}; }`);
+			content.push(`.monaco-list.${this.idPrefix}:focus .monaco-list-row.focused:hover { background-color: ${styles.listFocusBackground}; }`); // overwrite :hover style in this case!
 		}
 
 		if (styles.listFocusForeground) {
