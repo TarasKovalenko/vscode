@@ -24,7 +24,7 @@ import { IEditorGroupService, IEditorTabOptions, GroupArrangement, GroupOrientat
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
-import { IExtensionService } from 'vs/platform/extensions/common/extensions';
+import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
 import { TabsTitleControl } from 'vs/workbench/browser/parts/editor/tabsTitleControl';
 import { ITitleAreaControl } from 'vs/workbench/browser/parts/editor/titleControl';
@@ -39,6 +39,7 @@ import { IDisposable, combinedDisposable } from 'vs/base/common/lifecycle';
 import { ResourcesDropHandler, LocalSelectionTransfer, DraggedEditorIdentifier } from 'vs/workbench/browser/dnd';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IPartService } from 'vs/workbench/services/part/common/partService';
+import { TextDiffEditor } from 'vs/workbench/browser/parts/editor/textDiffEditor';
 
 export enum Rochade {
 	NONE,
@@ -105,6 +106,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 	private static readonly PROGRESS_BAR_CONTROL_KEY = '__progressBar';
 	private static readonly INSTANTIATION_SERVICE_KEY = '__instantiationService';
 
+	private static readonly GOLDEN_RATIO = 0.61;
 	private static readonly MIN_EDITOR_WIDTH = 170;
 	private static readonly MIN_EDITOR_HEIGHT = 70;
 
@@ -1042,17 +1044,16 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		if (position === Position.ONE) {
 
 			// Center Layout stuff
+			const registerSashListeners = (sash: Sash) => {
+				this.toUnbind.push(sash.onDidStart(() => this.onCenterSashDragStart()));
+				this.toUnbind.push(sash.onDidChange((e: ISashEvent) => this.onCenterSashDrag(sash, e)));
+				this.toUnbind.push(sash.onDidEnd(() => this.storeCenteredLayoutData()));
+				this.toUnbind.push(sash.onDidReset(() => this.resetCenteredEditor()));
+			};
 			this.centeredEditorSashLeft = new Sash(container.getHTMLElement(), this, { baseSize: 5, orientation: Orientation.VERTICAL });
-			this.toUnbind.push(this.centeredEditorSashLeft.onDidStart(() => this.onCenterSashLeftDragStart()));
-			this.toUnbind.push(this.centeredEditorSashLeft.onDidChange((e: ISashEvent) => this.onCenterSashLeftDrag(e)));
-			this.toUnbind.push(this.centeredEditorSashLeft.onDidEnd(() => this.storeCenteredLayoutData()));
-			this.toUnbind.push(this.centeredEditorSashLeft.onDidReset(() => this.resetCenteredEditor()));
-
 			this.centeredEditorSashRight = new Sash(container.getHTMLElement(), this, { baseSize: 5, orientation: Orientation.VERTICAL });
-			this.toUnbind.push(this.centeredEditorSashRight.onDidStart(() => this.onCenterSashRightDragStart()));
-			this.toUnbind.push(this.centeredEditorSashRight.onDidChange((e: ISashEvent) => this.onCenterSashRightDrag(e)));
-			this.toUnbind.push(this.centeredEditorSashRight.onDidEnd(() => this.storeCenteredLayoutData()));
-			this.toUnbind.push(this.centeredEditorSashRight.onDidReset(() => this.resetCenteredEditor()));
+			registerSashListeners(this.centeredEditorSashLeft);
+			registerSashListeners(this.centeredEditorSashRight);
 
 			this.centeredEditorActive = false;
 			this.centeredEditorLeftMarginRatio = 0.5;
@@ -1932,48 +1933,29 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		return EditorGroupsControl.CENTERED_EDITOR_MIN_MARGIN + this.centeredEditorLeftMarginRatio * (this.centeredEditorAvailableSize - this.centeredEditorSize);
 	}
 
-	private get centeredEditorEndPosition(): number {
-		return this.centeredEditorPosition + this.centeredEditorSize;
-	}
-
-	private setCenteredEditorPositionAndSize(pos: number, size: number): void {
-		this.centeredEditorPreferedSize = Math.max(this.minSize, size);
-		pos -= EditorGroupsControl.CENTERED_EDITOR_MIN_MARGIN;
-		pos = Math.min(pos, this.centeredEditorAvailableSize - this.centeredEditorSize);
-		pos = Math.max(0, pos);
-		this.centeredEditorLeftMarginRatio = pos / (this.centeredEditorAvailableSize - this.centeredEditorSize);
-
-		this.layoutContainers();
-	}
-
-	private onCenterSashLeftDragStart(): void {
+	private onCenterSashDragStart(): void {
 		this.centeredEditorDragStartPosition = this.centeredEditorPosition;
 		this.centeredEditorDragStartSize = this.centeredEditorSize;
 	}
 
-	private onCenterSashLeftDrag(e: ISashEvent): void {
-		const minMargin = EditorGroupsControl.CENTERED_EDITOR_MIN_MARGIN;
-		const diffPos = e.currentX - e.startX;
-		const diffSize = -diffPos;
+	private onCenterSashDrag(sash: Sash, e: ISashEvent): void {
+		const sashesCoupled = !e.altKey;
+		const delta = sash === this.centeredEditorSashLeft ? e.startX - e.currentX : e.currentX - e.startX;
+		const size = this.centeredEditorDragStartSize + (sashesCoupled ? 2 * delta : delta);
+		let position = this.centeredEditorDragStartPosition;
+		if (sash === this.centeredEditorSashLeft || sashesCoupled) {
+			position -= delta;
+		}
 
-		const pos = this.centeredEditorDragStartPosition + diffPos;
-		const size = this.centeredEditorDragStartSize + diffSize;
-		this.setCenteredEditorPositionAndSize(pos, pos <= minMargin ? size + pos - minMargin : size);
-	}
+		if (size > 3 * this.minSize) {
+			this.centeredEditorPreferedSize = size;
+			position -= EditorGroupsControl.CENTERED_EDITOR_MIN_MARGIN;
+			position = Math.min(position, this.centeredEditorAvailableSize - this.centeredEditorSize);
+			position = Math.max(0, position);
+			this.centeredEditorLeftMarginRatio = position / (this.centeredEditorAvailableSize - this.centeredEditorSize);
 
-	private onCenterSashRightDragStart(): void {
-		this.centeredEditorDragStartPosition = this.centeredEditorPosition;
-		this.centeredEditorDragStartSize = this.centeredEditorSize;
-	}
-
-	private onCenterSashRightDrag(e: ISashEvent): void {
-		const diffPos = e.currentX - e.startX;
-		const diffSize = diffPos;
-
-		const pos = this.centeredEditorDragStartPosition;
-		const maxSize = this.centeredEditorAvailableSize - this.centeredEditorDragStartPosition;
-		const size = Math.min(maxSize, this.centeredEditorDragStartSize + diffSize);
-		this.setCenteredEditorPositionAndSize(size < this.minSize ? pos + (size - this.minSize) : pos, size);
+			this.layoutContainers();
+		}
 	}
 
 	private storeCenteredLayoutData(): void {
@@ -1997,7 +1979,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 			case this.centeredEditorSashLeft:
 				return this.centeredEditorPosition;
 			case this.centeredEditorSashRight:
-				return this.centeredEditorEndPosition;
+				return this.centeredEditorPosition + this.centeredEditorSize;
 			default:
 				return 0;
 		}
@@ -2151,7 +2133,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		});
 
 		// Layout centered Editor (only in vertical layout when one group is opened)
-		const doCentering = this.layoutVertically && this.stacks.groups.length === 1 && this.partService.isEditorLayoutCentered();
+		const doCentering = this.layoutVertically && this.stacks.groups.length === 1 && this.partService.isEditorLayoutCentered() && !(this.visibleEditors[Position.ONE] instanceof TextDiffEditor);
 		if (doCentering && !this.centeredEditorActive) {
 			this.centeredEditorSashLeft.show();
 			this.centeredEditorSashRight.show();
@@ -2165,6 +2147,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 			this.centeredEditorSashRight.hide();
 		}
 		this.centeredEditorActive = doCentering;
+		this.silos[Position.ONE].setClass('centered', doCentering);
 
 		if (this.centeredEditorActive) {
 			this.centeredEditorSashLeft.layout();
@@ -2208,14 +2191,17 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 				}
 			}
 
-			editor.getContainer().style({ 'margin-left': `${editorPosition}px`, 'width': `${editorWidth}px` });
+			const editorContainer = editor.getContainer();
+			editorContainer.style('margin-left', this.centeredEditorActive ? `${editorPosition}px` : null);
+			editorContainer.style('width', this.centeredEditorActive ? `${editorWidth}px` : null);
+			editorContainer.style('border-color', this.centeredEditorActive ? this.getColor(EDITOR_GROUP_BORDER) || this.getColor(contrastBorder) : null);
 			editor.layout(new Dimension(editorWidth, editorHeight));
 		}
 	}
 
 	private resetCenteredEditor(layout: boolean = true) {
 		this.centeredEditorLeftMarginRatio = 0.5;
-		this.centeredEditorPreferedSize = Math.floor(this.dimension.width * 0.61);
+		this.centeredEditorPreferedSize = Math.floor(this.dimension.width * EditorGroupsControl.GOLDEN_RATIO);
 		if (layout) {
 			this.layoutContainers();
 		}
