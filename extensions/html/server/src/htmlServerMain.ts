@@ -18,6 +18,7 @@ import { getDocumentContext } from './utils/documentContext';
 import uri from 'vscode-uri';
 import { formatError, runSafe } from './utils/errors';
 import { doComplete as emmetDoComplete, updateExtensionsPath as updateEmmetExtensionsPath, getEmmetCompletionParticipants } from 'vscode-emmet-helper';
+import { getPathCompletionParticipant } from './modes/pathCompletion';
 
 import { FoldingRangesRequest, FoldingProviderServerCapabilities } from './protocol/foldingProvider.proposed';
 
@@ -270,29 +271,45 @@ connection.onCompletion(async textDocumentPosition => {
 		}
 
 		if (mode.getId() !== 'html') {
+			/* __GDPR__
+				"html.embbedded.complete" : {
+					"languageId" : { "classification": "SystemMetaData", "purpose": "FeatureInsight" }
+				}
+			 */
 			connection.telemetry.logEvent({ key: 'html.embbedded.complete', value: { languageId: mode.getId() } });
 		}
 
 		cachedCompletionList = null;
 		let emmetCompletionList: CompletionList = {
-			isIncomplete: true,
-			items: undefined
+			isIncomplete: false,
+			items: []
 		};
-		if (mode.setCompletionParticipants) {
-			const emmetCompletionParticipant = getEmmetCompletionParticipants(document, textDocumentPosition.position, mode.getId(), emmetSettings, emmetCompletionList);
-			mode.setCompletionParticipants([emmetCompletionParticipant]);
+		let pathCompletionList: CompletionList = {
+			isIncomplete: false,
+			items: []
+		};
+
+		const emmetCompletionParticipant = getEmmetCompletionParticipants(document, textDocumentPosition.position, mode.getId(), emmetSettings, emmetCompletionList);
+		const completionParticipants = [emmetCompletionParticipant];
+		// Ideally, fix this in the Language Service side
+		// Check participants' methods before calling them
+		if (mode.getId() === 'html') {
+			const pathCompletionParticipant = getPathCompletionParticipant(document, workspaceFolders, pathCompletionList);
+			completionParticipants.push(pathCompletionParticipant);
 		}
 
 		let settings = await getDocumentSettings(document, () => mode.doComplete.length > 2);
-		let result = mode.doComplete(document, textDocumentPosition.position, settings);
+		let result = mode.doComplete(document, textDocumentPosition.position, settings, completionParticipants);
+		result.items = [...pathCompletionList.items, ...result.items];
 		if (emmetCompletionList && emmetCompletionList.items) {
 			cachedCompletionList = result;
 			if (emmetCompletionList.items.length && hexColorRegex.test(emmetCompletionList.items[0].label) && result.items.some(x => x.label === emmetCompletionList.items[0].label)) {
 				emmetCompletionList.items.shift();
 			}
-			return { isIncomplete: true, items: [...emmetCompletionList.items, ...result.items] };
+			return { isIncomplete: emmetCompletionList.isIncomplete || result.isIncomplete, items: [...emmetCompletionList.items, ...result.items] };
 		}
 		return result;
+
 	}, null, `Error while computing completions for ${textDocumentPosition.textDocument.uri}`);
 });
 
@@ -394,8 +411,6 @@ connection.onDocumentLinks(documentLinkParam => {
 		return links;
 	}, [], `Error while document links for ${documentLinkParam.textDocument.uri}`);
 });
-
-
 
 connection.onDocumentSymbol(documentSymbolParms => {
 	return runSafe(() => {

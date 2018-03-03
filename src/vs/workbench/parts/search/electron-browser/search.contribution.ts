@@ -450,13 +450,13 @@ configurationRegistry.registerConfiguration({
 		'search.globalFindClipboard': {
 			type: 'boolean',
 			default: false,
-			description: nls.localize('search.globalFindClipboard', "Controls if the Search Viewlet should read or modify the shared find clipboard on macOS"),
+			description: nls.localize('search.globalFindClipboard', "Controls if the search view should read or modify the shared find clipboard on macOS"),
 			included: platform.isMacintosh
 		},
 		'search.location': {
 			enum: ['sidebar', 'panel'],
 			default: 'sidebar',
-			description: nls.localize('search.location', "Controls if the search will be shown as a viewlet in the sidebar or as a panel in the panel area for more horizontal space"),
+			description: nls.localize('search.location', "Preview: controls if the search will be shown as a view in the sidebar or as a panel in the panel area for more horizontal space. Next release search in panel will have improved horizontal layout and this will no longer be a preview."),
 		},
 	}
 });

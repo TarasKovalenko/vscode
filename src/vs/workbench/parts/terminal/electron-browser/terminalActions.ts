@@ -242,6 +242,13 @@ export class CreateNewTerminalAction extends Action {
 
 	public run(event?: any): TPromise<any> {
 		const folders = this.workspaceContextService.getWorkspace().folders;
+		if (event instanceof MouseEvent && (event.altKey || event.ctrlKey)) {
+			const activeInstance = this.terminalService.getActiveInstance();
+			if (activeInstance) {
+				this.terminalService.splitInstance(activeInstance);
+				return TPromise.as(null);
+			}
+		}
 
 		let instancePromise: TPromise<ITerminalInstance>;
 		if (folders.length <= 1) {

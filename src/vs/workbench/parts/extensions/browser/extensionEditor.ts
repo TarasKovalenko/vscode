@@ -19,7 +19,7 @@ import { isPromiseCanceledError } from 'vs/base/common/errors';
 import { IDisposable, dispose, toDisposable } from 'vs/base/common/lifecycle';
 import { Builder } from 'vs/base/browser/builder';
 import { domEvent } from 'vs/base/browser/event';
-import { append, $, addClass, removeClass, finalHandler, join } from 'vs/base/browser/dom';
+import { append, $, addClass, removeClass, finalHandler, join, toggleClass } from 'vs/base/browser/dom';
 import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
 import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
@@ -313,6 +313,9 @@ export class ExtensionEditor extends BaseEditor {
 		*/
 		this.telemetryService.publicLog('extensionGallery:openExtension', assign(extension.telemetryData, recommendationsData));
 
+		toggleClass(this.name, 'clickable', !!extension.url);
+		toggleClass(this.publisher, 'clickable', !!extension.url);
+		toggleClass(this.rating, 'clickable', !!extension.url);
 		if (extension.url) {
 			this.name.onclick = finalHandler(() => window.open(extension.url));
 			this.rating.onclick = finalHandler(() => window.open(`${extension.url}#review-details`));
@@ -329,6 +332,10 @@ export class ExtensionEditor extends BaseEditor {
 				this.license.onclick = null;
 				this.license.style.display = 'none';
 			}
+		} else {
+			this.name.onclick = null;
+			this.rating.onclick = null;
+			this.publisher.onclick = null;
 		}
 
 		if (extension.repository) {
@@ -364,14 +371,14 @@ export class ExtensionEditor extends BaseEditor {
 		this.extensionActionBar.push([reloadAction, updateAction, enableAction, disableAction, installAction, maliciousStatusAction], { icon: true, label: true });
 		this.transientDisposables.push(enableAction, updateAction, reloadAction, disableAction, installAction, maliciousStatusAction);
 
+		this.content.innerHTML = ''; // Clear content before setting navbar actions.
+
 		this.navbar.clear();
 		this.navbar.onChange(this.onNavbarChange.bind(this, extension), this, this.transientDisposables);
 		this.navbar.push(NavbarSection.Readme, localize('details', "Details"));
 		this.navbar.push(NavbarSection.Contributions, localize('contributions', "Contributions"));
 		this.navbar.push(NavbarSection.Changelog, localize('changelog', "Changelog"));
 		this.navbar.push(NavbarSection.Dependencies, localize('dependencies', "Dependencies"));
-
-		this.content.innerHTML = '';
 
 		return super.setInput(input, options);
 	}
@@ -730,8 +737,15 @@ export class ExtensionEditor extends BaseEditor {
 
 		const details = $('details', { open: true, ontoggle: onDetailsToggle },
 			$('summary', null, localize('JSON Validation', "JSON Validation ({0})", contrib.length)),
-			$('ul', null, ...contrib.map(v => $('li', null, v.fileMatch)))
-		);
+			$('table', null,
+				$('tr', null,
+					$('th', null, localize('fileMatch', "File Match")),
+					$('th', null, localize('schema', "Schema"))
+				),
+				...contrib.map(v => $('tr', null,
+					$('td', null, $('code', null, v.fileMatch)),
+					$('td', null, v.url)
+				))));
 
 		append(container, details);
 		return true;

@@ -22,7 +22,10 @@ export function getHTMLMode(htmlLanguageService: HTMLLanguageService): LanguageM
 		configure(options: any) {
 			globalSettings = options;
 		},
-		doComplete(document: TextDocument, position: Position, settings: Settings = globalSettings) {
+		doComplete(document: TextDocument, position: Position, settings: Settings = globalSettings, registeredCompletionParticipants: any[]) {
+			if (registeredCompletionParticipants) {
+				completionParticipants = registeredCompletionParticipants;
+			}
 			let options = settings && settings.html && settings.html.suggest;
 			let doAutoComplete = settings && settings.html && settings.html.autoClosingTags;
 			if (doAutoComplete) {
@@ -30,17 +33,8 @@ export function getHTMLMode(htmlLanguageService: HTMLLanguageService): LanguageM
 			}
 
 			const htmlDocument = htmlDocuments.get(document);
-			const offset = document.offsetAt(position);
-			const node = htmlDocument.findNodeBefore(offset);
-			const scanner = htmlLanguageService.createScanner(document.getText(), node.start);
-			let token = scanner.scan();
-			while (token !== TokenType.EOS && scanner.getTokenOffset() <= offset) {
-				if (token === TokenType.Content && offset <= scanner.getTokenEnd()) {
-					completionParticipants.forEach(participant => { if (participant.onHtmlContent) { participant.onHtmlContent(); } });
-					break;
-				}
-				token = scanner.scan();
-			}
+			htmlLanguageService.setCompletionParticipants(completionParticipants);
+
 			return htmlLanguageService.doComplete(document, position, htmlDocument, options);
 		},
 		setCompletionParticipants(registeredCompletionParticipants: any[]) {

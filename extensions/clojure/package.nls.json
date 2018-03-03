@@ -1,4 +1,4 @@
 {
-	"displayName": "Clojure Language Features",
-	"description": "Provides Syntax highlighting, Bracket matching and other language features in Clojure files"
+	"displayName": "Clojure Language Basics",
+	"description": "Provides syntax highlighting and bracket matching in Clojure files."
 }

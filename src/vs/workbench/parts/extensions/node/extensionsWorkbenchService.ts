@@ -110,11 +110,19 @@ class Extension implements IExtension {
 	}
 
 	get url(): string {
-		if (!product.extensionsGallery) {
+		if (!product.extensionsGallery || !this.gallery) {
 			return null;
 		}
 
 		return `${product.extensionsGallery.itemUrl}?itemName=${this.publisher}.${this.name}`;
+	}
+
+	get downloadUrl(): string {
+		if (!product.extensionsGallery) {
+			return null;
+		}
+
+		return `${product.extensionsGallery.serviceUrl}/publishers/${this.publisher}/vsextensions/${this.name}/${this.latestVersion}/vspackage`;
 	}
 
 	get iconUrl(): string {
@@ -140,7 +148,14 @@ class Extension implements IExtension {
 
 	private get defaultIconUrl(): string {
 		if (this.type === LocalExtensionType.System) {
-			return require.toUrl('../browser/media/code-icon.svg');
+			if (this.local.manifest && this.local.manifest.contributes) {
+				if (Array.isArray(this.local.manifest.contributes.themes) && this.local.manifest.contributes.themes.length) {
+					return require.toUrl('../browser/media/theme-icon.png');
+				}
+				if (Array.isArray(this.local.manifest.contributes.languages) && this.local.manifest.contributes.languages.length) {
+					return require.toUrl('../browser/media/language-icon.png');
+				}
+			}
 		}
 		return require.toUrl('../browser/media/defaultIcon.png');
 	}
@@ -216,6 +231,14 @@ class Extension implements IExtension {
 		if (this.local && this.local.readmeUrl) {
 			const uri = URI.parse(this.local.readmeUrl);
 			return readFile(uri.fsPath, 'utf8');
+		}
+
+		if (this.type === LocalExtensionType.System) {
+			return TPromise.as(`# ${this.displayName || this.name}
+**Notice** This is a an extension that is bundled with Visual Studio Code.
+
+${this.description}
+`);
 		}
 
 		return TPromise.wrapError<string>(new Error('not available'));
@@ -632,6 +655,24 @@ export class ExtensionsWorkbenchService implements IExtensionsWorkbenchService {
 		}, () => this.extensionService.uninstall(local));
 	}
 
+	reinstall(extension: IExtension): TPromise<void> {
+		if (!(extension instanceof Extension)) {
+			return undefined;
+		}
+
+		const ext = extension as Extension;
+		const local = ext.local || this.installed.filter(e => e.id === extension.id)[0].local;
+
+		if (!local) {
+			return TPromise.wrapError<void>(new Error('Missing local'));
+		}
+
+		return this.progressService.withProgress({
+			location: ProgressLocation.Extensions,
+			tooltip: `${local.identifier.id}`
+		}, () => this.extensionService.reinstall(local));
+	}
+
 	private promptAndSetEnablement(extension: IExtension, enablementState: EnablementState, enable: boolean): TPromise<any> {
 		const allDependencies = this.getDependenciesRecursively(extension, this.local, enablementState, []);
 		if (allDependencies.length > 0) {
@@ -957,15 +998,14 @@ export class ExtensionsWorkbenchService implements IExtensionsWorkbenchService {
 					return this.open(extension).then(() => {
 						const message = nls.localize('installConfirmation', "Would you like to install the '{0}' extension?", extension.displayName, extension.publisher);
 						const options = [
-							nls.localize('install', "Install"),
-							nls.localize('cancel', "Cancel")
+							nls.localize('install', "Install")
 						];
 						return this.choiceService.choose(Severity.Info, message, options).then(value => {
-							if (value !== 0) {
-								return TPromise.as(null);
+							if (value === 0) {
+								return this.install(extension);
 							}
 
-							return this.install(extension);
+							return TPromise.as(null);
 						});
 					});
 				});

@@ -46,6 +46,7 @@ const empty: { [key: string]: any; } = Object.create(null);
 const milliSecondsInADay = 1000 * 60 * 60 * 24;
 const choiceNever = localize('neverShowAgain', "Don't Show Again");
 const searchMarketplace = localize('searchMarketplace', "Search Marketplace");
+const coreLanguages = ['de', 'es', 'fr', 'it', 'ja', 'ko', 'ru', 'tr', 'zh-cn', 'zh-tw'];
 
 interface IDynamicWorkspaceRecommendations {
 	remoteSet: string[];
@@ -138,6 +139,7 @@ export class ExtensionTipsService extends Disposable implements IExtensionTipsSe
 
 		if (!language
 			|| language === LANGUAGE_DEFAULT
+			|| coreLanguages.some(x => language === x || language.indexOf(x + '-') === 0)
 			|| config.ignoreRecommendations
 			|| config.showRecommendationsOnlyOnDemand
 			|| languagePackSuggestionIgnoreList.indexOf(language) > -1) {
@@ -265,8 +267,11 @@ export class ExtensionTipsService extends Disposable implements IExtensionTipsSe
 	}
 
 	private resolveWorkspaceFolderRecommendations(workspaceFolder: IWorkspaceFolder): TPromise<string[]> {
-		return this.fileService.resolveContent(workspaceFolder.toResource(paths.join('.vscode', 'extensions.json')))
-			.then(content => this.processWorkspaceRecommendations(json.parse(content.value, [])), err => []);
+		const extensionsJsonUri = workspaceFolder.toResource(paths.join('.vscode', 'extensions.json'));
+		return this.fileService.resolveFile(extensionsJsonUri).then(() => {
+			return this.fileService.resolveContent(extensionsJsonUri)
+				.then(content => this.processWorkspaceRecommendations(json.parse(content.value, [])), err => []);
+		}, err => []);
 	}
 
 	private processWorkspaceRecommendations(extensionsContent: IExtensionsContent): TPromise<string[]> {
@@ -684,8 +689,7 @@ export class ExtensionTipsService extends Disposable implements IExtensionTipsSe
 		const message = localize('ignoreExtensionRecommendations', "Do you want to ignore all extension recommendations?");
 		const options = [
 			localize('ignoreAll', "Yes, Ignore All"),
-			localize('no', "No"),
-			localize('cancel', "Cancel")
+			localize('no', "No")
 		];
 
 		this.choiceService.choose(Severity.Info, message, options).done(choice => {

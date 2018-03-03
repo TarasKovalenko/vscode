@@ -1,4 +1,4 @@
 {
-	"displayName": "Lua Language Features",
-	"description": "Provides Syntax highlighting, Bracket matching and other language features in Lua files"
+	"displayName": "Lua Language Basics",
+	"description": "Provides syntax highlighting and bracket matching in Lua files."
 }

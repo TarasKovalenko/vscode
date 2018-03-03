@@ -769,6 +769,24 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * A reference to a named icon. Currently only [File](#ThemeIcon.File) and [Folder](#ThemeIcon.Folder) are supported.
+	 * Using a theme icon is preferred over a custom icon as it gives theme authors the possibility to change the icons.
+	 */
+	export class ThemeIcon {
+		/**
+		 * Reference to a icon representing a file. The icon is taken from the current file icon theme or a placeholder icon.
+		 */
+		static readonly File: ThemeIcon;
+
+		/**
+		 * Reference to a icon representing a folder. The icon is taken from the current file icon theme or a placeholder icon.
+		 */
+		static readonly Folder: ThemeIcon;
+
+		private constructor(id: string);
+	}
+
+	/**
 	 * Represents theme specific rendering styles for a [text editor decoration](#TextEditorDecorationType).
 	 */
 	export interface ThemableDecorationRenderOptions {
@@ -1032,7 +1050,7 @@ declare module 'vscode' {
 		/**
 		 * The document associated with this text editor. The document will be the same for the entire lifetime of this text editor.
 		 */
-		document: TextDocument;
+		readonly document: TextDocument;
 
 		/**
 		 * The primary selection on this text editor. Shorthand for `TextEditor.selections[0]`.
@@ -1628,8 +1646,11 @@ declare module 'vscode' {
 		title: string;
 
 		/**
-		 * Indicates that this item replaces the default
-		 * 'Close' action.
+		 * A hint for modal dialogs that the item should be triggered
+		 * when the user cancels the dialog (e.g. by pressing the ESC
+		 * key).
+		 *
+		 * Note: this option is ignored for non-modal messages.
 		 */
 		isCloseAffordance?: boolean;
 	}
@@ -3812,7 +3833,7 @@ declare module 'vscode' {
 	 * An output channel is a container for readonly textual information.
 	 *
 	 * To get an instance of an `OutputChannel` use
-	 * [	createOutputChannel](#window.createOutputChannel).
+	 * [createOutputChannel](#window.createOutputChannel).
 	 */
 	export interface OutputChannel {
 
@@ -3905,7 +3926,7 @@ declare module 'vscode' {
 		/**
 		 * The text to show for the entry. You can embed icons in the text by leveraging the syntax:
 		 *
-		 * `My text $(icon-name) contains icons like $(icon'name) this one.`
+		 * `My text $(icon-name) contains icons like $(icon-name) this one.`
 		 *
 		 * Where the icon-name is taken from the [octicon](https://octicons.github.com) icon set, e.g.
 		 * `light-bulb`, `thumbsup`, `zap` etc.
@@ -5077,15 +5098,17 @@ declare module 'vscode' {
 		id?: string;
 
 		/**
-		 * The icon path for the tree item. When `falsy`, it is derived from [resourceUri](#TreeItem.resourceUri).
+		 * The icon path or [ThemeIcon](#ThemeIcon) for the tree item.
+		 * When `falsy`, [Folder Theme Icon](#ThemeIcon.Folder) is assigned, if item is collapsible otherwise [File Theme Icon](#ThemeIcon.File).
+		 * When a [ThemeIcon](#ThemeIcon) is specified, icon is derived from the current file icon theme for the specified theme icon using [resourceUri](#TreeItem.resourceUri) (if provided).
 		 */
-		iconPath?: string | Uri | { light: string | Uri; dark: string | Uri };
+		iconPath?: string | Uri | { light: string | Uri; dark: string | Uri } | ThemeIcon;
 
 		/**
 		 * The [uri](#Uri) of the resource representing this item.
 		 *
 		 * Will be used to derive the [label](#TreeItem.label), when it is not provided.
-		 * Will be used to derive the icon from current file icon theme, when [iconPath](#TreeItem.iconPath) is not provided.
+		 * Will be used to derive the icon from current icon theme, when [iconPath](#TreeItem.iconPath) has [ThemeIcon](#ThemeIcon) value.
 		 */
 		resourceUri?: Uri;
 
@@ -5433,6 +5456,49 @@ declare module 'vscode' {
 		 * @return A path relative to the root or the input.
 		 */
 		export function asRelativePath(pathOrUri: string | Uri, includeWorkspaceFolder?: boolean): string;
+
+		/**
+		 * This method replaces `deleteCount` [workspace folders](#workspace.workspaceFolders) starting at index `start`
+		 * by an optional set of `workspaceFoldersToAdd` on the `vscode.workspace.workspaceFolders` array. This "splice"
+		 * behavior can be used to add, remove and change workspace folders in a single operation.
+		 *
+		 * If the first workspace folder is added, removed or changed, the currently executing extensions (including the
+		 * one that called this method) will be terminated and restarted so that the (deprecated) `rootPath` property is
+		 * updated to point to the first workspace folder.
+		 *
+		 * Use the [`onDidChangeWorkspaceFolders()`](#onDidChangeWorkspaceFolders) event to get notified when the
+		 * workspace folders have been updated.
+		 *
+		 * **Example:** adding a new workspace folder at the end of workspace folders
+		 * ```typescript
+		 * workspace.updateWorkspaceFolders(workspace.workspaceFolders ? workspace.workspaceFolders.length : 0, null, { uri: ...});
+		 * ```
+		 *
+		 * **Example:** removing the first workspace folder
+		 * ```typescript
+		 * workspace.updateWorkspaceFolders(0, 1);
+		 * ```
+		 *
+		 * **Example:** replacing an existing workspace folder with a new one
+		 * ```typescript
+		 * workspace.updateWorkspaceFolders(0, 1, { uri: ...});
+		 * ```
+		 *
+		 * It is valid to remove an existing workspace folder and add it again with a different name
+		 * to rename that folder.
+		 *
+		 * **Note:** it is not valid to call [updateWorkspaceFolders()](#updateWorkspaceFolders) multiple times
+		 * without waiting for the [`onDidChangeWorkspaceFolders()`](#onDidChangeWorkspaceFolders) to fire.
+		 *
+		 * @param start the zero-based location in the list of currently opened [workspace folders](#WorkspaceFolder)
+		 * from which to start deleting workspace folders.
+		 * @param deleteCount the optional number of workspace folders to remove.
+		 * @param workspaceFoldersToAdd the optional variable set of workspace folders to add in place of the deleted ones.
+		 * Each workspace is identified with a mandatory URI and an optional name.
+		 * @return true if the operation was successfully started and false otherwise if arguments were used that would result
+		 * in invalid workspace folder state (e.g. 2 folders with the same URI).
+		 */
+		export function updateWorkspaceFolders(start: number, deleteCount: number | undefined | null, ...workspaceFoldersToAdd: { uri: Uri, name?: string }[]): boolean;
 
 		/**
 		 * Creates a file system watcher.

@@ -1,4 +1,4 @@
 {
-	"displayName": "Pug Language Features",
-	"description": "Provides Syntax highlighting, Bracket matching and other language features in Pug files"
+	"displayName": "Pug Language Basics",
+	"description": "Provides syntax highlighting and bracket matching in Pug files."
 }

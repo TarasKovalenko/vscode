@@ -13,6 +13,7 @@ import { localize } from 'vs/nls';
 import { IViewlet } from 'vs/workbench/common/viewlet';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { IDisposable } from 'vs/base/common/lifecycle';
+import { ThemeIcon } from 'vs/platform/theme/common/themeService';
 
 export class ViewLocation {
 
@@ -172,7 +173,7 @@ export interface ITreeViewer extends IDisposable {
 
 	getOptimalWidth(): number;
 
-	reveal(item: ITreeItem, parentChain: ITreeItem[], options: { donotSelect?: boolean }): TPromise<void>;
+	reveal(item: ITreeItem, parentChain: ITreeItem[], options: { select?: boolean }): TPromise<void>;
 }
 
 export interface ICustomViewDescriptor extends IViewDescriptor {
@@ -215,6 +216,8 @@ export interface ITreeItem {
 	icon?: string;
 
 	iconDark?: string;
+
+	themeIcon?: ThemeIcon;
 
 	resourceUri?: UriComponents;
 

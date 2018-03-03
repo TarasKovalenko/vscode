@@ -29,17 +29,16 @@ import { IStorageService, StorageScope } from 'vs/platform/storage/common/storag
 import { TabsTitleControl } from 'vs/workbench/browser/parts/editor/tabsTitleControl';
 import { ITitleAreaControl } from 'vs/workbench/browser/parts/editor/titleControl';
 import { NoTabsTitleControl } from 'vs/workbench/browser/parts/editor/noTabsTitleControl';
-import { IEditorStacksModel, IStacksModelChangeEvent, IEditorGroup, EditorOptions, TextEditorOptions, IEditorIdentifier } from 'vs/workbench/common/editor';
+import { IEditorStacksModel, IStacksModelChangeEvent, IEditorGroup, EditorOptions, TextEditorOptions, IEditorIdentifier, EditorInput, PREFERENCES_EDITOR_ID, TEXT_DIFF_EDITOR_ID } from 'vs/workbench/common/editor';
 import { getCodeEditor } from 'vs/editor/browser/services/codeEditorService';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { editorBackground, contrastBorder, activeContrastBorder } from 'vs/platform/theme/common/colorRegistry';
 import { Themable, EDITOR_GROUP_HEADER_TABS_BACKGROUND, EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND, EDITOR_GROUP_BORDER, EDITOR_DRAG_AND_DROP_BACKGROUND, EDITOR_GROUP_BACKGROUND, EDITOR_GROUP_HEADER_TABS_BORDER } from 'vs/workbench/common/theme';
 import { attachProgressBarStyler } from 'vs/platform/theme/common/styler';
-import { IDisposable, combinedDisposable } from 'vs/base/common/lifecycle';
+import { IDisposable } from 'vs/base/common/lifecycle';
 import { ResourcesDropHandler, LocalSelectionTransfer, DraggedEditorIdentifier } from 'vs/workbench/browser/dnd';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IPartService } from 'vs/workbench/services/part/common/partService';
-import { TextDiffEditor } from 'vs/workbench/browser/parts/editor/textDiffEditor';
 
 export enum Rochade {
 	NONE,
@@ -100,7 +99,7 @@ interface CenteredEditorLayoutData {
  */
 export class EditorGroupsControl extends Themable implements IEditorGroupsControl, IVerticalSashLayoutProvider, IHorizontalSashLayoutProvider {
 
-	private static readonly CENTERED_EDITOR_LAYOUT_DATA_STORAGE_KEY = 'workbench.centerededitorlayout.layoutData';
+	private static readonly CENTERED_EDITOR_LAYOUT_DATA_STORAGE_KEY = 'workbench.centerededitorlayout.data';
 
 	private static readonly TITLE_AREA_CONTROL_KEY = '__titleAreaControl';
 	private static readonly PROGRESS_BAR_CONTROL_KEY = '__progressBar';
@@ -454,13 +453,9 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 			this.visibleEditorFocusTrackerDisposable[position].dispose();
 		}
 
-		// Track focus on editor container
-		const focusTracker = DOM.trackFocus(editor.getFocusContainer().getHTMLElement());
-		const listenerDispose = focusTracker.onDidFocus(() => {
+		this.visibleEditorFocusTrackerDisposable[position] = editor.onDidFocus(() => {
 			this.onFocusGained(editor);
 		});
-
-		this.visibleEditorFocusTrackerDisposable[position] = combinedDisposable([focusTracker, listenerDispose]);
 	}
 
 	private onFocusGained(editor: BaseEditor): void {
@@ -1057,7 +1052,6 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 
 			this.centeredEditorActive = false;
 			this.centeredEditorLeftMarginRatio = 0.5;
-			this.centeredEditorPreferedSize = -1; // set this later if we know the container size
 
 			// Restore centered layout position and size
 			const centeredLayoutDataString = this.storageServise.get(EditorGroupsControl.CENTERED_EDITOR_LAYOUT_DATA_STORAGE_KEY, StorageScope.GLOBAL);
@@ -1128,6 +1122,15 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 			return options;
 		}
 
+		const isCopyDrag = (draggedEditor: IEditorIdentifier, e: DragEvent) => {
+			if (draggedEditor && draggedEditor.editor instanceof EditorInput) {
+				if (!draggedEditor.editor.supportsSplitEditor()) {
+					return false;
+				}
+			}
+			return (e.ctrlKey && !isMacintosh) || (e.altKey && isMacintosh);
+		};
+
 		function onDrop(e: DragEvent, position: Position, splitTo?: Position): void {
 			$this.updateFromDragAndDrop(node, false);
 			cleanUp();
@@ -1141,7 +1144,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 			// Check for transfer from title control
 			if ($this.transfer.hasData(DraggedEditorIdentifier.prototype)) {
 				const draggedEditor = $this.transfer.getData(DraggedEditorIdentifier.prototype)[0].identifier;
-				const isCopy = (e.ctrlKey && !isMacintosh) || (e.altKey && isMacintosh);
+				const isCopy = isCopyDrag(draggedEditor, e);
 
 				// Copy editor to new location
 				if (isCopy) {
@@ -1193,8 +1196,8 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		function positionOverlay(e: DragEvent, groups: number, position: Position): void {
 			const target = <HTMLElement>e.target;
 			const overlayIsSplit = typeof overlay.getProperty(splitToPropertyKey) === 'number';
-			const isCopy = (e.ctrlKey && !isMacintosh) || (e.altKey && isMacintosh);
 			const draggedEditor = $this.transfer.hasData(DraggedEditorIdentifier.prototype) ? $this.transfer.getData(DraggedEditorIdentifier.prototype)[0].identifier : void 0;
+			const isCopy = isCopyDrag(draggedEditor, e);
 
 			const overlaySize = $this.layoutVertically ? target.clientWidth : target.clientHeight;
 			const splitThreshold = overlayIsSplit ? overlaySize / 5 : overlaySize / 10;
@@ -1947,7 +1950,7 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 			position -= delta;
 		}
 
-		if (size > 3 * this.minSize) {
+		if (size > 3 * this.minSize && size < this.centeredEditorAvailableSize) {
 			this.centeredEditorPreferedSize = size;
 			position -= EditorGroupsControl.CENTERED_EDITOR_MIN_MARGIN;
 			position = Math.min(position, this.centeredEditorAvailableSize - this.centeredEditorSize);
@@ -2133,13 +2136,14 @@ export class EditorGroupsControl extends Themable implements IEditorGroupsContro
 		});
 
 		// Layout centered Editor (only in vertical layout when one group is opened)
-		const doCentering = this.layoutVertically && this.stacks.groups.length === 1 && this.partService.isEditorLayoutCentered() && !(this.visibleEditors[Position.ONE] instanceof TextDiffEditor);
+		const id = this.visibleEditors[Position.ONE] ? this.visibleEditors[Position.ONE].getId() : undefined;
+		const doCentering = this.layoutVertically && this.stacks.groups.length === 1 && this.partService.isEditorLayoutCentered() && id !== PREFERENCES_EDITOR_ID && id !== TEXT_DIFF_EDITOR_ID;
 		if (doCentering && !this.centeredEditorActive) {
 			this.centeredEditorSashLeft.show();
 			this.centeredEditorSashRight.show();
 
 			// no size set yet. Calculate a default value
-			if (this.centeredEditorPreferedSize === -1) {
+			if (!this.centeredEditorPreferedSize) {
 				this.resetCenteredEditor(false);
 			}
 		} else if (!doCentering && this.centeredEditorActive) {
