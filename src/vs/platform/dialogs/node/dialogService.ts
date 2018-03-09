@@ -9,7 +9,7 @@ import { IDialogService, IConfirmation, IConfirmationResult } from 'vs/platform/
 import Severity from 'vs/base/common/severity';
 import { localize } from 'vs/nls';
 
-export class DialogCLIService implements IDialogService {
+export class CommandLineDialogService implements IDialogService {
 
 	_serviceBrand: any;
 
@@ -58,7 +58,7 @@ export class DialogCLIService implements IDialogService {
 	}
 
 	confirm(confirmation: IConfirmation): TPromise<IConfirmationResult> {
-		return this.show(Severity.Info, confirmation.message, [confirmation.primaryButton, confirmation.secondaryButton || localize('no', "No")]).then(index => {
+		return this.show(Severity.Info, confirmation.message, [confirmation.primaryButton, confirmation.secondaryButton || localize('cancel', "Cancel")]).then(index => {
 			return {
 				confirmed: index === 0
 			} as IConfirmationResult;
