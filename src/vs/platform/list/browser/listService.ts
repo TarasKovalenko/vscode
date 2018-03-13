@@ -16,7 +16,6 @@ import { attachListStyler, defaultListStyles, computeStyles } from 'vs/platform/
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { InputFocusedContextKey } from 'vs/platform/workbench/common/contextkeys';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { mixin } from 'vs/base/common/objects';
 import { localize } from 'vs/nls';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from 'vs/platform/configuration/common/configurationRegistry';
@@ -25,6 +24,7 @@ import { isUndefinedOrNull } from 'vs/base/common/types';
 import { IEditorOptions } from 'vs/platform/editor/common/editor';
 import Event, { Emitter } from 'vs/base/common/event';
 import { createStyleSheet } from 'vs/base/browser/dom';
+import { ScrollbarVisibility } from 'vs/base/common/scrollable';
 
 export type ListWidget = List<any> | PagedList<any> | ITree;
 
@@ -106,6 +106,7 @@ function createScopedContextKeyService(contextKeyService: IContextKeyService, wi
 
 export const multiSelectModifierSettingKey = 'workbench.list.multiSelectModifier';
 export const openModeSettingKey = 'workbench.list.openMode';
+export const horizontalScrollingKey = 'workbench.tree.horizontalScrolling';
 
 function useAltAsMultipleSelectionModifier(configurationService: IConfigurationService): boolean {
 	return configurationService.getValue(multiSelectModifierSettingKey) === 'alt';
@@ -213,19 +214,14 @@ export class WorkbenchList<T> extends List<T> {
 		@IThemeService themeService: IThemeService,
 		@IConfigurationService private configurationService: IConfigurationService
 	) {
-		super(
-			container,
-			delegate,
-			renderers,
-			// mixin magic:
-			// - install list controllers accordingly
-			// - define some custom list options common for all workbench lists
-			// - mixin theme colors from default list styles right on creation
-			mixin(handleListControllers(options, configurationService), mixin({
+		super(container, delegate, renderers,
+			{
 				keyboardSupport: false,
 				selectOnMouseDown: true,
-				styleController: new DefaultStyleController(getSharedListStyleSheet())
-			} as IListOptions<T>, computeStyles(themeService.getTheme(), defaultListStyles), false), false)
+				styleController: new DefaultStyleController(getSharedListStyleSheet()),
+				...computeStyles(themeService.getTheme(), defaultListStyles),
+				...handleListControllers(options, configurationService)
+			} as IListOptions<T>
 		);
 
 		this.contextKeyService = createScopedContextKeyService(contextKeyService, this);
@@ -279,19 +275,14 @@ export class WorkbenchPagedList<T> extends PagedList<T> {
 		@IThemeService themeService: IThemeService,
 		@IConfigurationService private configurationService: IConfigurationService
 	) {
-		super(
-			container,
-			delegate,
-			renderers,
-			// mixin magic:
-			// - install list controllers accordingly
-			// - define some custom list options common for all workbench lists
-			// - mixin theme colors from default list styles right on creation
-			mixin(handleListControllers(options, configurationService), mixin({
+		super(container, delegate, renderers,
+			{
 				keyboardSupport: false,
 				selectOnMouseDown: true,
-				styleController: new DefaultStyleController(getSharedListStyleSheet())
-			} as IListOptions<T>, computeStyles(themeService.getTheme(), defaultListStyles), false), false)
+				styleController: new DefaultStyleController(getSharedListStyleSheet()),
+				...computeStyles(themeService.getTheme(), defaultListStyles),
+				...handleListControllers(options, configurationService)
+			} as IListOptions<T>
 		);
 
 		this.contextKeyService = createScopedContextKeyService(contextKeyService, this);
@@ -330,7 +321,7 @@ export class WorkbenchTree extends Tree {
 
 	readonly contextKeyService: IContextKeyService;
 
-	protected disposables: IDisposable[] = [];
+	protected disposables: IDisposable[];
 
 	private listDoubleSelection: IContextKey<boolean>;
 	private listMultiSelection: IContextKey<boolean>;
@@ -346,19 +337,20 @@ export class WorkbenchTree extends Tree {
 		@IListService listService: IListService,
 		@IThemeService themeService: IThemeService,
 		@IInstantiationService instantiationService: IInstantiationService,
-		@IConfigurationService private configurationService: IConfigurationService
+		@IConfigurationService configurationService: IConfigurationService
 	) {
-		super(
-			container,
-			handleTreeController(configuration, instantiationService),
-			// mixin magic:
-			// - define some custom tree options common for all workbench trees
-			// - mixin theme colors from default tree styles right on creation
-			mixin(options, mixin({
-				keyboardSupport: false
-			} as ITreeOptions, computeStyles(themeService.getTheme(), defaultListStyles), false), false)
-		);
+		const config = handleTreeController(configuration, instantiationService);
+		const horizontalScrollMode = configurationService.getValue(horizontalScrollingKey) ? ScrollbarVisibility.Auto : ScrollbarVisibility.Hidden;
+		const opts = {
+			horizontalScrollMode,
+			keyboardSupport: false,
+			...computeStyles(themeService.getTheme(), defaultListStyles),
+			...options
+		};
 
+		super(container, config, opts);
+
+		this.disposables = [];
 		this.contextKeyService = createScopedContextKeyService(contextKeyService, this);
 		this.listDoubleSelection = WorkbenchListDoubleSelection.bindTo(this.contextKeyService);
 		this.listMultiSelection = WorkbenchListMultiSelection.bindTo(this.contextKeyService);
@@ -372,23 +364,19 @@ export class WorkbenchTree extends Tree {
 			attachListStyler(this, themeService)
 		);
 
-		this.registerListeners();
-	}
-
-	private registerListeners(): void {
 		this.disposables.push(this.onDidChangeSelection(() => {
 			const selection = this.getSelection();
 			this.listDoubleSelection.set(selection && selection.length === 2);
 			this.listMultiSelection.set(selection && selection.length > 1);
 		}));
 
-		this.disposables.push(this.configurationService.onDidChangeConfiguration(e => {
+		this.disposables.push(configurationService.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration(openModeSettingKey)) {
-				this._openOnSingleClick = useSingleClickToOpen(this.configurationService);
+				this._openOnSingleClick = useSingleClickToOpen(configurationService);
 			}
 
 			if (e.affectsConfiguration(multiSelectModifierSettingKey)) {
-				this._useAltAsMultipleSelectionModifier = useAltAsMultipleSelectionModifier(this.configurationService);
+				this._useAltAsMultipleSelectionModifier = useAltAsMultipleSelectionModifier(configurationService);
 			}
 		}));
 	}
@@ -545,7 +533,7 @@ configurationRegistry.registerConfiguration({
 	'title': localize('workbenchConfigurationTitle', "Workbench"),
 	'type': 'object',
 	'properties': {
-		'workbench.list.multiSelectModifier': {
+		[multiSelectModifierSettingKey]: {
 			'type': 'string',
 			'enum': ['ctrlCmd', 'alt'],
 			'enumDescriptions': [
@@ -561,7 +549,7 @@ configurationRegistry.registerConfiguration({
 				]
 			}, "The modifier to be used to add an item in trees and lists to a multi-selection with the mouse (for example in the explorer, open editors and scm view). `ctrlCmd` maps to `Control` on Windows and Linux and to `Command` on macOS. The 'Open to Side' mouse gestures - if supported - will adapt such that they do not conflict with the multiselect modifier.")
 		},
-		'workbench.list.openMode': {
+		[openModeSettingKey]: {
 			'type': 'string',
 			'enum': ['singleClick', 'doubleClick'],
 			'enumDescriptions': [
@@ -573,6 +561,11 @@ configurationRegistry.registerConfiguration({
 				key: 'openModeModifier',
 				comment: ['`singleClick` and `doubleClick` refers to a value the setting can take and should not be localized.']
 			}, "Controls how to open items in trees and lists using the mouse (if supported). Set to `singleClick` to open items with a single mouse click and `doubleClick` to only open via mouse double click. For parents with children in trees, this setting will control if a single click expands the parent or a double click. Note that some trees and lists might choose to ignore this setting if it is not applicable. ")
+		},
+		[horizontalScrollingKey]: {
+			'type': 'boolean',
+			'default': false,
+			'description': localize('horizontalScrolling setting', "Controls whether trees support horizontal scrolling in the workbench.")
 		}
 	}
 });
