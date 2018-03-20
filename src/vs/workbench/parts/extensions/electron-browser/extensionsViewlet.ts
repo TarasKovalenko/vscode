@@ -13,7 +13,7 @@ import { isPromiseCanceledError, onUnexpectedError, create as createError } from
 import { IWorkbenchContribution } from 'vs/workbench/common/contributions';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { Builder, Dimension } from 'vs/base/browser/builder';
-import EventOf, { mapEvent, chain } from 'vs/base/common/event';
+import { Event as EventOf, mapEvent, chain } from 'vs/base/common/event';
 import { IAction } from 'vs/base/common/actions';
 import { domEvent } from 'vs/base/browser/event';
 import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
@@ -33,7 +33,7 @@ import {
 } from 'vs/workbench/parts/extensions/browser/extensionsActions';
 import { LocalExtensionType, IExtensionManagementService } from 'vs/platform/extensionManagement/common/extensionManagement';
 import { ExtensionsInput } from 'vs/workbench/parts/extensions/common/extensionsInput';
-import { ExtensionsListView, InstalledExtensionsView, RecommendedExtensionsView, WorkspaceRecommendedExtensionsView, BuiltInExtensionsView } from './extensionsViews';
+import { ExtensionsListView, InstalledExtensionsView, RecommendedExtensionsView, WorkspaceRecommendedExtensionsView, BuiltInExtensionsView, BuiltInThemesExtensionsView, BuiltInBasicsExtensionsView } from './extensionsViews';
 import { OpenGlobalSettingsAction } from 'vs/workbench/parts/preferences/browser/preferencesActions';
 import { IProgressService } from 'vs/platform/progress/common/progress';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
@@ -133,7 +133,9 @@ export class ExtensionsViewlet extends PersistentViewsViewlet implements IExtens
 		viewDescriptors.push(this.createMarketPlaceExtensionsListViewDescriptor());
 		viewDescriptors.push(this.createInstalledExtensionsListViewDescriptor());
 		viewDescriptors.push(this.createSearchInstalledExtensionsListViewDescriptor());
+		viewDescriptors.push(this.createSearchBuiltInBasicsExtensionsListViewDescriptor());
 		viewDescriptors.push(this.createSearchBuiltInExtensionsListViewDescriptor());
+		viewDescriptors.push(this.createSearchBuiltInThemesExtensionsListViewDescriptor());
 		viewDescriptors.push(this.createDefaultRecommendedExtensionsListViewDescriptor());
 		viewDescriptors.push(this.createOtherRecommendedExtensionsListViewDescriptor());
 		viewDescriptors.push(this.createWorkspaceRecommendedExtensionsListViewDescriptor());
@@ -214,9 +216,31 @@ export class ExtensionsViewlet extends PersistentViewsViewlet implements IExtens
 	private createSearchBuiltInExtensionsListViewDescriptor(): IViewDescriptor {
 		return {
 			id: 'extensions.builtInExtensionsList',
-			name: localize('builtInExtensions', "Built-In"),
+			name: localize('builtInExtensions', "Built-In Extensions"),
 			location: ViewLocation.Extensions,
 			ctor: BuiltInExtensionsView,
+			when: ContextKeyExpr.has('searchBuiltInExtensions'),
+			weight: 100
+		};
+	}
+
+	private createSearchBuiltInThemesExtensionsListViewDescriptor(): IViewDescriptor {
+		return {
+			id: 'extensions.builtInThemesExtensionsList',
+			name: localize('builtInThemesExtensions', "Built-In Themes"),
+			location: ViewLocation.Extensions,
+			ctor: BuiltInThemesExtensionsView,
+			when: ContextKeyExpr.has('searchBuiltInExtensions'),
+			weight: 100
+		};
+	}
+
+	private createSearchBuiltInBasicsExtensionsListViewDescriptor(): IViewDescriptor {
+		return {
+			id: 'extensions.builtInBasicsExtensionsList',
+			name: localize('builtInBasicsExtensions', "Built-In Language Basics"),
+			location: ViewLocation.Extensions,
+			ctor: BuiltInBasicsExtensionsView,
 			when: ContextKeyExpr.has('searchBuiltInExtensions'),
 			weight: 100
 		};

@@ -3675,6 +3675,32 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * Represents a related message and source code location for a diagnostic. This should be
+	 * used to point to code locations that cause or related to a diagnostics, e.g when duplicating
+	 * a symbol in a scope.
+	 */
+	export class DiagnosticRelatedInformation {
+
+		/**
+		 * The location of this related diagnostic information.
+		 */
+		location: Location;
+
+		/**
+		 * The message of this related diagnostic information.
+		 */
+		message: string;
+
+		/**
+		 * Creates a new related diagnostic information object.
+		 *
+		 * @param location The location.
+		 * @param message The message.
+		 */
+		constructor(location: Location, message: string);
+	}
+
+	/**
 	 * Represents a diagnostic, such as a compiler error or warning. Diagnostic objects
 	 * are only valid in the scope of a file.
 	 */
@@ -3707,6 +3733,12 @@ declare module 'vscode' {
 		 * providing [code actions](#CodeActionContext).
 		 */
 		code: string | number;
+
+		/**
+		 * An array of related diagnostic information, e.g. when symbol-names within
+		 * a scope collide all definitions can be marked via this property.
+		 */
+		relatedInformation: DiagnosticRelatedInformation[];
 
 		/**
 		 * Creates a new diagnostic object.
@@ -3783,7 +3815,7 @@ declare module 'vscode' {
 		 * modify the diagnostics-array returned from this call.
 		 *
 		 * @param uri A resource identifier.
-		 * @returns An immutable array of [diagnostics](#Diagnostic) or `undefined`.
+		 * @returns An immutable array of [diagnostics](#Diagnxostic) or `undefined`.
 		 */
 		get(uri: Uri): Diagnostic[] | undefined;
 
@@ -4600,9 +4632,12 @@ declare module 'vscode' {
 
 		/**
 		 * Resolves a task that has no [`execution`](#Task.execution) set. Tasks are
-		 * often created from information found in the `task.json`-file. Such tasks miss
+		 * often created from information found in the `tasks.json`-file. Such tasks miss
 		 * the information on how to execute them and a task provider must fill in
-		 * the missing information in the `resolveTask`-method.
+		 * the missing information in the `resolveTask`-method. This method will not be
+		 * called for tasks returned from the above `provideTasks` method since those
+		 * tasks are always fully resolved. A valid default implementation for the
+		 * `resolveTask` method is to return `undefined`.
 		 *
 		 * @param task The task to resolve.
 		 * @param token A cancellation token.

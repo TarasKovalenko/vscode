@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-import { UriComponents } from 'vs/base/common/uri';
+import URI, { UriComponents } from 'vs/base/common/uri';
 import * as Types from 'vs/base/common/types';
 import { IJSONSchemaMap } from 'vs/base/common/jsonSchema';
 import * as Objects from 'vs/base/common/objects';
@@ -12,6 +12,7 @@ import * as Objects from 'vs/base/common/objects';
 import { IExtensionDescription } from 'vs/workbench/services/extensions/common/extensions';
 import { ProblemMatcher } from 'vs/workbench/parts/tasks/common/problemMatcher';
 import { IWorkspaceFolder } from 'vs/platform/workspace/common/workspace';
+import { generateUuid } from '../../../../base/common/uuid';
 
 
 export enum ShellQuoting {
@@ -335,6 +336,7 @@ export type TaskSource = WorkspaceTaskSource | ExtensionTaskSource | InMemoryTas
 export interface TaskIdentifier {
 	_key: string;
 	type: string;
+	[name: string]: any;
 }
 
 export interface TaskDependency {
@@ -373,6 +375,11 @@ export interface ConfigurationProperties {
 	 * The presentation options
 	 */
 	presentation?: PresentationOptions;
+
+	/**
+	 * The command options;
+	 */
+	options?: CommandOptions;
 
 	/**
 	 * Whether the task is a background task or not.
@@ -433,6 +440,22 @@ export namespace CustomTask {
 	export function is(value: any): value is CustomTask {
 		let candidate: CustomTask = value;
 		return candidate && candidate.type === 'custom';
+	}
+	export function getDefinition(task: CustomTask): TaskIdentifier {
+		if (task.command === void 0) {
+			return undefined;
+		}
+		if (task.command.runtime === RuntimeType.Shell) {
+			return {
+				_key: generateUuid(),
+				type: 'shell'
+			};
+		} else {
+			return {
+				_key: generateUuid(),
+				type: 'process'
+			};
+		}
 	}
 }
 
@@ -589,6 +612,12 @@ export namespace Task {
 	}
 }
 
+export interface TaskItemTransfer {
+	id: string;
+	label: string;
+	definition: TaskIdentifier;
+	workspaceFolderUri: URI;
+}
 
 export enum ExecutionEngine {
 	Process = 1,

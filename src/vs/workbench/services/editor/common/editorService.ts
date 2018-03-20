@@ -16,7 +16,7 @@ import { ResourceEditorInput } from 'vs/workbench/common/editor/resourceEditorIn
 import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
 import { DiffEditorInput } from 'vs/workbench/common/editor/diffEditorInput';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
-import nls = require('vs/nls');
+import * as nls from 'vs/nls';
 import { getPathLabel } from 'vs/base/common/labels';
 import { ResourceMap } from 'vs/base/common/map';
 import { once } from 'vs/base/common/event';
@@ -268,6 +268,10 @@ export class WorkbenchEditorService implements IWorkbenchEditorService {
 	}
 
 	public closeEditor(position: Position, input: IEditorInput): TPromise<void> {
+		return this.doCloseEditor(position, input);
+	}
+
+	protected doCloseEditor(position: Position, input: IEditorInput): TPromise<void> {
 		return this.editorPart.closeEditor(position, input);
 	}
 
@@ -396,6 +400,7 @@ export interface IEditorCloseHandler {
  */
 export class DelegatingWorkbenchEditorService extends WorkbenchEditorService {
 	private editorOpenHandler: IEditorOpenHandler;
+	private editorCloseHandler: IEditorCloseHandler;
 
 	constructor(
 		@IUntitledEditorService untitledEditorService: IUntitledEditorService,
@@ -419,6 +424,10 @@ export class DelegatingWorkbenchEditorService extends WorkbenchEditorService {
 		this.editorOpenHandler = handler;
 	}
 
+	public setEditorCloseHandler(handler: IEditorCloseHandler): void {
+		this.editorCloseHandler = handler;
+	}
+
 	protected doOpenEditor(input: IEditorInput, options?: EditorOptions, sideBySide?: boolean): TPromise<IEditor>;
 	protected doOpenEditor(input: IEditorInput, options?: EditorOptions, position?: Position): TPromise<IEditor>;
 	protected doOpenEditor(input: IEditorInput, options?: EditorOptions, arg3?: any): TPromise<IEditor> {
@@ -430,6 +439,14 @@ export class DelegatingWorkbenchEditorService extends WorkbenchEditorService {
 			}
 
 			return super.doOpenEditor(input, options, arg3);
+		});
+	}
+
+	protected doCloseEditor(position: Position, input: IEditorInput): TPromise<void> {
+		const handleClose = this.editorCloseHandler ? this.editorCloseHandler(position, input) : TPromise.as(void 0);
+
+		return handleClose.then(() => {
+			return super.doCloseEditor(position, input);
 		});
 	}
 }

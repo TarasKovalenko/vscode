@@ -10,10 +10,10 @@ import 'vs/css!./media/shell';
 import * as platform from 'vs/base/common/platform';
 import * as perf from 'vs/base/common/performance';
 import { Dimension, Builder, $ } from 'vs/base/browser/builder';
-import dom = require('vs/base/browser/dom');
-import aria = require('vs/base/browser/ui/aria/aria');
+import * as dom from 'vs/base/browser/dom';
+import * as aria from 'vs/base/browser/ui/aria/aria';
 import { dispose, IDisposable } from 'vs/base/common/lifecycle';
-import errors = require('vs/base/common/errors');
+import * as errors from 'vs/base/common/errors';
 import { toErrorMessage } from 'vs/base/common/errorMessage';
 import product from 'vs/platform/node/product';
 import { SyncDescriptor } from 'vs/platform/instantiation/common/descriptors';
@@ -421,6 +421,8 @@ export class WorkbenchShell {
 		serviceCollection.set(IExtensionEnablementService, extensionEnablementService);
 		this.toUnbind.push(extensionEnablementService);
 
+		serviceCollection.set(IRequestService, new SyncDescriptor(RequestService));
+
 		this.extensionService = instantiationService.createInstance(ExtensionService);
 		serviceCollection.set(IExtensionService, this.extensionService);
 
@@ -436,8 +438,6 @@ export class WorkbenchShell {
 
 		this.contextViewService = instantiationService.createInstance(ContextViewService, this.container);
 		serviceCollection.set(IContextViewService, this.contextViewService);
-
-		serviceCollection.set(IRequestService, new SyncDescriptor(RequestService));
 
 		serviceCollection.set(IMarkerService, new SyncDescriptor(MarkerService));
 

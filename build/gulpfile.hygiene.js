@@ -46,8 +46,8 @@ const indentationFilter = [
 	'!src/vs/nls.js',
 	'!src/vs/css.js',
 	'!src/vs/loader.js',
-	'!src/vs/base/common/marked/raw.marked.js',
-	'!src/vs/base/common/winjs.base.raw.js',
+	'!src/vs/base/common/marked/marked.js',
+	'!src/vs/base/common/winjs.base.js',
 	'!src/vs/base/node/terminateProcess.sh',
 	'!src/vs/base/node/ps-win.ps1',
 	'!test/assert.js',
@@ -82,7 +82,7 @@ const indentationFilter = [
 	'!build/**/*.sh',
 	'!build/tfs/**/*.js',
 	'!**/Dockerfile',
-	'!extensions/markdown/media/*.js'
+	'!extensions/markdown-language-features/media/*.js'
 ];
 
 const copyrightFilter = [
@@ -104,8 +104,8 @@ const copyrightFilter = [
 	'!build/**/*.init',
 	'!resources/linux/snap/snapcraft.yaml',
 	'!resources/win32/bin/code.js',
-	'!extensions/markdown/media/tomorrow.css',
-	'!extensions/html/server/src/modes/typescript/*'
+	'!extensions/markdown-language-features/media/tomorrow.css',
+	'!extensions/html-language-features/server/src/modes/typescript/*'
 ];
 
 const eslintFilter = [
@@ -116,8 +116,8 @@ const eslintFilter = [
 	'!src/vs/nls.js',
 	'!src/vs/css.build.js',
 	'!src/vs/nls.build.js',
-	'!src/**/winjs.base.raw.js',
-	'!src/**/raw.marked.js',
+	'!src/**/winjs.base.js',
+	'!src/**/marked.js',
 	'!**/test/**'
 ];
 
@@ -132,7 +132,7 @@ const tslintFilter = [
 	'!extensions/vscode-api-tests/testWorkspace/**',
 	'!extensions/vscode-api-tests/testWorkspace2/**',
 	'!extensions/**/*.test.ts',
-	'!extensions/html/server/lib/jquery.d.ts'
+	'!extensions/html-language-features/server/lib/jquery.d.ts'
 ];
 
 const copyrightHeaderLines = [

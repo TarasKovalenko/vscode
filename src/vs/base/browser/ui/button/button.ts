@@ -6,14 +6,15 @@
 'use strict';
 
 import 'vs/css!./button';
-import DOM = require('vs/base/browser/dom');
+import * as DOM from 'vs/base/browser/dom';
 import { Builder, $ } from 'vs/base/browser/builder';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import { Color } from 'vs/base/common/color';
 import { mixin } from 'vs/base/common/objects';
-import Event, { Emitter } from 'vs/base/common/event';
+import { Event, Emitter } from 'vs/base/common/event';
 import { dispose, IDisposable } from 'vs/base/common/lifecycle';
+import { Gesture, EventType } from 'vs/base/browser/touch';
 
 export interface IButtonOptions extends IButtonStyles {
 	title?: boolean;
@@ -63,7 +64,9 @@ export class Button {
 			'role': 'button'
 		}).appendTo(container);
 
-		this.$el.on(DOM.EventType.CLICK, e => {
+		Gesture.addTarget(this.$el.getHTMLElement());
+
+		this.$el.on([DOM.EventType.CLICK, EventType.Tap], e => {
 			if (!this.enabled) {
 				DOM.EventHelper.stop(e);
 				return;

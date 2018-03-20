@@ -7,7 +7,7 @@
 
 import * as assert from 'assert';
 import { Promise, TPromise } from 'vs/base/common/winjs.base';
-import paths = require('vs/base/common/paths');
+import * as paths from 'vs/base/common/paths';
 import { Position, IEditor, IEditorInput } from 'vs/platform/editor/common/editor';
 import URI from 'vs/base/common/uri';
 import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
@@ -266,11 +266,18 @@ suite('WorkbenchEditorService', () => {
 		delegate.setEditorOpenHandler((input: IEditorInput, options?: EditorOptions) => {
 			assert.strictEqual(input, inp);
 
-			done();
-
 			return TPromise.as(ed);
 		});
 
+		delegate.setEditorCloseHandler((position, input) => {
+			assert.strictEqual(input, inp);
+
+			done();
+
+			return TPromise.as(void 0);
+		});
+
 		delegate.openEditor(inp);
+		delegate.closeEditor(0, inp);
 	});
 });

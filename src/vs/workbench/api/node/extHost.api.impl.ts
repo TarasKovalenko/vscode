@@ -132,7 +132,7 @@ export function createApiFactory(
 	const extHostLanguages = new ExtHostLanguages(rpcProtocol);
 
 	// Register API-ish commands
-	ExtHostApiCommands.register(extHostCommands);
+	ExtHostApiCommands.register(extHostCommands, extHostWorkspace);
 
 	return function (extension: IExtensionDescription): typeof vscode {
 
@@ -211,6 +211,7 @@ export function createApiFactory(
 			get language() { return Platform.language; },
 			get appName() { return product.nameLong; },
 			get appRoot() { return initData.environment.appRoot; },
+			get logLevel() { return extHostLogService.getLevel(); }
 		});
 
 		// namespace: extensions
@@ -232,6 +233,13 @@ export function createApiFactory(
 			createDiagnosticCollection(name?: string): vscode.DiagnosticCollection {
 				return extHostDiagnostics.createDiagnosticCollection(name);
 			},
+			get onDidChangeDiagnostics() {
+				checkProposedApiEnabled(extension);
+				return extHostDiagnostics.onDidChangeDiagnostics;
+			},
+			getDiagnostics: <any>proposedApiFunction(extension, (resource?) => {
+				return extHostDiagnostics.getDiagnostics(resource);
+			}),
 			getLanguages(): TPromise<string[]> {
 				return extHostLanguages.getLanguages();
 			},
@@ -406,7 +414,7 @@ export function createApiFactory(
 				return extHostDecorations.registerDecorationProvider(provider, extension.id);
 			}),
 			createWebview: proposedApiFunction(extension, (uri: vscode.Uri, title: string, column: vscode.ViewColumn, options: vscode.WebviewOptions) => {
-				return extHostWebviews.createWebview(uri, title, column, options);
+				return extHostWebviews.createWebview(uri, title, column, options, extension.extensionFolderPath);
 			}),
 			onDidChangeActiveEditor: proposedApiFunction(extension, (listener, thisArg?, disposables?) => {
 				return extHostDocumentsAndEditors.onDidChangeActiveEditor(listener, thisArg, disposables);
@@ -592,6 +600,7 @@ export function createApiFactory(
 			CompletionTriggerKind: extHostTypes.CompletionTriggerKind,
 			DebugAdapterExecutable: extHostTypes.DebugAdapterExecutable,
 			Diagnostic: extHostTypes.Diagnostic,
+			DiagnosticRelatedInformation: extHostTypes.DiagnosticRelatedInformation,
 			DiagnosticSeverity: extHostTypes.DiagnosticSeverity,
 			Disposable: extHostTypes.Disposable,
 			DocumentHighlight: extHostTypes.DocumentHighlight,

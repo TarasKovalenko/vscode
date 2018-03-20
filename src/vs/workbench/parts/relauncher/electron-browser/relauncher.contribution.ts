@@ -38,6 +38,7 @@ export class SettingsChangeRelauncher implements IWorkbenchContribution {
 	private enableCrashReporter: boolean;
 	private touchbarEnabled: boolean;
 	private treeHorizontalScrolling: boolean;
+	private windowsSmoothScrollingWorkaround: boolean;
 
 	private firstFolderResource: URI;
 	private extensionHostRestarter: RunOnceScheduler;
@@ -104,6 +105,12 @@ export class SettingsChangeRelauncher implements IWorkbenchContribution {
 		// Tree horizontal scrolling support
 		if (config.workbench && config.workbench.tree && typeof config.workbench.tree.horizontalScrolling === 'boolean' && config.workbench.tree.horizontalScrolling !== this.treeHorizontalScrolling) {
 			this.treeHorizontalScrolling = config.workbench.tree.horizontalScrolling;
+			changed = true;
+		}
+
+		// Windows: smooth scrolling workaround
+		if (config.window && typeof config.window.smoothScrollingWorkaround === 'boolean' && config.window.smoothScrollingWorkaround !== this.windowsSmoothScrollingWorkaround) {
+			this.windowsSmoothScrollingWorkaround = config.window.smoothScrollingWorkaround;
 			changed = true;
 		}
 
@@ -175,5 +182,5 @@ export class SettingsChangeRelauncher implements IWorkbenchContribution {
 	}
 }
 
-const workbenchRegistry = <IWorkbenchContributionsRegistry>Registry.as(WorkbenchExtensions.Workbench);
+const workbenchRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
 workbenchRegistry.registerWorkbenchContribution(SettingsChangeRelauncher, LifecyclePhase.Running);

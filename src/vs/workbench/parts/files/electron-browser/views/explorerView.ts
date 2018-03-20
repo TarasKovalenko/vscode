@@ -4,15 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-import nls = require('vs/nls');
+import * as nls from 'vs/nls';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Builder, $ } from 'vs/base/browser/builder';
 import URI from 'vs/base/common/uri';
 import { ThrottledDelayer, Delayer } from 'vs/base/common/async';
-import errors = require('vs/base/common/errors');
-import paths = require('vs/base/common/paths');
-import resources = require('vs/base/common/resources');
-import glob = require('vs/base/common/glob');
+import * as errors from 'vs/base/common/errors';
+import * as paths from 'vs/base/common/paths';
+import * as resources from 'vs/base/common/resources';
+import * as glob from 'vs/base/common/glob';
 import { Action, IAction } from 'vs/base/common/actions';
 import { memoize } from 'vs/base/common/decorators';
 import { IFilesConfiguration, ExplorerFolderContext, FilesExplorerFocusedContext, ExplorerFocusedContext, SortOrderConfiguration, SortOrder, IExplorerView, ExplorerRootContext } from 'vs/workbench/parts/files/common/files';
@@ -815,7 +815,7 @@ export class ExplorerView extends TreeViewsViewletPanel implements IExplorerView
 			return this.fileService.resolveFiles(targetsToResolve).then(results => {
 				// Convert to model
 				const modelStats = results.map((result, index) => {
-					if (result.success) {
+					if (result.success && result.stat.isDirectory) {
 						return FileStat.create(result.stat, targetsToResolve[index].root, targetsToResolve[index].options.resolveTo);
 					}
 
@@ -842,7 +842,7 @@ export class ExplorerView extends TreeViewsViewletPanel implements IExplorerView
 		let delayer = new Delayer(100);
 		let delayerPromise: TPromise;
 		return TPromise.join(targetsToResolve.map((target, index) => this.fileService.resolveFile(target.resource, target.options)
-			.then(result => FileStat.create(result, target.root, target.options.resolveTo), err => errorFileStat(target.resource, target.root))
+			.then(result => result.isDirectory ? FileStat.create(result, target.root, target.options.resolveTo) : errorFileStat(target.resource, target.root), err => errorFileStat(target.resource, target.root))
 			.then(modelStat => {
 				// Subsequent refresh: Merge stat into our local model and refresh tree
 				if (index < this.model.roots.length) {

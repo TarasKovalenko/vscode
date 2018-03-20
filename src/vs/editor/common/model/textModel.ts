@@ -5,7 +5,7 @@
 'use strict';
 
 import URI from 'vs/base/common/uri';
-import Event, { Emitter } from 'vs/base/common/event';
+import { Event, Emitter } from 'vs/base/common/event';
 import * as model from 'vs/editor/common/model';
 import { LanguageIdentifier, TokenizationRegistry, LanguageId } from 'vs/editor/common/modes';
 import { EditStack } from 'vs/editor/common/model/editStack';
@@ -30,7 +30,7 @@ import { getWordAtText } from 'vs/editor/common/model/wordHelper';
 import { ModelLinesTokens, ModelTokensChangedEventBuilder } from 'vs/editor/common/model/textModelTokens';
 import { guessIndentation } from 'vs/editor/common/model/indentationGuesser';
 import { EDITOR_MODEL_DEFAULTS } from 'vs/editor/common/config/editorOptions';
-import { TextModelSearch, SearchParams } from 'vs/editor/common/model/textModelSearch';
+import { TextModelSearch, SearchParams, SearchData } from 'vs/editor/common/model/textModelSearch';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { IStringStream, ITextSnapshot } from 'vs/platform/files/common/files';
 import { LinesTextBufferBuilder } from 'vs/editor/common/model/linesTextBuffer/linesTextBufferBuilder';
@@ -983,6 +983,10 @@ export class TextModel extends Disposable implements model.ITextModel {
 		return new Range(1, 1, lineCount, this.getLineMaxColumn(lineCount));
 	}
 
+	private findMatchesLineByLine(searchRange: Range, searchData: SearchData, captureMatches: boolean, limitResultCount: number): model.FindMatch[] {
+		return this._buffer.findMatchesLineByLine(searchRange, searchData, captureMatches, limitResultCount);
+	}
+
 	public findMatches(searchString: string, rawSearchScope: any, isRegex: boolean, matchCase: boolean, wordSeparators: string, captureMatches: boolean, limitResultCount: number = LIMIT_FIND_COUNT): model.FindMatch[] {
 		this._assertNotDisposed();
 
@@ -993,12 +997,46 @@ export class TextModel extends Disposable implements model.ITextModel {
 			searchRange = this.getFullModelRange();
 		}
 
+		if (!isRegex && searchString.indexOf('\n') < 0 && OPTIONS.TEXT_BUFFER_IMPLEMENTATION === TextBufferType.PieceTree) {
+			// not regex, not multi line
+			const searchParams = new SearchParams(searchString, isRegex, matchCase, wordSeparators);
+			const searchData = searchParams.parseSearchRequest();
+
+			if (!searchData) {
+				return [];
+			}
+
+			return this.findMatchesLineByLine(searchRange, searchData, captureMatches, limitResultCount);
+		}
+
 		return TextModelSearch.findMatches(this, new SearchParams(searchString, isRegex, matchCase, wordSeparators), searchRange, captureMatches, limitResultCount);
 	}
 
 	public findNextMatch(searchString: string, rawSearchStart: IPosition, isRegex: boolean, matchCase: boolean, wordSeparators: string, captureMatches: boolean): model.FindMatch {
 		this._assertNotDisposed();
 		const searchStart = this.validatePosition(rawSearchStart);
+
+		if (!isRegex && searchString.indexOf('\n') < 0 && OPTIONS.TEXT_BUFFER_IMPLEMENTATION === TextBufferType.PieceTree) {
+			const searchParams = new SearchParams(searchString, isRegex, matchCase, wordSeparators);
+			const searchData = searchParams.parseSearchRequest();
+			const lineCount = this.getLineCount();
+			let searchRange = new Range(searchStart.lineNumber, searchStart.column, lineCount, this.getLineMaxColumn(lineCount));
+			let ret = this.findMatchesLineByLine(searchRange, searchData, captureMatches, 1);
+			TextModelSearch.findNextMatch(this, new SearchParams(searchString, isRegex, matchCase, wordSeparators), searchStart, captureMatches);
+			if (ret.length > 0) {
+				return ret[0];
+			}
+
+			searchRange = new Range(1, 1, searchStart.lineNumber, this.getLineMaxColumn(searchStart.lineNumber));
+			ret = this.findMatchesLineByLine(searchRange, searchData, captureMatches, 1);
+
+			if (ret.length > 0) {
+				return ret[0];
+			}
+
+			return null;
+		}
+
 		return TextModelSearch.findNextMatch(this, new SearchParams(searchString, isRegex, matchCase, wordSeparators), searchStart, captureMatches);
 	}
 
