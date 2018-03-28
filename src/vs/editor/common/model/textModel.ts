@@ -33,28 +33,10 @@ import { EDITOR_MODEL_DEFAULTS } from 'vs/editor/common/config/editorOptions';
 import { TextModelSearch, SearchParams, SearchData } from 'vs/editor/common/model/textModelSearch';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { IStringStream, ITextSnapshot } from 'vs/platform/files/common/files';
-import { LinesTextBufferBuilder } from 'vs/editor/common/model/linesTextBuffer/linesTextBufferBuilder';
 import { PieceTreeTextBufferBuilder } from 'vs/editor/common/model/pieceTreeTextBuffer/pieceTreeTextBufferBuilder';
-import { ChunksTextBufferBuilder } from 'vs/editor/common/model/chunksTextBuffer/chunksTextBufferBuilder';
-
-export enum TextBufferType {
-	LinesArray,
-	PieceTree,
-	Chunks
-}
-// Here is the master switch for the text buffer implementation:
-export const OPTIONS = {
-	TEXT_BUFFER_IMPLEMENTATION: TextBufferType.PieceTree
-};
 
 function createTextBufferBuilder() {
-	if (OPTIONS.TEXT_BUFFER_IMPLEMENTATION === TextBufferType.PieceTree) {
-		return new PieceTreeTextBufferBuilder();
-	}
-	if (OPTIONS.TEXT_BUFFER_IMPLEMENTATION === TextBufferType.Chunks) {
-		return new ChunksTextBufferBuilder();
-	}
-	return new LinesTextBufferBuilder();
+	return new PieceTreeTextBufferBuilder();
 }
 
 export function createTextBufferFactory(text: string): model.ITextBufferFactory {
@@ -551,6 +533,10 @@ export class TextModel extends Disposable implements model.ITextModel {
 		return this._attachedEditorCount > 0;
 	}
 
+	public getAttachedEditorCount(): number {
+		return this._attachedEditorCount;
+	}
+
 	public isTooLargeForHavingARichMode(): boolean {
 		return this._shouldSimplifyMode;
 	}
@@ -1000,7 +986,7 @@ export class TextModel extends Disposable implements model.ITextModel {
 			searchRange = this.getFullModelRange();
 		}
 
-		if (!isRegex && searchString.indexOf('\n') < 0 && OPTIONS.TEXT_BUFFER_IMPLEMENTATION === TextBufferType.PieceTree) {
+		if (!isRegex && searchString.indexOf('\n') < 0) {
 			// not regex, not multi line
 			const searchParams = new SearchParams(searchString, isRegex, matchCase, wordSeparators);
 			const searchData = searchParams.parseSearchRequest();
@@ -1019,7 +1005,7 @@ export class TextModel extends Disposable implements model.ITextModel {
 		this._assertNotDisposed();
 		const searchStart = this.validatePosition(rawSearchStart);
 
-		if (!isRegex && searchString.indexOf('\n') < 0 && OPTIONS.TEXT_BUFFER_IMPLEMENTATION === TextBufferType.PieceTree) {
+		if (!isRegex && searchString.indexOf('\n') < 0) {
 			const searchParams = new SearchParams(searchString, isRegex, matchCase, wordSeparators);
 			const searchData = searchParams.parseSearchRequest();
 			const lineCount = this.getLineCount();
@@ -1686,8 +1672,15 @@ export class TextModel extends Disposable implements model.ITextModel {
 			let text = this.getLineContent(i);
 			let r = this._tokens._tokenizeText(this._buffer, text, state);
 			if (r) {
-				state = r.endState.clone();
 				this._tokens._setTokens(this._tokens.languageIdentifier.id, i - 1, text.length, r.tokens);
+				/*
+				 * we think it's valid and give it a state but we don't update `_invalidLineStartIndex` then the top-to-bottom tokenization
+				 * goes through the viewport, it can skip them if they already have correct tokens and state, and the lines after the viewport
+				 * can still be tokenized.
+				 */
+				this._tokens._setIsInvalid(i - 1, false);
+				this._tokens._setState(i - 1, state);
+				state = r.endState.clone();
 				eventBuilder.registerChangedTokens(i);
 			} else {
 				state = initialState.clone();
