@@ -211,11 +211,14 @@ export class TextModel extends Disposable implements model.ITextModel {
 	public readonly onDidChangeOptions: Event<IModelOptionsChangedEvent> = this._onDidChangeOptions.event;
 
 	private readonly _eventEmitter: DidChangeContentEmitter = this._register(new DidChangeContentEmitter());
+	public onDidChangeRawContentFast(listener: (e: ModelRawContentChangedEvent) => void): IDisposable {
+		return this._eventEmitter.fastEvent((e: InternalModelContentChangeEvent) => listener(e.rawContentChangedEvent));
+	}
 	public onDidChangeRawContent(listener: (e: ModelRawContentChangedEvent) => void): IDisposable {
-		return this._eventEmitter.event((e: InternalModelContentChangeEvent) => listener(e.rawContentChangedEvent));
+		return this._eventEmitter.slowEvent((e: InternalModelContentChangeEvent) => listener(e.rawContentChangedEvent));
 	}
 	public onDidChangeContent(listener: (e: IModelContentChangedEvent) => void): IDisposable {
-		return this._eventEmitter.event((e: InternalModelContentChangeEvent) => listener(e.contentChangedEvent));
+		return this._eventEmitter.slowEvent((e: InternalModelContentChangeEvent) => listener(e.contentChangedEvent));
 	}
 	//#endregion
 
@@ -881,6 +884,41 @@ export class TextModel extends Disposable implements model.ITextModel {
 	/**
 	 * @param strict Do NOT allow a position inside a high-low surrogate pair
 	 */
+	private _isValidPosition(lineNumber: number, column: number, strict: boolean): boolean {
+
+		if (lineNumber < 1) {
+			return false;
+		}
+
+		const lineCount = this._buffer.getLineCount();
+		if (lineNumber > lineCount) {
+			return false;
+		}
+
+		if (column < 1) {
+			return false;
+		}
+
+		const maxColumn = this.getLineMaxColumn(lineNumber);
+		if (column > maxColumn) {
+			return false;
+		}
+
+		if (strict) {
+			if (column > 1) {
+				const charCodeBefore = this._buffer.getLineCharCode(lineNumber, column - 2);
+				if (strings.isHighSurrogate(charCodeBefore)) {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * @param strict Do NOT allow a position inside a high-low surrogate pair
+	 */
 	private _validatePosition(_lineNumber: number, _column: number, strict: boolean): Position {
 		const lineNumber = Math.floor(typeof _lineNumber === 'number' ? _lineNumber : 1);
 		const column = Math.floor(typeof _column === 'number' ? _column : 1);
@@ -918,11 +956,60 @@ export class TextModel extends Disposable implements model.ITextModel {
 
 	public validatePosition(position: IPosition): Position {
 		this._assertNotDisposed();
+
+		// Avoid object allocation and cover most likely case
+		if (position instanceof Position) {
+			if (this._isValidPosition(position.lineNumber, position.column, true)) {
+				return position;
+			}
+		}
+
 		return this._validatePosition(position.lineNumber, position.column, true);
+	}
+
+	/**
+	 * @param strict Do NOT allow a range to have its boundaries inside a high-low surrogate pair
+	 */
+	private _isValidRange(range: Range, strict: boolean): boolean {
+		const startLineNumber = range.startLineNumber;
+		const startColumn = range.startColumn;
+		const endLineNumber = range.endLineNumber;
+		const endColumn = range.endColumn;
+
+		if (!this._isValidPosition(startLineNumber, startColumn, false)) {
+			return false;
+		}
+		if (!this._isValidPosition(endLineNumber, endColumn, false)) {
+			return false;
+		}
+
+		if (strict) {
+			const charCodeBeforeStart = (startColumn > 1 ? this._buffer.getLineCharCode(startLineNumber, startColumn - 2) : 0);
+			const charCodeBeforeEnd = (endColumn > 1 && endColumn <= this._buffer.getLineLength(endLineNumber) ? this._buffer.getLineCharCode(endLineNumber, endColumn - 2) : 0);
+
+			const startInsideSurrogatePair = strings.isHighSurrogate(charCodeBeforeStart);
+			const endInsideSurrogatePair = strings.isHighSurrogate(charCodeBeforeEnd);
+
+			if (!startInsideSurrogatePair && !endInsideSurrogatePair) {
+				return true;
+			}
+
+			return false;
+		}
+
+		return true;
 	}
 
 	public validateRange(_range: IRange): Range {
 		this._assertNotDisposed();
+
+		// Avoid object allocation and cover most likely case
+		if ((_range instanceof Range) && !(_range instanceof Selection)) {
+			if (this._isValidRange(_range, true)) {
+				return _range;
+			}
+		}
+
 		const start = this._validatePosition(_range.startLineNumber, _range.startColumn, false);
 		const end = this._validatePosition(_range.endLineNumber, _range.endColumn, false);
 
@@ -2600,8 +2687,13 @@ export class DidChangeDecorationsEmitter extends Disposable {
 
 export class DidChangeContentEmitter extends Disposable {
 
-	private readonly _actual: Emitter<InternalModelContentChangeEvent> = this._register(new Emitter<InternalModelContentChangeEvent>());
-	public readonly event: Event<InternalModelContentChangeEvent> = this._actual.event;
+	/**
+	 * Both `fastEvent` and `slowEvent` work the same way and contain the same events, but first we invoke `fastEvent` and then `slowEvent`.
+	 */
+	private readonly _fastEmitter: Emitter<InternalModelContentChangeEvent> = this._register(new Emitter<InternalModelContentChangeEvent>());
+	public readonly fastEvent: Event<InternalModelContentChangeEvent> = this._fastEmitter.event;
+	private readonly _slowEmitter: Emitter<InternalModelContentChangeEvent> = this._register(new Emitter<InternalModelContentChangeEvent>());
+	public readonly slowEvent: Event<InternalModelContentChangeEvent> = this._slowEmitter.event;
 
 	private _deferredCnt: number;
 	private _deferredEvent: InternalModelContentChangeEvent;
@@ -2622,7 +2714,8 @@ export class DidChangeContentEmitter extends Disposable {
 			if (this._deferredEvent !== null) {
 				const e = this._deferredEvent;
 				this._deferredEvent = null;
-				this._actual.fire(e);
+				this._fastEmitter.fire(e);
+				this._slowEmitter.fire(e);
 			}
 		}
 	}
@@ -2636,6 +2729,7 @@ export class DidChangeContentEmitter extends Disposable {
 			}
 			return;
 		}
-		this._actual.fire(e);
+		this._fastEmitter.fire(e);
+		this._slowEmitter.fire(e);
 	}
 }
