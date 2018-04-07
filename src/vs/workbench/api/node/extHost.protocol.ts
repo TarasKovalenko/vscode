@@ -347,7 +347,7 @@ export interface MainThreadTelemetryShape extends IDisposable {
 	$publicLog(eventName: string, data?: any): void;
 }
 
-export type WebviewHandle = number;
+export type WebviewHandle = string;
 
 export interface MainThreadWebviewsShape extends IDisposable {
 	$createWebview(handle: WebviewHandle, viewType: string, title: string, column: EditorPosition, options: vscode.WebviewOptions, extensionFolderPath: string): void;
@@ -356,12 +356,17 @@ export interface MainThreadWebviewsShape extends IDisposable {
 	$setTitle(handle: WebviewHandle, value: string): void;
 	$setHtml(handle: WebviewHandle, value: string): void;
 	$sendMessage(handle: WebviewHandle, value: any): Thenable<boolean>;
+
+	$registerSerializer(viewType: string): void;
+	$unregisterSerializer(viewType: string): void;
 }
+
 export interface ExtHostWebviewsShape {
 	$onMessage(handle: WebviewHandle, message: any): void;
-	$onDidChangeActiveWeview(handle: WebviewHandle | undefined): void;
+	$onDidChangeWeviewViewState(handle: WebviewHandle, active: boolean, position: EditorPosition): void;
 	$onDidDisposeWeview(handle: WebviewHandle): Thenable<void>;
-	$onDidChangePosition(handle: WebviewHandle, newPosition: EditorPosition): void;
+	$deserializeWebview(newWebviewHandle: WebviewHandle, viewType: string, state: any, position: EditorPosition, options: vscode.WebviewOptions): Thenable<void>;
+	$serializeWebview(webviewHandle: WebviewHandle): Thenable<any>;
 }
 
 export interface MainThreadWorkspaceShape extends IDisposable {
@@ -459,6 +464,9 @@ export interface MainThreadSCMShape extends IDisposable {
 export type DebugSessionUUID = string;
 
 export interface MainThreadDebugServiceShape extends IDisposable {
+	$acceptDAMessage(handle: number, message: DebugProtocol.ProtocolMessage);
+	$acceptDAError(handle: number, name: string, message: string, stack: string);
+	$acceptDAExit(handle: number, code: number, signal: string);
 	$registerDebugConfigurationProvider(type: string, hasProvideMethod: boolean, hasResolveMethod: boolean, hasDebugAdapterExecutable: boolean, handle: number): TPromise<any>;
 	$unregisterDebugConfigurationProvider(handle: number): TPromise<any>;
 	$startDebugging(folder: UriComponents | undefined, nameOrConfig: string | vscode.DebugConfiguration): TPromise<boolean>;
@@ -777,6 +785,9 @@ export interface ISourceMultiBreakpointDto {
 }
 
 export interface ExtHostDebugServiceShape {
+	$startDASession(handle: number, debugType: string, adapterExecutableInfo: IAdapterExecutable | null): TPromise<void>;
+	$stopDASession(handle: number): TPromise<void>;
+	$sendDAMessage(handle: number, message: DebugProtocol.ProtocolMessage): TPromise<void>;
 	$resolveDebugConfiguration(handle: number, folder: UriComponents | undefined, debugConfiguration: IConfig): TPromise<IConfig>;
 	$provideDebugConfigurations(handle: number, folder: UriComponents | undefined): TPromise<IConfig[]>;
 	$debugAdapterExecutable(handle: number, folder: UriComponents | undefined): TPromise<IAdapterExecutable>;

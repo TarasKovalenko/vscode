@@ -106,7 +106,7 @@ export function createApiFactory(
 	const extHostCommands = rpcProtocol.set(ExtHostContext.ExtHostCommands, new ExtHostCommands(rpcProtocol, extHostHeapService, extHostLogService));
 	const extHostTreeViews = rpcProtocol.set(ExtHostContext.ExtHostTreeViews, new ExtHostTreeViews(rpcProtocol.getProxy(MainContext.MainThreadTreeViews), extHostCommands));
 	rpcProtocol.set(ExtHostContext.ExtHostWorkspace, extHostWorkspace);
-	const extHostDebugService = rpcProtocol.set(ExtHostContext.ExtHostDebugService, new ExtHostDebugService(rpcProtocol, extHostWorkspace));
+	const extHostDebugService = rpcProtocol.set(ExtHostContext.ExtHostDebugService, new ExtHostDebugService(rpcProtocol, extHostWorkspace, extensionService));
 	rpcProtocol.set(ExtHostContext.ExtHostConfiguration, extHostConfiguration);
 	const extHostDiagnostics = rpcProtocol.set(ExtHostContext.ExtHostDiagnostics, new ExtHostDiagnostics(rpcProtocol));
 	const extHostLanguageFeatures = rpcProtocol.set(ExtHostContext.ExtHostLanguageFeatures, new ExtHostLanguageFeatures(rpcProtocol, extHostDocuments, extHostCommands, extHostHeapService, extHostDiagnostics));
@@ -237,9 +237,9 @@ export function createApiFactory(
 				checkProposedApiEnabled(extension);
 				return extHostDiagnostics.onDidChangeDiagnostics;
 			},
-			getDiagnostics: <any>proposedApiFunction(extension, (resource?) => {
-				return extHostDiagnostics.getDiagnostics(resource);
-			}),
+			getDiagnostics: (resource?) => {
+				return <any>extHostDiagnostics.getDiagnostics(resource);
+			},
 			getLanguages(): TPromise<string[]> {
 				return extHostLanguages.getLanguages();
 			},
@@ -418,6 +418,9 @@ export function createApiFactory(
 			}),
 			createWebview: proposedApiFunction(extension, (viewType: string, title: string, column: vscode.ViewColumn, options: vscode.WebviewOptions) => {
 				return extHostWebviews.createWebview(viewType, title, column, options, extension.extensionFolderPath);
+			}),
+			registerWebviewSerializer: proposedApiFunction(extension, (viewType: string, serializer: vscode.WebviewSerializer) => {
+				return extHostWebviews.registerWebviewSerializer(viewType, serializer);
 			})
 		};
 
@@ -707,7 +710,7 @@ class Extension<T> implements vscode.Extension<T> {
 	}
 
 	activate(): Thenable<T> {
-		return this._extensionService.activateById(this.id, new ExtensionActivatedByAPI(false)).then(() => this.exports);
+		return this._extensionService.activateByIdWithErrors(this.id, new ExtensionActivatedByAPI(false)).then(() => this.exports);
 	}
 }
 
