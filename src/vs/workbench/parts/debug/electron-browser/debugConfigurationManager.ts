@@ -26,17 +26,18 @@ import { IFileService } from 'vs/platform/files/common/files';
 import { IWorkspaceContextService, IWorkspaceFolder, WorkbenchState } from 'vs/platform/workspace/common/workspace';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ICommandService } from 'vs/platform/commands/common/commands';
-import { IDebugConfigurationProvider, IRawAdapter, ICompound, IDebugConfiguration, IConfig, IEnvConfig, IGlobalConfig, IConfigurationManager, ILaunch, IAdapterExecutable, IDebugAdapterProvider, IDebugAdapter } from 'vs/workbench/parts/debug/common/debug';
-import { Debugger } from 'vs/workbench/parts/debug/node/debugAdapter';
+import { IDebugConfigurationProvider, IDebuggerContribution, ICompound, IDebugConfiguration, IConfig, IEnvConfig, IGlobalConfig, IConfigurationManager, ILaunch, IAdapterExecutable, IDebugAdapterProvider, IDebugAdapter, ITerminalLauncher, ITerminalSettings } from 'vs/workbench/parts/debug/common/debug';
+import { Debugger } from 'vs/workbench/parts/debug/node/debugger';
 import { IWorkbenchEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IQuickOpenService } from 'vs/platform/quickOpen/common/quickOpen';
 import { IConfigurationResolverService } from 'vs/workbench/services/configurationResolver/common/configurationResolver';
 import { isCodeEditor } from 'vs/editor/browser/editorBrowser';
 import { launchSchemaId } from 'vs/workbench/services/configuration/common/configuration';
 import { IPreferencesService } from 'vs/workbench/services/preferences/common/preferences';
+import { TerminalLauncher } from 'vs/workbench/parts/debug/electron-browser/terminalSupport';
 
 // debuggers extension point
-export const debuggersExtPoint = extensionsRegistry.ExtensionsRegistry.registerExtensionPoint<IRawAdapter[]>('debuggers', [], {
+export const debuggersExtPoint = extensionsRegistry.ExtensionsRegistry.registerExtensionPoint<IDebuggerContribution[]>('debuggers', [], {
 	description: nls.localize('vscode.extension.contributes.debuggers', 'Contributes debug adapters.'),
 	type: 'array',
 	defaultSnippets: [{ body: [{ type: '', extensions: [] }] }],
@@ -230,6 +231,8 @@ export class ConfigurationManager implements IConfigurationManager {
 	private _onDidSelectConfigurationName = new Emitter<void>();
 	private providers: IDebugConfigurationProvider[];
 	private debugAdapterProviders: Map<string, IDebugAdapterProvider>;
+	private _terminalLauncher: ITerminalLauncher;
+	private _ehTerminalLauncher: ITerminalLauncher;
 
 
 	constructor(
@@ -263,7 +266,7 @@ export class ConfigurationManager implements IConfigurationManager {
 		debugConfigurationProvider.handle = handle;
 		this.providers = this.providers.filter(p => p.handle !== handle);
 		this.providers.push(debugConfigurationProvider);
-		const adapter = this.getAdapter(debugConfigurationProvider.type);
+		const adapter = this.getDebugger(debugConfigurationProvider.type);
 		// Check if the provider contributes provideDebugConfigurations method
 		if (adapter && debugConfigurationProvider.provideDebugConfigurations) {
 			adapter.hasConfigurationProvider = true;
@@ -315,6 +318,22 @@ export class ConfigurationManager implements IConfigurationManager {
 		return dap.createDebugAdapter(debugType, adapterExecutable);
 	}
 
+	public registerEHTerminalLauncher(launcher: ITerminalLauncher): void {
+		this._ehTerminalLauncher = launcher;
+	}
+
+	public runInTerminal(extensionHost: boolean, args: DebugProtocol.RunInTerminalRequestArguments, config: ITerminalSettings): TPromise<void> {
+
+		if (extensionHost && this._ehTerminalLauncher) {
+			return this._ehTerminalLauncher.runInTerminal(args, config);
+		} else {
+			if (!this._terminalLauncher) {
+				this._terminalLauncher = this.instantiationService.createInstance(TerminalLauncher);
+			}
+			return this._terminalLauncher.runInTerminal(args, config);
+		}
+	}
+
 	private registerListeners(lifecycleService: ILifecycleService): void {
 		debuggersExtPoint.setHandler((extensions) => {
 			extensions.forEach(extension => {
@@ -328,7 +347,7 @@ export class ConfigurationManager implements IConfigurationManager {
 						});
 					}
 
-					const duplicate = this.debuggers.filter(a => a.type === rawAdapter.type).pop();
+					const duplicate = this.getDebugger(rawAdapter.type);
 					if (duplicate) {
 						duplicate.merge(rawAdapter, extension.description);
 					} else {
@@ -463,13 +482,13 @@ export class ConfigurationManager implements IConfigurationManager {
 		return this.breakpointModeIdsSet.has(modeId);
 	}
 
-	public getAdapter(type: string): Debugger {
-		return this.debuggers.filter(adapter => strings.equalsIgnoreCase(adapter.type, type)).pop();
+	public getDebugger(type: string): Debugger {
+		return this.debuggers.filter(dbg => strings.equalsIgnoreCase(dbg.type, type)).pop();
 	}
 
-	public guessAdapter(type?: string): TPromise<Debugger> {
+	public guessDebugger(type?: string): TPromise<Debugger> {
 		if (type) {
-			const adapter = this.getAdapter(type);
+			const adapter = this.getDebugger(type);
 			return TPromise.as(adapter);
 		}
 
@@ -615,7 +634,7 @@ class Launch implements ILaunch {
 			result[key] = this.configurationResolverService.resolveAny(this.getWorkspaceForResolving(), result[key]);
 		});
 
-		const adapter = this.configurationManager.getAdapter(result.type);
+		const adapter = this.configurationManager.getDebugger(result.type);
 		return this.configurationResolverService.resolveInteractiveVariables(result, adapter ? adapter.variables : null);
 	}
 
@@ -628,7 +647,7 @@ class Launch implements ILaunch {
 
 				// launch.json not found: create one by collecting launch configs from debugConfigProviders
 
-				return this.configurationManager.guessAdapter(type).then(adapter => {
+				return this.configurationManager.guessDebugger(type).then(adapter => {
 					if (adapter) {
 						return this.configurationManager.provideDebugConfigurations(this.workspace.uri, adapter.type).then(initialConfigs => {
 							return adapter.getInitialConfigurationContent(initialConfigs);

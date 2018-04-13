@@ -6,7 +6,7 @@
 
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import uri from 'vs/base/common/uri';
-import { IDebugService, IConfig, IDebugConfigurationProvider, IBreakpoint, IFunctionBreakpoint, IBreakpointData, IAdapterExecutable } from 'vs/workbench/parts/debug/common/debug';
+import { IDebugService, IConfig, IDebugConfigurationProvider, IBreakpoint, IFunctionBreakpoint, IBreakpointData, IAdapterExecutable, ITerminalLauncher, ITerminalSettings } from 'vs/workbench/parts/debug/common/debug';
 import { TPromise } from 'vs/base/common/winjs.base';
 import {
 	ExtHostContext, ExtHostDebugServiceShape, MainThreadDebugServiceShape, DebugSessionUUID, MainContext,
@@ -14,8 +14,7 @@ import {
 } from '../node/extHost.protocol';
 import { extHostNamedCustomer } from 'vs/workbench/api/electron-browser/extHostCustomers';
 import severity from 'vs/base/common/severity';
-import { AbstractDebugAdapter } from 'vs/workbench/parts/debug/node/v8Protocol';
-import { convertToDAPaths, convertToVSCPaths } from 'vs/workbench/parts/debug/node/DapPathConverter';
+import { AbstractDebugAdapter, convertToVSCPaths, convertToDAPaths } from 'vs/workbench/parts/debug/node/debugAdapter';
 import * as paths from 'vs/base/common/paths';
 
 
@@ -55,7 +54,7 @@ export class MainThreadDebugService implements MainThreadDebugServiceShape {
 
 		this._debugAdapters = new Map<number, ExtensionHostDebugAdapter>();
 
-		// register a default DA provider
+		// register a default EH DA provider
 		debugService.getConfigurationManager().registerDebugAdapterProvider('*', {
 			createDebugAdapter: (debugType, adapterInfo) => {
 				const handle = this._debugAdaptersHandleCounter++;
@@ -64,6 +63,9 @@ export class MainThreadDebugService implements MainThreadDebugServiceShape {
 				return da;
 			}
 		});
+
+		// register a default EH terminal launcher
+		debugService.getConfigurationManager().registerEHTerminalLauncher(new ExtensionHostTerminalLauncher(this._proxy));
 	}
 
 	public dispose(): void {
@@ -280,5 +282,15 @@ class ExtensionHostDebugAdapter extends AbstractDebugAdapter {
 
 	public stopSession(): TPromise<void> {
 		return this._proxy.$stopDASession(this._handle);
+	}
+}
+
+class ExtensionHostTerminalLauncher implements ITerminalLauncher {
+
+	constructor(private _proxy: ExtHostDebugServiceShape) {
+	}
+
+	runInTerminal(args: DebugProtocol.RunInTerminalRequestArguments, config: ITerminalSettings): TPromise<void> {
+		return this._proxy.$runInTerminal(args, config);
 	}
 }
