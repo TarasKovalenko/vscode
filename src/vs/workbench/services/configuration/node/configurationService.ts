@@ -33,7 +33,7 @@ import { ICommandService } from 'vs/platform/commands/common/commands';
 import product from 'vs/platform/node/product';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ConfigurationEditingService } from 'vs/workbench/services/configuration/node/configurationEditingService';
-import { WorkspaceConfiguration, FolderConfiguration, FileServiceBasedFolderConfiguration, NodeBasedFolderConfiguration, VoidFolderConfiguration } from 'vs/workbench/services/configuration/node/configuration';
+import { WorkspaceConfiguration, FolderConfiguration } from 'vs/workbench/services/configuration/node/configuration';
 import { JSONEditingService } from 'vs/workbench/services/configuration/node/jsonEditingService';
 import { Schemas } from 'vs/base/common/network';
 import { massageFolderPathForWorkspace } from 'vs/platform/workspaces/node/workspaces';
@@ -239,7 +239,9 @@ export class WorkspaceService extends Disposable implements IWorkspaceConfigurat
 	// Workspace Configuration Service Impl
 
 	getConfigurationData(): IConfigurationData {
-		return this._configuration.toData();
+		const configurationData = this._configuration.toData();
+		configurationData.isComplete = this.cachedFolderConfigs.values().every(c => c.loaded);
+		return configurationData;
 	}
 
 	getValue<T>(): T;
@@ -309,7 +311,19 @@ export class WorkspaceService extends Disposable implements IWorkspaceConfigurat
 
 	acquireFileService(fileService: IFileService): void {
 		this.fileService = fileService;
-		this.reloadConfiguration();
+		const changedWorkspaceFolders: IWorkspaceFolder[] = [];
+		TPromise.join(this.cachedFolderConfigs.values()
+			.map(folderConfiguration => folderConfiguration.adopt(fileService)
+				.then(result => {
+					if (result) {
+						changedWorkspaceFolders.push(folderConfiguration.workspaceFolder);
+					}
+				})))
+			.then(() => {
+				for (const workspaceFolder of changedWorkspaceFolders) {
+					this.onWorkspaceFolderConfigurationChanged(workspaceFolder);
+				}
+			});
 	}
 
 	acquireInstantiationService(instantiationService: IInstantiationService): void {
@@ -569,6 +583,8 @@ export class WorkspaceService extends Disposable implements IWorkspaceConfigurat
 		// Remove the configurations of deleted folders
 		for (const key of this.cachedFolderConfigs.keys()) {
 			if (!this.workspace.folders.filter(folder => folder.uri.toString() === key.toString())[0]) {
+				const folderConfiguration = this.cachedFolderConfigs.get(key);
+				folderConfiguration.dispose();
 				this.cachedFolderConfigs.delete(key);
 				changeEvent = changeEvent.change(this._configuration.compareAndDeleteFolderConfiguration(key));
 			}
@@ -589,22 +605,14 @@ export class WorkspaceService extends Disposable implements IWorkspaceConfigurat
 
 	private loadFolderConfigurations(folders: IWorkspaceFolder[]): TPromise<ConfigurationModel[]> {
 		return TPromise.join([...folders.map(folder => {
-			this.disposeFolderConfiguration(folder);
-			const folderConfiguration = this.createFolderConfiguration(folder);
-			this._register(folderConfiguration.onDidChange(() => this.onWorkspaceFolderConfigurationChanged(folder)));
-			this.cachedFolderConfigs.set(folder.uri, this._register(folderConfiguration));
+			let folderConfiguration = this.cachedFolderConfigs.get(folder.uri);
+			if (!folderConfiguration) {
+				folderConfiguration = new FolderConfiguration(folder, this.workspaceSettingsRootFolder, this.getWorkbenchState(), this.environmentService, this.fileService);
+				this._register(folderConfiguration.onDidChange(() => this.onWorkspaceFolderConfigurationChanged(folder)));
+				this.cachedFolderConfigs.set(folder.uri, this._register(folderConfiguration));
+			}
 			return folderConfiguration.loadConfiguration();
 		})]);
-	}
-
-	private createFolderConfiguration(folder: IWorkspaceFolder): FolderConfiguration {
-		if (this.fileService) {
-			return new FileServiceBasedFolderConfiguration(folder.uri, this.workspaceSettingsRootFolder, this.getWorkbenchState(), this.fileService);
-		}
-		if (folder.uri.scheme === Schemas.file) {
-			return new NodeBasedFolderConfiguration(folder.uri, this.workspaceSettingsRootFolder, this.getWorkbenchState());
-		}
-		return new VoidFolderConfiguration(folder.uri, this.getWorkbenchState());
 	}
 
 	private writeConfigurationValue(key: string, value: any, target: ConfigurationTarget, overrides: IConfigurationOverrides, donotNotifyError: boolean): TPromise<void> {
@@ -688,13 +696,6 @@ export class WorkspaceService extends Disposable implements IWorkspaceConfigurat
 		}
 
 		return path1 === path2;
-	}
-
-	private disposeFolderConfiguration(folder: IWorkspaceFolder): void {
-		const folderConfiguration = this.cachedFolderConfigs.get(folder.uri);
-		if (folderConfiguration) {
-			folderConfiguration.dispose();
-		}
 	}
 }
 
