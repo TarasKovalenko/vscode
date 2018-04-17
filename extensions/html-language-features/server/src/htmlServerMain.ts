@@ -21,7 +21,7 @@ import { formatError, runSafe, runSafeAsync } from './utils/runner';
 import { doComplete as emmetDoComplete, updateExtensionsPath as updateEmmetExtensionsPath, getEmmetCompletionParticipants } from 'vscode-emmet-helper';
 
 import { FoldingRangesRequest, FoldingProviderServerCapabilities } from 'vscode-languageserver-protocol-foldingprovider';
-import { getFoldingRegions } from './modes/htmlFolding';
+import { getFoldingRanges } from './modes/htmlFolding';
 
 namespace TagCloseRequest {
 	export const type: RequestType<TextDocumentPositionParams, string | null, any, any> = new RequestType('html/tag');
@@ -81,8 +81,8 @@ let emmetSettings: any = {};
 let currentEmmetExtensionsPath: string;
 const emmetTriggerCharacters = ['!', '.', '}', ':', '*', '$', ']', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
-// After the server has started the client sends an initilize request. The server receives
-// in the passed params the rootPath of the workspace plus the client capabilites
+// After the server has started the client sends an initialize request. The server receives
+// in the passed params the rootPath of the workspace plus the client capabilities
 connection.onInitialize((params: InitializeParams): InitializeResult => {
 	let initializationOptions = params.initializationOptions;
 
@@ -465,7 +465,7 @@ connection.onRequest(FoldingRangesRequest.type, (params, token) => {
 	return runSafe(() => {
 		let document = documents.get(params.textDocument.uri);
 		if (document) {
-			return getFoldingRegions(languageModes, document, params.maxRanges, token);
+			return getFoldingRanges(languageModes, document, params.maxRanges, token);
 		}
 		return null;
 	}, null, `Error while computing folding regions for ${params.textDocument.uri}`, token);
