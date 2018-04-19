@@ -160,7 +160,8 @@ class TriggerRenameFileAction extends BaseFileAction {
 		this._updateEnablement();
 	}
 
-	public validateFileName(parent: ExplorerItem, name: string): string {
+
+	public validateFileName(name: string): string {
 		return this.renameAction.validateFileName(this.element.parent, name);
 	}
 
@@ -182,7 +183,7 @@ class TriggerRenameFileAction extends BaseFileAction {
 		viewletState.setEditable(stat, {
 			action: this.renameAction,
 			validator: (value) => {
-				const message = this.validateFileName(this.element.parent, value);
+				const message = this.validateFileName(value);
 
 				if (!message) {
 					return null;
@@ -1355,25 +1356,22 @@ export function validateFileName(parent: ExplorerItem, name: string, allowOverwr
 		return nls.localize('emptyFileNameError', "A file or folder name must be provided.");
 	}
 
+	// Relative paths only
+	if (name[0] === '/' || name[0] === '\\') {
+		return nls.localize('fileNameStartsWithSlashError', "A file or folder name cannot start with a slash.");
+	}
+
 	const names: string[] = name.split(/[\\/]/).filter(part => !!part);
+	const analyzedPath = analyzePath(parent, names);
 
 	// Do not allow to overwrite existing file
-	if (!allowOverwriting) {
-		let p = parent;
-		const alreadyExisting = names.every((folderName) => {
-			let { exists, child } = alreadyExists(p, folderName);
+	if (!allowOverwriting && analyzedPath.fullPathAlreadyExists) {
+		return nls.localize('fileNameExistsError', "A file or folder **{0}** already exists at this location. Please choose a different name.", name);
+	}
 
-			if (!exists) {
-				return false;
-			} else {
-				p = child;
-				return true;
-			}
-		});
-
-		if (alreadyExisting) {
-			return nls.localize('fileNameExistsError', "A file or folder **{0}** already exists at this location. Please choose a different name.", name);
-		}
+	// A file must always be a leaf
+	if (analyzedPath.lastExistingPathSegment.isFile) {
+		return nls.localize('fileUsedAsFolderError', "**{0}** is a file and cannot have any descendants.", analyzedPath.lastExistingPathSegment.name);
 	}
 
 	// Invalid File name
@@ -1391,6 +1389,24 @@ export function validateFileName(parent: ExplorerItem, name: string, allowOverwr
 
 	return null;
 }
+
+function analyzePath(parent: ExplorerItem, pathNames: string[]): { fullPathAlreadyExists: boolean; lastExistingPathSegment: { isFile: boolean; name: string; } } {
+	let lastExistingPathSegment = { isFile: false, name: '' };
+
+	for (const name of pathNames) {
+		const { exists, child } = alreadyExists(parent, name);
+
+		if (exists) {
+			lastExistingPathSegment = { isFile: !child.isDirectory, name };
+			parent = child;
+		} else {
+			return { fullPathAlreadyExists: false, lastExistingPathSegment };
+		}
+	}
+
+	return { fullPathAlreadyExists: true, lastExistingPathSegment };
+}
+
 
 function alreadyExists(parent: ExplorerItem, name: string): { exists: boolean, child: ExplorerItem | undefined } {
 	let duplicateChild: ExplorerItem;
@@ -1416,13 +1432,12 @@ export function getWellFormedFileName(filename: string): string {
 		return filename;
 	}
 
-	// Trim whitespaces
-	filename = strings.trim(strings.trim(filename, ' '), '\t');
+	// Trim tabs
+	filename = strings.trim(filename, '\t');
 
-	// Remove trailing dots
+	// Remove trailing dots, slashes, and spaces
 	filename = strings.rtrim(filename, '.');
-
-	// Remove trailing slashes
+	filename = strings.rtrim(filename, ' ');
 	filename = strings.rtrim(filename, '/');
 	filename = strings.rtrim(filename, '\\');
 

@@ -4,25 +4,25 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-import URI from 'vs/base/common/uri';
-import { FileService } from 'vs/workbench/services/files/electron-browser/fileService';
-import { IContent, IStreamContent, IFileStat, IResolveContentOptions, IUpdateContentOptions, IResolveFileOptions, IResolveFileResult, FileOperationEvent, FileOperation, IFileSystemProvider, IStat, FileType2, FileChangesEvent, ICreateFileOptions, FileOperationError, FileOperationResult, ITextSnapshot, StringSnapshot, FileOpenFlags, FileError } from 'vs/platform/files/common/files';
-import { TPromise } from 'vs/base/common/winjs.base';
 import { posix } from 'path';
-import { IDisposable } from 'vs/base/common/lifecycle';
-import { isFalsyOrEmpty, distinct, flatten } from 'vs/base/common/arrays';
-import { Schemas } from 'vs/base/common/network';
-import { toDecodeStream, IDecodeStreamOptions, decodeStream } from 'vs/base/node/encoding';
+import { distinct, flatten, isFalsyOrEmpty } from 'vs/base/common/arrays';
+import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { TernarySearchTree } from 'vs/base/common/map';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
-import { IEnvironmentService } from 'vs/platform/environment/common/environment';
-import { ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
-import { IStorageService } from 'vs/platform/storage/common/storage';
+import { Schemas } from 'vs/base/common/network';
+import URI from 'vs/base/common/uri';
+import { TPromise } from 'vs/base/common/winjs.base';
+import { IDecodeStreamOptions, decodeStream, toDecodeStream } from 'vs/base/node/encoding';
 import { ITextResourceConfigurationService } from 'vs/editor/common/services/resourceConfiguration';
-import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 import { localize } from 'vs/nls';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
+import { IEnvironmentService } from 'vs/platform/environment/common/environment';
+import { FileChangesEvent, FileError, FileOpenFlags, FileOperation, FileOperationError, FileOperationEvent, FileOperationResult, FileType2, IContent, ICreateFileOptions, IFileStat, IFileSystemProvider, IFilesConfiguration, IResolveContentOptions, IResolveFileOptions, IResolveFileResult, IStat, IStreamContent, ITextSnapshot, IUpdateContentOptions, StringSnapshot, FileSystemProviderCapabilities } from 'vs/platform/files/common/files';
+import { ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
 import { INotificationService } from 'vs/platform/notification/common/notification';
+import { IStorageService } from 'vs/platform/storage/common/storage';
+import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
+import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
+import { FileService } from 'vs/workbench/services/files/electron-browser/fileService';
 import { createReadableOfProvider, createReadableOfSnapshot, createWritableOfProvider } from 'vs/workbench/services/files/electron-browser/streams';
 
 function toIFileStat(provider: IFileSystemProvider, tuple: [URI, IStat], recurse?: (tuple: [URI, IStat]) => boolean): TPromise<IFileStat> {
@@ -72,6 +72,77 @@ export function toDeepIFileStat(provider: IFileSystemProvider, tuple: [URI, ISta
 	});
 }
 
+class WorkspaceWatchLogic {
+
+	private _disposables: IDisposable[] = [];
+	private _watches = new Map<string, URI>();
+
+	constructor(
+		private _fileService: RemoteFileService,
+		@IConfigurationService private _configurationService: IConfigurationService,
+		@IWorkspaceContextService private _contextService: IWorkspaceContextService,
+	) {
+		this._refresh();
+
+		this._disposables.push(this._contextService.onDidChangeWorkspaceFolders(e => {
+			for (const removed of e.removed) {
+				this._unwatchWorkspace(removed.uri);
+			}
+			for (const added of e.added) {
+				this._watchWorkspace(added.uri);
+			}
+		}));
+		this._disposables.push(this._contextService.onDidChangeWorkbenchState(e => {
+			this._refresh();
+		}));
+		this._disposables.push(this._configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('files.watcherExclude')) {
+				this._refresh();
+			}
+		}));
+	}
+
+	dispose(): void {
+		this._unwatchWorkspaces();
+		this._disposables = dispose(this._disposables);
+	}
+
+	private _refresh(): void {
+		this._unwatchWorkspaces();
+		for (const folder of this._contextService.getWorkspace().folders) {
+			if (folder.uri.scheme !== Schemas.file) {
+				this._watchWorkspace(folder.uri);
+			}
+		}
+	}
+
+	private _watchWorkspace(resource: URI) {
+		let exclude: string[] = [];
+		let config = this._configurationService.getValue<IFilesConfiguration>({ resource });
+		if (config.files && config.files.watcherExclude) {
+			for (const key in config.files.watcherExclude) {
+				if (config.files.watcherExclude[key] === true) {
+					exclude.push(key);
+				}
+			}
+		}
+		this._watches.set(resource.toString(), resource);
+		this._fileService.watchFileChanges(resource, { recursive: true, exclude });
+	}
+
+	private _unwatchWorkspace(resource: URI) {
+		if (this._watches.has(resource.toString())) {
+			this._fileService.unwatchFileChanges(resource);
+			this._watches.delete(resource.toString());
+		}
+	}
+
+	private _unwatchWorkspaces() {
+		this._watches.forEach(uri => this._fileService.unwatchFileChanges(uri));
+		this._watches.clear();
+	}
+}
+
 export class RemoteFileService extends FileService {
 
 	private readonly _provider = new Map<string, IFileSystemProvider>();
@@ -98,24 +169,25 @@ export class RemoteFileService extends FileService {
 		);
 
 		this._supportedSchemes = JSON.parse(this._storageService.get('remote_schemes', undefined, '[]'));
+		this.toDispose.push(new WorkspaceWatchLogic(this, configurationService, contextService));
 	}
 
-	registerProvider(authority: string, provider: IFileSystemProvider): IDisposable {
-		if (this._provider.has(authority)) {
-			throw new Error();
+	registerProvider(scheme: string, provider: IFileSystemProvider): IDisposable {
+		if (this._provider.has(scheme)) {
+			throw new Error('a provider for that scheme is already registered');
 		}
 
-		this._supportedSchemes.push(authority);
+		this._supportedSchemes.push(scheme);
 		this._storageService.store('remote_schemes', JSON.stringify(distinct(this._supportedSchemes)));
 
-		this._provider.set(authority, provider);
-		const reg = provider.onDidChange(changes => {
+		this._provider.set(scheme, provider);
+		const reg = provider.onDidChangeFile(changes => {
 			// forward change events
 			this._onFileChanges.fire(new FileChangesEvent(changes));
 		});
 		return {
 			dispose: () => {
-				this._provider.delete(authority);
+				this._provider.delete(scheme);
 				reg.dispose();
 			}
 		};
@@ -297,18 +369,21 @@ export class RemoteFileService extends FileService {
 				this._onAfterOperation.fire(new FileOperationEvent(resource, FileOperation.CREATE, fileStat));
 				return fileStat;
 			}, err => {
-				if (FileError.EEXIST.is(err)) {
-					return TPromise.wrapError(new FileOperationError('EEXIST', FileOperationResult.FILE_MODIFIED_SINCE, options));
+				if (FileError.EntryExists.is(err)) {
+					return TPromise.wrapError(new FileOperationError(err.code, FileOperationResult.FILE_MODIFIED_SINCE, options));
 				}
 				throw err;
 			});
 		}
 	}
 
-	updateContent(resource: URI, value: string | ITextSnapshot, options?: IUpdateContentOptions): TPromise<IFileStat> {
+	async updateContent(resource: URI, value: string | ITextSnapshot, options?: IUpdateContentOptions): TPromise<IFileStat> {
 		if (resource.scheme === Schemas.file) {
 			return super.updateContent(resource, value, options);
 		} else {
+			if (options && options.mkdirp) {
+				await this._mkdirp(resource.with({ path: posix.dirname(resource.path) }));
+			}
 			return this._withProvider(resource).then(provider => {
 				const snapshot = typeof value === 'string' ? new StringSnapshot(value) : value;
 				return this._writeFile(provider, resource, snapshot, options || {}, FileOpenFlags.Write);
@@ -344,6 +419,27 @@ export class RemoteFileService extends FileService {
 			content.value.on('error', reject);
 			content.value.on('end', () => resolve(result));
 		});
+	}
+
+	private async _mkdirp(directory: URI): Promise<void> {
+		let basenames: string[] = [];
+		while (directory.path !== '/') {
+			try {
+				let stat = await this.resolveFile(directory);
+				if (!stat.isDirectory) {
+					throw new Error(`${directory.toString()} is not a directory`);
+				}
+			} catch (e) {
+				// ENOENT
+				basenames.push(posix.basename(directory.path));
+				directory = directory.with({ path: posix.dirname(directory.path) });
+			}
+			break;
+		}
+		for (let i = basenames.length - 1; i >= 0; i--) {
+			directory = directory.with({ path: posix.join(directory.path, basenames[i]) });
+			await this.createFolder(directory);
+		}
 	}
 
 	// --- delete
@@ -426,45 +522,76 @@ export class RemoteFileService extends FileService {
 			return super.copyFile(source, target, overwrite);
 		}
 
-		const prepare = overwrite
-			? this.del(target).then(undefined, err => { /*ignore*/ })
-			: TPromise.as(null);
+		return this._withProvider(target).then(provider => {
 
-		return prepare.then(() => {
-			// todo@ben, can only copy text files
-			// https://github.com/Microsoft/vscode/issues/41543
-			return this.resolveContent(source, { acceptTextOnly: true }).then(content => {
-				return this._withProvider(target).then(provider => {
-					return this._writeFile(
-						provider, target,
-						new StringSnapshot(content.value),
-						{ encoding: content.encoding },
-						FileOpenFlags.Create | FileOpenFlags.Write
-					).then(fileStat => {
-						this._onAfterOperation.fire(new FileOperationEvent(source, FileOperation.COPY, fileStat));
-						return fileStat;
+			if (source.scheme === target.scheme && (provider.capabilities & FileSystemProviderCapabilities.FileFolderCopy)) {
+				// good: provider supports copy withing scheme
+				return provider.copy(source, target, { flags: 0 }).then(stat => toIFileStat(provider, [target, stat]));
+			}
+
+			const prepare = overwrite
+				? this.del(target).then(undefined, err => { /*ignore*/ })
+				: TPromise.as(null);
+
+			return prepare.then(() => {
+				// todo@ben, can only copy text files
+				// https://github.com/Microsoft/vscode/issues/41543
+				return this.resolveContent(source, { acceptTextOnly: true }).then(content => {
+					return this._withProvider(target).then(provider => {
+						return this._writeFile(
+							provider, target,
+							new StringSnapshot(content.value),
+							{ encoding: content.encoding },
+							FileOpenFlags.Create | FileOpenFlags.Write
+						).then(fileStat => {
+							this._onAfterOperation.fire(new FileOperationEvent(source, FileOperation.COPY, fileStat));
+							return fileStat;
+						});
+					}, err => {
+						if (err instanceof Error && err.name === 'ENOPRO') {
+							// file scheme
+							return super.updateContent(target, content.value, { encoding: content.encoding });
+						} else {
+							return TPromise.wrapError(err);
+						}
 					});
-				}, err => {
-					if (err instanceof Error && err.name === 'ENOPRO') {
-						// file scheme
-						return super.updateContent(target, content.value, { encoding: content.encoding });
-					} else {
-						return TPromise.wrapError(err);
-					}
 				});
 			});
 		});
 	}
 
-	// TODO@Joh - file watching on demand!
-	public watchFileChanges(resource: URI): void {
+	private _activeWatches = new Map<string, { unwatch: Thenable<IDisposable>, count: number }>();
+
+	public watchFileChanges(resource: URI, opts: { recursive?: boolean, exclude?: string[] } = {}): void {
 		if (resource.scheme === Schemas.file) {
-			super.watchFileChanges(resource);
+			return super.watchFileChanges(resource);
 		}
+
+		const key = resource.toString();
+		const entry = this._activeWatches.get(key);
+		if (entry) {
+			entry.count += 1;
+			return;
+		}
+
+		this._activeWatches.set(key, {
+			count: 1,
+			unwatch: this._withProvider(resource).then(provider => {
+				return provider.watch(resource, opts);
+			}, err => {
+				return { dispose() { } };
+			})
+		});
 	}
+
 	public unwatchFileChanges(resource: URI): void {
 		if (resource.scheme === Schemas.file) {
-			super.unwatchFileChanges(resource);
+			return super.unwatchFileChanges(resource);
+		}
+		let entry = this._activeWatches.get(resource.toString());
+		if (entry && --entry.count === 0) {
+			entry.unwatch.then(dispose);
+			this._activeWatches.delete(resource.toString());
 		}
 	}
 }

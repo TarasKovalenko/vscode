@@ -8,6 +8,7 @@ import * as cp from 'child_process';
 import * as os from 'os';
 import { tmpName } from 'tmp';
 import { IDriver, connect as connectDriver, IDisposable, IElement } from './driver';
+import { Logger } from '../logger';
 
 const repoPath = path.join(__dirname, '../../../..');
 
@@ -57,13 +58,13 @@ function getBuildOutPath(root: string): string {
 	}
 }
 
-async function connect(child: cp.ChildProcess, outPath: string, handlePath: string, verbose: boolean): Promise<Code> {
+async function connect(child: cp.ChildProcess, outPath: string, handlePath: string, logger: Logger): Promise<Code> {
 	let errCount = 0;
 
 	while (true) {
 		try {
 			const { client, driver } = await connectDriver(outPath, handlePath);
-			return new Code(child, client, driver, verbose);
+			return new Code(child, client, driver, logger);
 		} catch (err) {
 			if (++errCount > 50) {
 				child.kill();
@@ -85,7 +86,7 @@ export interface SpawnOptions {
 	workspacePath: string;
 	userDataDir: string;
 	extensionsPath: string;
-	verbose: boolean;
+	logger: Logger;
 	extraArgs?: string[];
 }
 
@@ -127,16 +128,12 @@ export async function spawn(options: SpawnOptions): Promise<Code> {
 
 	const spawnOptions: cp.SpawnOptions = {};
 
-	if (options.verbose) {
-		spawnOptions.stdio = 'inherit';
-	}
-
 	const child = cp.spawn(electronPath, args, spawnOptions);
 
 	instances.add(child);
 	child.once('exit', () => instances.delete(child));
 
-	return connect(child, outPath, handle, options.verbose);
+	return connect(child, outPath, handle, options.logger);
 }
 
 async function poll<T>(
@@ -182,24 +179,25 @@ export class Code {
 		private process: cp.ChildProcess,
 		private client: IDisposable,
 		driver: IDriver,
-		verbose: boolean
+		readonly logger: Logger
 	) {
-		if (verbose) {
-			this.driver = new Proxy(driver, {
-				get(target, prop, receiver) {
-					if (typeof target[prop] !== 'function') {
-						return target[prop];
-					}
-
-					return function (...args) {
-						console.log('** ', prop, ...args.filter(a => typeof a === 'string'));
-						return target[prop].apply(this, args);
-					};
+		this.driver = new Proxy(driver, {
+			get(target, prop, receiver) {
+				if (typeof target[prop] !== 'function') {
+					return target[prop];
 				}
-			});
-		} else {
-			this.driver = driver;
-		}
+
+				return function (...args) {
+					logger.log(`${prop}`, ...args.filter(a => typeof a === 'string'));
+					return target[prop].apply(this, args);
+				};
+			}
+		});
+	}
+
+	async capturePage(): Promise<string> {
+		const windowId = await this.getActiveWindowId();
+		return await this.driver.capturePage(windowId);
 	}
 
 	async waitForWindowIds(fn: (windowIds: number[]) => boolean): Promise<void> {
@@ -242,6 +240,11 @@ export class Code {
 		await poll(() => this.driver.setValue(windowId, selector, value), () => true, `set value '${selector}'`);
 	}
 
+	async waitForPaste(selector: string, value: string): Promise<void> {
+		const windowId = await this.getActiveWindowId();
+		await poll(() => this.driver.paste(windowId, selector, value), () => true, `paste '${selector}'`);
+	}
+
 	async waitForElements(selector: string, recursive: boolean, accept: (result: IElement[]) => boolean = result => result.length > 0): Promise<IElement[]> {
 		const windowId = await this.getActiveWindowId();
 		return await poll(() => this.driver.getElements(windowId, selector, recursive), accept, `get elements '${selector}'`);
@@ -265,6 +268,11 @@ export class Code {
 	async waitForTypeInEditor(selector: string, text: string): Promise<void> {
 		const windowId = await this.getActiveWindowId();
 		await poll(() => this.driver.typeInEditor(windowId, selector, text), () => true, `type in editor '${selector}'`);
+	}
+
+	async waitForTerminalBuffer(selector: string, accept: (result: string[]) => boolean): Promise<void> {
+		const windowId = await this.getActiveWindowId();
+		await poll(() => this.driver.getTerminalBuffer(windowId, selector), accept, `get terminal buffer '${selector}'`);
 	}
 
 	private async getActiveWindowId(): Promise<number> {
