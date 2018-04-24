@@ -876,6 +876,38 @@ export class SymbolInformation {
 	}
 }
 
+export class HierarchicalSymbolInformation {
+	name: string;
+	location: Location;
+	kind: SymbolKind;
+	range: Range;
+	children: HierarchicalSymbolInformation[];
+
+	constructor(name: string, kind: SymbolKind, location: Location, range: Range) {
+		this.name = name;
+		this.kind = kind;
+		this.location = location;
+		this.range = range;
+		this.children = [];
+	}
+
+	static toFlatSymbolInformation(info: HierarchicalSymbolInformation): SymbolInformation[] {
+		let result: SymbolInformation[] = [];
+		HierarchicalSymbolInformation._toFlatSymbolInformation(info, undefined, result);
+		return result;
+	}
+
+	private static _toFlatSymbolInformation(info: HierarchicalSymbolInformation, containerName: string, bucket: SymbolInformation[]): void {
+		bucket.push(new SymbolInformation(info.name, info.kind, containerName, new Location(info.location.uri, info.range)));
+		if (Array.isArray(info.children)) {
+			for (const child of info.children) {
+				HierarchicalSymbolInformation._toFlatSymbolInformation(child, info.name, bucket);
+			}
+		}
+	}
+
+}
+
 export class CodeAction {
 	title: string;
 
@@ -1814,28 +1846,48 @@ export enum LogLevel {
 
 //#region file api
 // todo@remote
-export enum FileChangeType {
+export enum DeprecatedFileChangeType {
 	Updated = 0,
 	Added = 1,
 	Deleted = 2
 }
 
-export enum FileChangeType2 {
+export enum FileChangeType {
 	Changed = 1,
 	Created = 2,
 	Deleted = 3,
 }
 
-export enum FileType {
+export enum DeprecatedFileType {
 	File = 0,
 	Dir = 1,
 	Symlink = 2
 }
 
-export enum FileType2 {
-	File = 1,
-	Directory = 2,
-	SymbolicLink = 4,
+export class FileSystemError extends Error {
+
+	static FileExists(messageOrUri?: string | URI): FileSystemError {
+		return new FileSystemError(messageOrUri, 'EntryExists', FileSystemError.FileExists);
+	}
+	static FileNotFound(messageOrUri?: string | URI): FileSystemError {
+		return new FileSystemError(messageOrUri, 'EntryNotFound', FileSystemError.FileNotFound);
+	}
+	static FileNotADirectory(messageOrUri?: string | URI): FileSystemError {
+		return new FileSystemError(messageOrUri, 'EntryNotADirectory', FileSystemError.FileNotADirectory);
+	}
+	static FileIsADirectory(messageOrUri?: string | URI): FileSystemError {
+		return new FileSystemError(messageOrUri, 'EntryIsADirectory', FileSystemError.FileIsADirectory);
+	}
+
+	constructor(uriOrMessage?: string | URI, code?: string, terminator?: Function) {
+		super(URI.isUri(uriOrMessage) ? uriOrMessage.toString(true) : uriOrMessage);
+		this.name = code ? `${code} (FileSystemError)` : `FileSystemError`;
+
+		if (typeof Error.captureStackTrace === 'function' && typeof terminator === 'function') {
+			// nice stack traces
+			Error.captureStackTrace(this, terminator);
+		}
+	}
 }
 
 //#endregion

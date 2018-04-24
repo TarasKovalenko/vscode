@@ -30,7 +30,7 @@ export class ViewLocation {
 	static readonly Explorer: ViewLocation = ViewLocation.register('workbench.view.explorer');
 	static readonly Debug: ViewLocation = ViewLocation.register('workbench.view.debug');
 	static readonly Extensions: ViewLocation = ViewLocation.register('workbench.view.extensions');
-	static readonly SCM: ViewLocation = ViewLocation.register('workbench.view.scm');
+	static readonly SCM: ViewLocation = ViewLocation.register('workbench.view.scm.views.contributed');
 
 	private constructor(private _id: string) { }
 	get id(): string { return this._id; }
@@ -182,9 +182,9 @@ export interface ICustomViewDescriptor extends IViewDescriptor {
 
 }
 
-export const ICustomViewsService = createDecorator<ICustomViewsService>('customViewsService');
+export const IViewsService = createDecorator<IViewsService>('viewsService');
 
-export interface ICustomViewsService {
+export interface IViewsService {
 	_serviceBrand: any;
 
 	getTreeViewer(id: string): ITreeViewer;
