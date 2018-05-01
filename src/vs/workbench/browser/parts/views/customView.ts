@@ -56,7 +56,8 @@ export class CustomViewsService extends Disposable implements IViewsService {
 	openView(id: string, focus: boolean): TPromise<void> {
 		const viewDescriptor = ViewsRegistry.getView(id);
 		if (viewDescriptor) {
-			const viewletDescriptor = this.viewletService.getViewlet(viewDescriptor.location.id);
+			const viewletId = viewDescriptor.location === ViewLocation.SCM ? 'workbench.view.scm' : viewDescriptor.location.id;
+			const viewletDescriptor = this.viewletService.getViewlet(viewletId);
 			if (viewletDescriptor) {
 				return this.viewletService.openViewlet(viewletDescriptor.id)
 					.then((viewlet: IViewsViewlet) => {
@@ -339,7 +340,7 @@ class TreeDataSource implements IDataSource {
 
 	public getChildren(tree: ITree, node: ITreeItem): TPromise<any[]> {
 		if (this.treeView.dataProvider) {
-			return this.location ? this.treeView.dataProvider.getChildren(node) : this.progressService.withProgress({ location: this.location }, () => this.treeView.dataProvider.getChildren(node));
+			return this.location ? this.progressService.withProgress({ location: this.location }, () => this.treeView.dataProvider.getChildren(node)) : this.treeView.dataProvider.getChildren(node);
 		}
 		return TPromise.as([]);
 	}

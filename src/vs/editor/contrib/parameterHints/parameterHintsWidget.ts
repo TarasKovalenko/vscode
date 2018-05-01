@@ -67,6 +67,7 @@ export class ParameterHintsModel extends Disposable {
 		this._register(this.editor.onDidChangeModel(e => this.onModelChanged()));
 		this._register(this.editor.onDidChangeModelLanguage(_ => this.onModelChanged()));
 		this._register(this.editor.onDidChangeCursorSelection(e => this.onCursorChange(e)));
+		this._register(this.editor.onDidChangeModelContent(e => this.onModelContentChange()));
 		this._register(SignatureHelpProviderRegistry.onDidChange(this.onModelChanged, this));
 
 		this.onEditorConfigurationChange();
@@ -158,6 +159,12 @@ export class ParameterHintsModel extends Disposable {
 		if (e.source === 'mouse') {
 			this.cancel();
 		} else if (this.isTriggered()) {
+			this.trigger();
+		}
+	}
+
+	private onModelContentChange(): void {
+		if (this.isTriggered()) {
 			this.trigger();
 		}
 	}
@@ -356,11 +363,10 @@ export class ParameterHintsWidget implements IContentWidget, IDisposable {
 		if (activeParameter && activeParameter.documentation) {
 			const documentation = $('span.documentation');
 			if (typeof activeParameter.documentation === 'string') {
-				dom.removeClass(this.docs, 'markdown-docs');
 				documentation.textContent = activeParameter.documentation;
 			} else {
-				dom.addClass(this.docs, 'markdown-docs');
 				const renderedContents = this.markdownRenderer.render(activeParameter.documentation);
+				dom.addClass(renderedContents.element, 'markdown-docs');
 				this.renderDisposeables.push(renderedContents);
 				documentation.appendChild(renderedContents.element);
 			}
@@ -373,6 +379,7 @@ export class ParameterHintsWidget implements IContentWidget, IDisposable {
 			dom.append(this.docs, $('p', null, signature.documentation));
 		} else {
 			const renderedContents = this.markdownRenderer.render(signature.documentation);
+			dom.addClass(renderedContents.element, 'markdown-docs');
 			this.renderDisposeables.push(renderedContents);
 			dom.append(this.docs, renderedContents.element);
 		}
