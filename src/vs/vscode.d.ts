@@ -2033,8 +2033,8 @@ declare module 'vscode' {
 		/**
 		 * Creates a new code action.
 		 *
-		 * A code action must have at least a [title](#CodeAction.title) and either [edits](#CodeAction.edit)
-		 * or a [command](#CodeAction.command).
+		 * A code action must have at least a [title](#CodeAction.title) and [edits](#CodeAction.edit)
+		 * and/or a [command](#CodeAction.command).
 		 *
 		 * @param title The title of the code action.
 		 * @param kind The kind of the code action.
@@ -3395,15 +3395,21 @@ declare module 'vscode' {
 		provideColorPresentations(color: Color, context: { document: TextDocument, range: Range }, token: CancellationToken): ProviderResult<ColorPresentation[]>;
 	}
 
+	/**
+	 * A line based folding range. To be valid, start and end line must a zero or larger and smaller than the number of lines in the document.
+	 * Invalid ranges will be ignored.
+	 */
 	export class FoldingRange {
 
 		/**
 		 * The zero-based start line of the range to fold. The folded area starts after the line's last character.
+		 * To be valid, the end must be zero or larger and smaller than the number of lines in the document.
 		 */
 		start: number;
 
 		/**
 		 * The zero-based end line of the range to fold. The folded area ends with the line's last character.
+		 * To be valid, the end must be zero or larger and smaller than the number of lines in the document.
 		 */
 		end: number;
 
@@ -3425,6 +3431,9 @@ declare module 'vscode' {
 		constructor(start: number, end: number, kind?: FoldingRangeKind);
 	}
 
+	/**
+	 * An enumeration of all folding range kinds. The kind is used to categorize folding ranges.
+	 */
 	export enum FoldingRangeKind {
 		/**
 		 * Kind for folding range representing a comment.
@@ -3446,6 +3455,10 @@ declare module 'vscode' {
 	export interface FoldingContext {
 	}
 
+	/**
+	 * The folding range provider interface defines the contract between extensions and
+	 * [Folding](https://code.visualstudio.com/docs/editor/codebasics#_folding) in the editor.
+	 */
 	export interface FoldingRangeProvider {
 		/**
 		 * Returns a list of folding ranges or null and undefined if the provider
@@ -4832,7 +4845,7 @@ declare module 'vscode' {
 	}
 
 	/**
-	 * The `FileStat`-type represents metadata about a file.
+	 * The `FileStat`-type represents metadata about a file
 	 */
 	export interface FileStat {
 		/**
@@ -4892,6 +4905,13 @@ declare module 'vscode' {
 		 * @param messageOrUri Message or uri.
 		 */
 		static NoPermissions(messageOrUri?: string | Uri): FileSystemError;
+
+		/**
+		 * Create an error to signal that the file system is unavailable or too busy to
+		 * complete a request.
+		 * @param messageOrUri Message or uri.
+		 */
+		static Unavailable(messageOrUri?: string | Uri): FileSystemError;
 
 		/**
 		 * Creates a new filesystem error.
@@ -4974,6 +4994,10 @@ declare module 'vscode' {
 
 		/**
 		 * Retrieve metadata about a file.
+		 *
+		 * Note that the metadata for symbolic links should be the metadata of the file they refer to.
+		 * Still, the [SymbolicLink](#FileType.SymbolicLink)-type must be used in addition to the actual type, e.g.
+		 * `FileType.SymbolicLink | FileType.Directory`.
 		 *
 		 * @param uri The uri of the file to retrieve metadata about.
 		 * @return The file metadata about the file.
