@@ -9,7 +9,7 @@ import { TPromise } from 'vs/base/common/winjs.base';
 import { mixin } from 'vs/base/common/objects';
 import * as vscode from 'vscode';
 import * as typeConvert from 'vs/workbench/api/node/extHostTypeConverters';
-import { Range, Disposable, CompletionList, SnippetString, CodeActionKind, HierarchicalSymbolInformation, SymbolInformation } from 'vs/workbench/api/node/extHostTypes';
+import { Range, Disposable, CompletionList, SnippetString, CodeActionKind, SymbolInformation, Hierarchy, SymbolInformation2 } from 'vs/workbench/api/node/extHostTypes';
 import { ISingleEditOperation } from 'vs/editor/common/model';
 import * as modes from 'vs/editor/common/modes';
 import { ExtHostHeapService } from 'vs/workbench/api/node/extHostHeapService';
@@ -44,12 +44,43 @@ class OutlineAdapter {
 				return undefined;
 			}
 			let [probe] = value;
-			if (probe instanceof HierarchicalSymbolInformation) {
-				return (<HierarchicalSymbolInformation[]>value).map(typeConvert.HierarchicalSymbolInformation.from);
-			} else {
-				return (<SymbolInformation[]>value).map(typeConvert.SymbolInformation.from);
+			if (!(probe instanceof Hierarchy)) {
+				value = OutlineAdapter._asSymbolHierarchy(<SymbolInformation[]>value);
 			}
+			return (<Hierarchy<SymbolInformation2>[]>value).map(typeConvert.HierarchicalSymbolInformation.from);
 		});
+	}
+
+	private static _asSymbolHierarchy(info: SymbolInformation[]): vscode.Hierarchy<SymbolInformation2>[] {
+		// first sort by start (and end) and then loop over all elements
+		// and build a tree based on containment.
+		info = info.slice(0).sort((a, b) => {
+			let res = a.location.range.start.compareTo(b.location.range.start);
+			if (res === 0) {
+				res = b.location.range.end.compareTo(a.location.range.end);
+			}
+			return res;
+		});
+		let res: Hierarchy<SymbolInformation2>[] = [];
+		let parentStack: Hierarchy<SymbolInformation2>[] = [];
+		for (let i = 0; i < info.length; i++) {
+			let element = new Hierarchy(new SymbolInformation2(info[i].name, '', info[i].kind, info[i].location.range, info[i].location));
+			while (true) {
+				if (parentStack.length === 0) {
+					parentStack.push(element);
+					res.push(element);
+					break;
+				}
+				let parent = parentStack[parentStack.length - 1];
+				if (parent.parent.range.contains(element.parent.range)) {
+					parent.children.push(element);
+					parentStack.push(element);
+					break;
+				}
+				parentStack.pop();
+			}
+		}
+		return res;
 	}
 }
 
@@ -928,9 +959,9 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 
 	// --- outline
 
-	registerDocumentSymbolProvider(selector: vscode.DocumentSelector, provider: vscode.DocumentSymbolProvider): vscode.Disposable {
+	registerDocumentSymbolProvider(selector: vscode.DocumentSelector, provider: vscode.DocumentSymbolProvider, extensionId?: string): vscode.Disposable {
 		const handle = this._addNewAdapter(new OutlineAdapter(this._documents, provider));
-		this._proxy.$registerOutlineSupport(handle, this._transformDocumentSelector(selector));
+		this._proxy.$registerOutlineSupport(handle, this._transformDocumentSelector(selector), extensionId);
 		return this._createDisposable(handle);
 	}
 

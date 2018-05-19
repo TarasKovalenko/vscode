@@ -124,7 +124,8 @@
 
 .settings-editor > .settings-body > .settings-list-container .monaco-list-row .setting-item-title .setting-item-overrides {
 	opacity: 0.5;
-	margin-left: 10px;
+	margin-left: 7px;
+	font-style: italic;
 }
 
 .settings-editor > .settings-body > .settings-list-container .monaco-list-row .setting-item-label {
@@ -169,6 +170,7 @@
 .settings-editor > .settings-body > .settings-list-container .monaco-list-row .setting-item-value > .edit-in-settings-button:hover,
 .settings-editor > .settings-body > .settings-list-container .monaco-list-row .setting-item-value > .edit-in-settings-button:active {
 	margin: auto;
+	text-align: left;
 	text-decoration: underline;
 }
 

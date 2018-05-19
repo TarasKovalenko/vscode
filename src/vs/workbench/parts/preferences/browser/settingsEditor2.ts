@@ -89,11 +89,11 @@ enum SearchResultIdx {
 
 const $ = DOM.$;
 
-export const configuredItemForeground = registerColor('settings.configuredItemForeground', {
+export const modifiedItemForeground = registerColor('settings.modifiedItemForeground', {
 	light: '#019001',
 	dark: '#73C991',
 	hc: '#73C991'
-}, localize('configuredItemForeground', "The foreground color for a configured setting."));
+}, localize('modifiedItemForeground', "The foreground color for a modified setting."));
 
 export class SettingsEditor2 extends BaseEditor {
 
@@ -221,7 +221,7 @@ export class SettingsEditor2 extends BaseEditor {
 		this.showConfiguredSettingsOnlyCheckbox = DOM.append(headerControlsContainerRight, $('input#configured-only-checkbox'));
 		this.showConfiguredSettingsOnlyCheckbox.type = 'checkbox';
 		const showConfiguredSettingsOnlyLabel = <HTMLLabelElement>DOM.append(headerControlsContainerRight, $('label.configured-only-label'));
-		showConfiguredSettingsOnlyLabel.textContent = localize('showOverriddenOnly', "Show configured only");
+		showConfiguredSettingsOnlyLabel.textContent = localize('showOverriddenOnly', "Show modified only");
 		showConfiguredSettingsOnlyLabel.htmlFor = 'configured-only-checkbox';
 
 		this._register(DOM.addDisposableListener(this.showConfiguredSettingsOnlyCheckbox, 'change', e => this.onShowConfiguredOnlyClicked()));
@@ -798,11 +798,7 @@ class SettingItemRenderer implements IRenderer<ISettingItemEntry, ISettingItemTe
 		DOM.toggleClass(template.parent, 'is-configured', entry.isConfigured);
 		DOM.toggleClass(template.parent, 'is-expanded', entry.isExpanded);
 
-		let titleTooltip = entry.key;
-		if (entry.isConfigured) {
-			titleTooltip += ' - ' + localize('configuredTitleToolip', "This setting is configured");
-		}
-
+		const titleTooltip = entry.key;
 		const settingKeyDisplay = settingKeyToDisplayFormat(entry.key);
 		template.categoryElement.textContent = settingKeyDisplay.category + ': ';
 		template.categoryElement.title = titleTooltip;
@@ -840,9 +836,14 @@ class SettingItemRenderer implements IRenderer<ISettingItemEntry, ISettingItemTe
 		}
 		template.toDispose.push(resetButton);
 
-		const alsoConfiguredInLabel = localize('alsoConfiguredIn', "Also configured in:");
-		template.overridesElement.textContent = entry.overriddenScopeList.length ? `(${alsoConfiguredInLabel} ${entry.overriddenScopeList.join(', ')})` :
-			'';
+		const alsoConfiguredInLabel = localize('alsoConfiguredIn', "Also modified in:");
+		let overridesElementText = entry.isConfigured ? 'Modified ' : '';
+
+		if (entry.overriddenScopeList.length) {
+			overridesElementText = overridesElementText + `(${alsoConfiguredInLabel} ${entry.overriddenScopeList.join(', ')})`;
+		}
+
+		template.overridesElement.textContent = overridesElementText;
 	}
 
 	private renderValue(entry: ISettingItemEntry, template: ISettingItemTemplate): void {
@@ -909,9 +910,9 @@ class SettingItemRenderer implements IRenderer<ISettingItemEntry, ISettingItemTe
 }
 
 registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
-	const configuredItemForegroundColor = theme.getColor(configuredItemForeground);
-	if (configuredItemForegroundColor) {
-		collector.addRule(`.settings-editor > .settings-body > .settings-list-container .monaco-list-row.is-configured .setting-item-title { color: ${configuredItemForegroundColor}; }`);
+	const modifiedItemForegroundColor = theme.getColor(modifiedItemForeground);
+	if (modifiedItemForegroundColor) {
+		collector.addRule(`.settings-editor > .settings-body > .settings-list-container .monaco-list-row.is-configured .setting-item-title { color: ${modifiedItemForegroundColor}; }`);
 	}
 });
 

@@ -77,7 +77,7 @@ declare module 'vscode' {
 	export interface FileSearchOptions extends SearchOptions { }
 
 	export interface TextSearchResult {
-		uri: Uri;
+		path: string;
 		range: Range;
 
 		// For now, preview must be a single line of text
@@ -85,7 +85,7 @@ declare module 'vscode' {
 	}
 
 	export interface SearchProvider {
-		provideFileSearchResults?(options: FileSearchOptions, progress: Progress<Uri>, token: CancellationToken): Thenable<void>;
+		provideFileSearchResults?(options: FileSearchOptions, progress: Progress<string>, token: CancellationToken): Thenable<void>;
 		provideTextSearchResults?(query: TextSearchQuery, options: TextSearchOptions, progress: Progress<TextSearchResult>, token: CancellationToken): Thenable<void>;
 	}
 
@@ -335,6 +335,48 @@ declare module 'vscode' {
 	//#region Tasks
 
 	/**
+	 * An object representing an executed Task. It can be used
+	 * to terminate a task.
+	 *
+	 * This interface is not intended to be implemented.
+	 */
+	export interface TaskExecution {
+		/**
+		 * The task that got started.
+		 */
+		task: Task;
+
+		/**
+		 * Terminates the task execution.
+		 */
+		terminate(): void;
+	}
+
+	/**
+	 * An event signaling the start of a task execution.
+	 *
+	 * This interface is not intended to be implemented.
+	 */
+	interface TaskStartEvent {
+		/**
+		 * The task item representing the task that got started.
+		 */
+		execution: TaskExecution;
+	}
+
+	/**
+	 * An event signaling the end of an executed task.
+	 *
+	 * This interface is not intended to be implemented.
+	 */
+	interface TaskEndEvent {
+		/**
+		 * The task item representing the task that finished.
+		 */
+		execution: TaskExecution;
+	}
+
+	/**
 	 * An event signaling the start of a process execution
 	 * triggered through a task
 	 */
@@ -366,62 +408,6 @@ declare module 'vscode' {
 		 * The process's exit code.
 		 */
 		exitCode: number;
-	}
-
-	/**
-	 * An object representing an executed Task. It can be used
-	 * to terminate a task.
-	 *
-	 * This interface is not intended to be implemented.
-	 */
-	export interface TaskExecution {
-		/**
-		 * The task that got started.
-		 */
-		task: Task;
-
-		/**
-		 * Fires when the underlying process has been started.
-		 * This event might not fire for tasks that don't
-		 * execute an underlying process.
-		 */
-		onDidStartProcess: Event<TaskProcessStartEvent>;
-
-		/**
-		 * Fires when the underlying process has ended.
-		 * This event might not fire for tasks that don't
-		 * execute an underlying process.
-		 */
-		onDidEndProcess: Event<TaskProcessEndEvent>;
-
-		/**
-		 * Terminates the task execution.
-		 */
-		terminate(): void;
-	}
-
-	/**
-	 * An event signaling the start of a task execution.
-	 *
-	 * This interface is not intended to be implemented.
-	 */
-	interface TaskStartEvent {
-		/**
-		 * The task item representing the task that got started.
-		 */
-		execution: TaskExecution;
-	}
-
-	/**
-	 * An event signaling the end of an executed task.
-	 *
-	 * This interface is not intended to be implemented.
-	 */
-	interface TaskEndEvent {
-		/**
-		 * The task item representing the task that finished.
-		 */
-		execution: TaskExecution;
 	}
 
 	export interface TaskFilter {
@@ -474,6 +460,69 @@ declare module 'vscode' {
 		export const onDidEndTask: Event<TaskEndEvent>;
 	}
 
+	/**
+	 * Namespace for tasks functionality.
+	 */
+	export namespace tasks {
+
+		/**
+		 * Register a task provider.
+		 *
+		 * @param type The task kind type this provider is registered for.
+		 * @param provider A task provider.
+		 * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
+		 */
+		export function registerTaskProvider(type: string, provider: TaskProvider): Disposable;
+
+		/**
+		 * Fetches all tasks available in the systems. This includes tasks
+		 * from `tasks.json` files as well as tasks from task providers
+		 * contributed through extensions.
+		 *
+		 * @param filter a filter to filter the return tasks.
+		 */
+		export function fetchTasks(filter?: TaskFilter): Thenable<Task[]>;
+
+		/**
+		 * Executes a task that is managed by VS Code. The returned
+		 * task execution can be used to terminate the task.
+		 *
+		 * @param task the task to execute
+		 */
+		export function executeTask(task: Task): Thenable<TaskExecution>;
+
+		/**
+		 * The currently active task executions or an empty array.
+		 *
+		 * @readonly
+		 */
+		export let taskExecutions: ReadonlyArray<TaskExecution>;
+
+		/**
+		 * Fires when a task starts.
+		 */
+		export const onDidStartTask: Event<TaskStartEvent>;
+
+		/**
+		 * Fires when a task ends.
+		 */
+		export const onDidEndTask: Event<TaskEndEvent>;
+
+		/**
+		 * Fires when the underlying process has been started.
+		 * This event will not fire for tasks that don't
+		 * execute an underlying process.
+		 */
+		export const onDidStartTaskProcess: Event<TaskProcessStartEvent>;
+
+		/**
+		 * Fires when the underlying process has ended.
+		 * This event will not fire for tasks that don't
+		 * execute an underlying process.
+		 */
+		export const onDidEndTaskProcess: Event<TaskProcessEndEvent>;
+	}
+
 	//#endregion
 
 	//#region Terminal
@@ -522,19 +571,20 @@ declare module 'vscode' {
 
 	//#region Joh: hierarchical document symbols, https://github.com/Microsoft/vscode/issues/34968
 
-	export class HierarchicalSymbolInformation {
-		name: string;
-		kind: SymbolKind;
-		detail: string;
-		location: Location;
-		range: Range;
-		children: HierarchicalSymbolInformation[];
+	export class Hierarchy<T> {
+		parent: T;
+		children: Hierarchy<T>[];
+		constructor(element: T);
+	}
 
-		constructor(name: string, detail: string, kind: SymbolKind, location: Location, range: Range);
+	export class SymbolInformation2 extends SymbolInformation {
+		detail: string;
+		range: Range;
+		constructor(name: string, detail: string, kind: SymbolKind, range: Range, location: Location);
 	}
 
 	export interface DocumentSymbolProvider {
-		provideDocumentSymbols(document: TextDocument, token: CancellationToken): ProviderResult<HierarchicalSymbolInformation[] | SymbolInformation[]>;
+		provideDocumentSymbols(document: TextDocument, token: CancellationToken): ProviderResult<SymbolInformation[] | Hierarchy<SymbolInformation>[]>;
 	}
 
 	//#endregion
@@ -567,6 +617,26 @@ declare module 'vscode' {
 	export interface QuickInput {
 		showQuickPick: typeof window.showQuickPick;
 		showInputBox: typeof window.showInputBox;
+	}
+
+	//#endregion
+
+	//#region mjbvz: Unused diagnostics
+	/**
+	 * Additional metadata about the type of diagnostic.
+	 */
+	export enum DiagnosticTag {
+		/**
+		 * Unused or unnecessary code.
+		 */
+		Unnecessary = 1,
+	}
+
+	export interface Diagnostic {
+		/**
+		 * Additional metadata about the type of the diagnostic.
+		 */
+		customTags?: DiagnosticTag[];
 	}
 
 	//#endregion
