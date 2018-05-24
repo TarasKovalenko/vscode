@@ -629,6 +629,7 @@ suite('ExtHostSearch', () => {
 		}
 
 		function makeTextResult(relativePath: string): vscode.TextSearchResult {
+			relativePath = relativePath.replace(/\//g, path.sep);
 			return {
 				preview: makePreview('foo'),
 				range: new Range(0, 0, 0, 3),
@@ -956,6 +957,35 @@ suite('ExtHostSearch', () => {
 				makeTextResult('fileB.ts'),
 				makeTextResult('fileB.js'),
 				makeTextResult('file3.js')]);
+		});
+
+		test('include pattern applied', async () => {
+			const providedResults: vscode.TextSearchResult[] = [
+				makeTextResult('file1.js'),
+				makeTextResult('file1.ts')
+			];
+
+			await registerTestSearchProvider({
+				provideTextSearchResults(query: vscode.TextSearchQuery, options: vscode.TextSearchOptions, progress: vscode.Progress<vscode.TextSearchResult>, token: vscode.CancellationToken): Thenable<void> {
+					providedResults.forEach(r => progress.report(r));
+					return TPromise.wrap(null);
+				}
+			});
+
+			const query: ISearchQuery = {
+				type: QueryType.Text,
+
+				includePattern: {
+					'*.ts': true
+				},
+
+				folderQueries: [
+					{ folder: rootFolderA }
+				]
+			};
+
+			const results = await runTextSearch(getPattern('foo'), query);
+			assertResults(results, providedResults.slice(1));
 		});
 
 		test('max results = 1', async () => {
