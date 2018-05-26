@@ -6,6 +6,7 @@
 
 import { PPromise, TPromise } from 'vs/base/common/winjs.base';
 import uri from 'vs/base/common/uri';
+import * as arrays from 'vs/base/common/arrays';
 import * as objects from 'vs/base/common/objects';
 import * as strings from 'vs/base/common/strings';
 import { getNextTickChannel } from 'vs/base/parts/ipc/common/ipc';
@@ -96,11 +97,7 @@ export class SearchService implements ISearchService {
 
 			const startTime = Date.now();
 			const searchWithProvider = (provider: ISearchResultProvider) => TPromise.wrap(provider.search(query)).then(e => e,
-				err => {
-					// TODO@joh
-					// single provider fail. fail all?
-					onError(err);
-				},
+				null,
 				progress => {
 					if (progress.resource) {
 						// Match
@@ -123,7 +120,22 @@ export class SearchService implements ISearchService {
 					// If no search providers are registered, fall back on DiskSearch
 					// TODO@roblou this is not properly waiting for search-rg to finish registering itself
 					if (this.searchProvider.length) {
-						return searchWithProvider(this.searchProvider[0]);
+						return TPromise.join(this.searchProvider.map(p => searchWithProvider(p)))
+							.then(completes => {
+								completes = completes.filter(c => !!c);
+								if (!completes.length) {
+									return null;
+								}
+
+								return <ISearchComplete>{
+									limitHit: completes[0] && completes[0].limitHit,
+									stats: completes[0].stats,
+									results: arrays.flatten(completes.map(c => c.results))
+								};
+							}, errs => {
+								errs = errs.filter(e => !!e);
+								return TPromise.wrapError(errs[0]);
+							});
 					} else {
 						return searchWithProvider(this.diskSearch);
 					}
