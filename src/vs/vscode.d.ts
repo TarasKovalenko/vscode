@@ -5418,23 +5418,6 @@ declare module 'vscode' {
 	}
 
 	/**
-	 * Restore webview panels that have been persisted when vscode shuts down.
-	 */
-	interface WebviewPanelSerializer {
-		/**
-		 * Restore a webview panel from its serialized `state`.
-		 *
-		 * Called when a serialized webview first becomes visible.
-		 *
-		 * @param webviewPanel Webview panel to restore. The serializer should take ownership of this panel.
-		 * @param state Persisted state. This state comes from the value set inside the webview by `acquireVsCodeApi().setState`.
-		 *
-		 * @return Thenable indicating that the webview has been fully restored.
-		 */
-		deserializeWebviewPanel(webviewPanel: WebviewPanel, state: any): Thenable<void>;
-	}
-
-	/**
 	 * Namespace describing the environment the editor runs in.
 	 */
 	export namespace env {
@@ -5929,19 +5912,6 @@ declare module 'vscode' {
 		export function createWebviewPanel(viewType: string, title: string, showOptions: ViewColumn | { viewColumn: ViewColumn, preserveFocus?: boolean }, options?: WebviewPanelOptions & WebviewOptions): WebviewPanel;
 
 		/**
-		 * Registers a [webview panel serializer](#WebviewPanelSerializer).
-		 *
-		 * Extensions that support reviving should have an `"onWebviewPanel:viewType"` activation method and
-		 * make sure that [registerWebviewPanelSerializer](#registerWebviewPanelSerializer) is called during activation.
-		 *
-		 * Only a single serializer may be registered at a time for a given `viewType`.
-		 *
-		 * @param viewType Type of the webview panel that can be serialized.
-		 * @param reviver Webview serializer.
-		 */
-		export function registerWebviewPanelSerializer(viewType: string, reviver: WebviewPanelSerializer): Disposable;
-
-		/**
 		 * Set a message to the status bar. This is a short hand for the more powerful
 		 * status bar [items](#window.createStatusBarItem).
 		 *
@@ -6056,6 +6026,18 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * The event that is fired when an element in the [TreeView](#TreeView) is expanded or collapsed
+	 */
+	export interface TreeViewExpansionEvent<T> {
+
+		/**
+		 * Element that is expanded or collapsed.
+		 */
+		element: T;
+
+	}
+
+	/**
 	 * Represents a Tree view
 	 */
 	export interface TreeView<T> extends Disposable {
@@ -6063,12 +6045,12 @@ declare module 'vscode' {
 		/**
 		 * Event that is fired when an element is expanded
 		 */
-		readonly onDidExpandElement: Event<T>;
+		readonly onDidExpandElement: Event<TreeViewExpansionEvent<T>>;
 
 		/**
 		 * Event that is fired when an element is collapsed
 		 */
-		readonly onDidCollapseElement: Event<T>;
+		readonly onDidCollapseElement: Event<TreeViewExpansionEvent<T>>;
 
 		/**
 		 * Currently selected elements.
