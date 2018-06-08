@@ -5,7 +5,6 @@
 'use strict';
 
 import * as nls from 'vs/nls';
-import { HistoryNavigator } from 'vs/base/common/history';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { ContextKeyExpr, IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
@@ -26,6 +25,8 @@ import { FindOptionsWidget } from 'vs/editor/contrib/find/findOptionsWidget';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { KeybindingsRegistry } from 'vs/platform/keybinding/common/keybindingsRegistry';
 import { optional } from 'vs/platform/instantiation/common/instantiation';
+import { INotificationService } from 'vs/platform/notification/common/notification';
+import { showDeprecatedWarning } from 'vs/platform/widget/browser/input';
 
 export function getSelectionSearchString(editor: ICodeEditor): string {
 	let selection = editor.getSelection();
@@ -66,10 +67,9 @@ export class CommonFindController extends Disposable implements editorCommon.IEd
 	protected _editor: ICodeEditor;
 	private _findWidgetVisible: IContextKey<boolean>;
 	protected _state: FindReplaceState;
-	private _currentHistoryNavigator: HistoryNavigator<string>;
 	protected _updateHistoryDelayer: Delayer<void>;
 	private _model: FindModelBoundToEditorModel;
-	private _storageService: IStorageService;
+	protected _storageService: IStorageService;
 	private _clipboardService: IClipboardService;
 
 	public static get(editor: ICodeEditor): CommonFindController {
@@ -89,7 +89,6 @@ export class CommonFindController extends Disposable implements editorCommon.IEd
 		this._clipboardService = clipboardService;
 
 		this._updateHistoryDelayer = new Delayer<void>(500);
-		this._currentHistoryNavigator = new HistoryNavigator<string>();
 		this._state = this._register(new FindReplaceState());
 		this.loadQueryState();
 		this._register(this._state.onFindReplaceStateChange((e) => this._onStateChanged(e)));
@@ -139,9 +138,6 @@ export class CommonFindController extends Disposable implements editorCommon.IEd
 	private _onStateChanged(e: FindReplaceStateChangedEvent): void {
 		this.saveQueryState(e);
 
-		if (e.updateHistory && e.searchString) {
-			this._delayedUpdateHistory();
-		}
 		if (e.isRevealed) {
 			if (this._state.isRevealed) {
 				this._findWidgetVisible.set(true);
@@ -175,22 +171,8 @@ export class CommonFindController extends Disposable implements editorCommon.IEd
 		}, false);
 	}
 
-	protected _delayedUpdateHistory() {
-		this._updateHistoryDelayer.trigger(this._updateHistory.bind(this));
-	}
-
-	protected _updateHistory() {
-		if (this._state.searchString) {
-			this._currentHistoryNavigator.add(this._state.searchString);
-		}
-	}
-
 	public getState(): FindReplaceState {
 		return this._state;
-	}
-
-	public getHistory(): HistoryNavigator<string> {
-		return this._currentHistoryNavigator;
 	}
 
 	public closeFindWidget(): void {
@@ -329,19 +311,13 @@ export class CommonFindController extends Disposable implements editorCommon.IEd
 	}
 
 	public showPreviousFindTerm(): boolean {
-		let previousTerm = this._currentHistoryNavigator.previous();
-		if (previousTerm) {
-			this._state.change({ searchString: previousTerm }, false, false);
-		}
-		return true;
+		// overwritten in subclass
+		return false;
 	}
 
 	public showNextFindTerm(): boolean {
-		let nextTerm = this._currentHistoryNavigator.next();
-		if (nextTerm) {
-			this._state.change({ searchString: nextTerm }, false, false);
-		}
-		return true;
+		// overwritten in subclass
+		return false;
 	}
 
 	public getGlobalBufferTerm(): string {
@@ -376,6 +352,7 @@ export class FindController extends CommonFindController implements IFindControl
 		@IKeybindingService private readonly _keybindingService: IKeybindingService,
 		@IThemeService private readonly _themeService: IThemeService,
 		@IStorageService storageService: IStorageService,
+		@INotificationService private readonly _notificationService: INotificationService,
 		@optional(IClipboardService) clipboardService: IClipboardService
 	) {
 		super(editor, _contextKeyService, storageService, clipboardService);
@@ -409,6 +386,18 @@ export class FindController extends CommonFindController implements IFindControl
 	private _createFindWidget() {
 		this._widget = this._register(new FindWidget(this._editor, this, this._state, this._contextViewService, this._keybindingService, this._contextKeyService, this._themeService));
 		this._findOptionsWidget = this._register(new FindOptionsWidget(this._editor, this._state, this._keybindingService, this._themeService));
+	}
+
+	public showPreviousFindTerm(): boolean {
+		showDeprecatedWarning(this._notificationService, this._keybindingService, this._storageService);
+		this._widget.showPreviousFindTerm();
+		return true;
+	}
+
+	public showNextFindTerm(): boolean {
+		showDeprecatedWarning(this._notificationService, this._keybindingService, this._storageService);
+		this._widget.showNextFindTerm();
+		return true;
 	}
 }
 

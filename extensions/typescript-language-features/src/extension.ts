@@ -6,7 +6,7 @@
 import * as vscode from 'vscode';
 import * as commands from './commands';
 import { LanguageConfigurationManager } from './features/languageConfiguration';
-import TypeScriptTaskProviderManager from './features/taskProvider';
+import TypeScriptTaskProviderManager from './features/task';
 import TypeScriptServiceClientHost from './typeScriptServiceClientHost';
 import { CommandManager } from './utils/commandManager';
 import * as fileSchemes from './utils/fileSchemes';
@@ -41,7 +41,7 @@ export function activate(
 			void lazyClientHost.value;
 
 			context.subscriptions.push(new ManagedFileContextManager(resource => {
-				return lazyClientHost.value.serviceClient.normalizePath(resource);
+				return lazyClientHost.value.serviceClient.toPath(resource);
 			}));
 			return true;
 		}
@@ -75,9 +75,7 @@ function createLazyClientHost(
 			context.subscriptions.push(
 				ProjectStatus.create(
 					clientHost.serviceClient,
-					clientHost.serviceClient.telemetryReporter,
-					path => new Promise<boolean>(resolve => setTimeout(() => resolve(clientHost.handles(path)), 750)),
-					context.workspaceState));
+					clientHost.serviceClient.telemetryReporter));
 		});
 
 		return clientHost;
