@@ -31,7 +31,7 @@ import { Renderer, DataSource, Controller } from 'vs/workbench/parts/extensions/
 import { RatingsWidget, InstallCountWidget } from 'vs/workbench/parts/extensions/browser/extensionsWidgets';
 import { EditorOptions } from 'vs/workbench/common/editor';
 import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
-import { CombinedInstallAction, UpdateAction, EnableAction, DisableAction, ReloadAction, MaliciousStatusLabelAction, DisabledStatusLabelAction } from 'vs/workbench/parts/extensions/browser/extensionsActions';
+import { CombinedInstallAction, UpdateAction, EnableAction, DisableAction, ReloadAction, MaliciousStatusLabelAction, DisabledStatusLabelAction, MultiServerInstallAction, MultiServerUpdateAction } from 'vs/workbench/parts/extensions/electron-browser/extensionsActions';
 import { WebviewElement } from 'vs/workbench/parts/webview/electron-browser/webviewElement';
 import { KeybindingIO } from 'vs/workbench/services/keybinding/common/keybindingIO';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
@@ -42,7 +42,7 @@ import { IPartService, Parts } from 'vs/workbench/services/part/common/partServi
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { KeybindingLabel } from 'vs/base/browser/ui/keybindingLabel/keybindingLabel';
 import { IContextKeyService, RawContextKey, IContextKey } from 'vs/platform/contextkey/common/contextkey';
-import { Command, ICommandOptions } from 'vs/editor/browser/editorExtensions';
+import { Command } from 'vs/editor/browser/editorExtensions';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { KeybindingsRegistry } from 'vs/platform/keybinding/common/keybindingsRegistry';
 import { Color } from 'vs/base/common/color';
@@ -247,6 +247,12 @@ export class ExtensionEditor extends BaseEditor {
 				if (action.id === DisableAction.ID) {
 					return (<DisableAction>action).actionItem;
 				}
+				if (action.id === MultiServerInstallAction.ID) {
+					return (<MultiServerInstallAction>action).actionItem;
+				}
+				if (action.id === MultiServerUpdateAction.ID) {
+					return (<MultiServerUpdateAction>action).actionItem;
+				}
 				return null;
 			}
 		});
@@ -268,6 +274,7 @@ export class ExtensionEditor extends BaseEditor {
 	setInput(input: ExtensionsInput, options: EditorOptions, token: CancellationToken): Thenable<void> {
 		this.editorLoadComplete = false;
 		const extension = input.extension;
+		const servers = input.servers;
 
 		this.transientDisposables = dispose(this.transientDisposables);
 
@@ -351,8 +358,8 @@ export class ExtensionEditor extends BaseEditor {
 
 		const maliciousStatusAction = this.instantiationService.createInstance(MaliciousStatusLabelAction, true);
 		const disabledStatusAction = this.instantiationService.createInstance(DisabledStatusLabelAction);
-		const installAction = this.instantiationService.createInstance(CombinedInstallAction);
-		const updateAction = this.instantiationService.createInstance(UpdateAction);
+		const installAction = servers.length === 1 ? this.instantiationService.createInstance(CombinedInstallAction, servers[0]) : this.instantiationService.createInstance(MultiServerInstallAction);
+		const updateAction = servers.length === 1 ? this.instantiationService.createInstance(UpdateAction, servers[0]) : this.instantiationService.createInstance(MultiServerUpdateAction);
 		const enableAction = this.instantiationService.createInstance(EnableAction);
 		const disableAction = this.instantiationService.createInstance(DisableAction);
 		const reloadAction = this.instantiationService.createInstance(ReloadAction);
@@ -385,18 +392,6 @@ export class ExtensionEditor extends BaseEditor {
 	showFind(): void {
 		if (this.activeWebview) {
 			this.activeWebview.showFind();
-		}
-	}
-
-	public showNextFindTerm() {
-		if (this.activeWebview) {
-			this.activeWebview.showNextFindTerm();
-		}
-	}
-
-	public showPreviousFindTerm() {
-		if (this.activeWebview) {
-			this.activeWebview.showPreviousFindTerm();
 		}
 	}
 
@@ -1003,46 +998,3 @@ const showCommand = new ShowExtensionEditorFindCommand({
 	}
 });
 KeybindingsRegistry.registerCommandAndKeybindingRule(showCommand.toCommandAndKeybindingRule(KeybindingsRegistry.WEIGHT.editorContrib()));
-
-class ShowExtensionEditorFindTermCommand extends Command {
-	constructor(opts: ICommandOptions, private _next: boolean) {
-		super(opts);
-	}
-
-	public runCommand(accessor: ServicesAccessor, args: any): void {
-		const extensionEditor = this.getExtensionEditor(accessor);
-		if (extensionEditor) {
-			if (this._next) {
-				extensionEditor.showNextFindTerm();
-			} else {
-				extensionEditor.showPreviousFindTerm();
-			}
-		}
-	}
-
-	private getExtensionEditor(accessor: ServicesAccessor): ExtensionEditor {
-		const activeControl = accessor.get(IEditorService).activeControl as ExtensionEditor;
-		if (activeControl instanceof ExtensionEditor) {
-			return activeControl;
-		}
-		return null;
-	}
-}
-
-const showNextFindTermCommand = new ShowExtensionEditorFindTermCommand({
-	id: 'editor.action.extensioneditor.showNextFindTerm',
-	precondition: KEYBINDING_CONTEXT_EXTENSIONEDITOR_FIND_WIDGET_INPUT_FOCUSED,
-	kbOpts: {
-		primary: KeyMod.Alt | KeyCode.DownArrow
-	}
-}, true);
-KeybindingsRegistry.registerCommandAndKeybindingRule(showNextFindTermCommand.toCommandAndKeybindingRule(KeybindingsRegistry.WEIGHT.editorContrib()));
-
-const showPreviousFindTermCommand = new ShowExtensionEditorFindTermCommand({
-	id: 'editor.action.extensioneditor.showPreviousFindTerm',
-	precondition: KEYBINDING_CONTEXT_EXTENSIONEDITOR_FIND_WIDGET_INPUT_FOCUSED,
-	kbOpts: {
-		primary: KeyMod.Alt | KeyCode.UpArrow
-	}
-}, false);
-KeybindingsRegistry.registerCommandAndKeybindingRule(showPreviousFindTermCommand.toCommandAndKeybindingRule(KeybindingsRegistry.WEIGHT.editorContrib()));

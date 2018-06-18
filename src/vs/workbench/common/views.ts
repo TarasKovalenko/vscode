@@ -109,6 +109,7 @@ export interface IViewDescriptor {
 
 	readonly canToggleVisibility?: boolean;
 
+	// Applies only to newly created views
 	readonly hideByDefault?: boolean;
 }
 
@@ -194,9 +195,15 @@ export const ViewsRegistry: IViewsRegistry = new class implements IViewsRegistry
 	}
 };
 
+export interface IView {
+
+	readonly id: string;
+
+}
+
 export interface IViewsViewlet extends IViewlet {
 
-	openView(id: string, focus?: boolean): TPromise<void>;
+	openView(id: string, focus?: boolean): TPromise<IView>;
 
 }
 
@@ -205,7 +212,7 @@ export const IViewsService = createDecorator<IViewsService>('viewsService');
 export interface IViewsService {
 	_serviceBrand: any;
 
-	openView(id: string, focus?: boolean): TPromise<void>;
+	openView(id: string, focus?: boolean): TPromise<IView>;
 }
 
 // Custom views
@@ -237,7 +244,7 @@ export interface ITreeViewer extends IDisposable {
 
 export interface ICustomViewDescriptor extends IViewDescriptor {
 
-	treeViewer: ITreeViewer;
+	readonly treeViewer: ITreeViewer;
 
 }
 

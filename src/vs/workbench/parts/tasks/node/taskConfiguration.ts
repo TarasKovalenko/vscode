@@ -63,7 +63,7 @@ export interface ShellQuotingOptions {
 }
 
 export interface ShellConfiguration {
-	executable: string;
+	executable?: string;
 	args?: string[];
 	quoting?: ShellQuotingOptions;
 }
@@ -637,14 +637,17 @@ namespace ShellConfiguration {
 
 	export function is(value: any): value is ShellConfiguration {
 		let candidate: ShellConfiguration = value;
-		return candidate && Types.isString(candidate.executable) && (candidate.args === void 0 || Types.isStringArray(candidate.args));
+		return candidate && (Types.isString(candidate.executable) || Types.isStringArray(candidate.args));
 	}
 
 	export function from(this: void, config: ShellConfiguration, context: ParseContext): Tasks.ShellConfiguration {
 		if (!is(config)) {
 			return undefined;
 		}
-		let result: ShellConfiguration = { executable: config.executable };
+		let result: ShellConfiguration = {};
+		if (config.executable !== void 0) {
+			result.executable = config.executable;
+		}
 		if (config.args !== void 0) {
 			result.args = config.args.slice();
 		}
@@ -1177,7 +1180,7 @@ namespace ConfigurationProperties {
 			if (Types.isArray(external.dependsOn)) {
 				result.dependsOn = external.dependsOn.map(item => TaskDependency.from(item, context));
 			} else {
-				result.dependsOn = [TaskDependency.from(external, context)];
+				result.dependsOn = [TaskDependency.from(external.dependsOn, context)];
 			}
 		}
 		if (includeCommandOptions && (external.presentation !== void 0 || (external as LegacyCommandProperties).terminal !== void 0)) {

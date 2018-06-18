@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-import { DocumentSymbolProviderRegistry, SymbolInformation, DocumentSymbolProvider } from 'vs/editor/common/modes';
+import { DocumentSymbolProviderRegistry, DocumentSymbolProvider, DocumentSymbol } from 'vs/editor/common/modes';
 import { ITextModel } from 'vs/editor/common/model';
 import { asWinJsPromise } from 'vs/base/common/async';
 import { TPromise } from 'vs/base/common/winjs.base';
@@ -16,13 +16,14 @@ import { isFalsyOrEmpty, binarySearch } from 'vs/base/common/arrays';
 import { commonPrefixLength } from 'vs/base/common/strings';
 import { IMarker, MarkerSeverity } from 'vs/platform/markers/common/markers';
 import { onUnexpectedExternalError } from 'vs/base/common/errors';
+import { LRUCache } from 'vs/base/common/map';
 
 export abstract class TreeElement {
 	abstract id: string;
 	abstract children: { [id: string]: TreeElement };
 	abstract parent: TreeElement | any;
 
-	static findId(candidate: SymbolInformation | string, container: TreeElement): string {
+	static findId(candidate: DocumentSymbol | string, container: TreeElement): string {
 		// complex id-computation which contains the origin/extension,
 		// the parent path, and some dedupe logic when names collide
 		let candidateId: string;
@@ -31,7 +32,7 @@ export abstract class TreeElement {
 		} else {
 			candidateId = `${container.id}/${candidate.name}`;
 			if (container.children[candidateId] !== void 0) {
-				candidateId = `${container.id}/${candidate.name}_${candidate.definingRange.startLineNumber}_${candidate.definingRange.startColumn}`;
+				candidateId = `${container.id}/${candidate.name}_${candidate.fullRange.startLineNumber}_${candidate.fullRange.startColumn}`;
 			}
 		}
 
@@ -81,7 +82,7 @@ export class OutlineElement extends TreeElement {
 	constructor(
 		readonly id: string,
 		public parent: OutlineModel | OutlineGroup | OutlineElement,
-		readonly symbol: SymbolInformation
+		readonly symbol: DocumentSymbol
 	) {
 		super();
 	}
@@ -130,7 +131,7 @@ export class OutlineGroup extends TreeElement {
 	private _getItemEnclosingPosition(position: IPosition, children: { [id: string]: OutlineElement }): OutlineElement {
 		for (let key in children) {
 			let item = children[key];
-			if (!Range.containsPosition(item.symbol.definingRange || item.symbol.location.range, position)) {
+			if (!Range.containsPosition(item.symbol.fullRange, position)) {
 				continue;
 			}
 			return this._getItemEnclosingPosition(position, item.children) || item;
@@ -149,11 +150,11 @@ export class OutlineGroup extends TreeElement {
 		item.marker = undefined;
 
 		// find the proper start index to check for item/marker overlap.
-		let idx = binarySearch<IRange>(markers, item.symbol.definingRange, Range.compareRangesUsingStarts);
+		let idx = binarySearch<IRange>(markers, item.symbol.fullRange, Range.compareRangesUsingStarts);
 		let start: number;
 		if (idx < 0) {
 			start = ~idx;
-			if (start > 0 && Range.areIntersecting(markers[start - 1], item.symbol.definingRange)) {
+			if (start > 0 && Range.areIntersecting(markers[start - 1], item.symbol.fullRange)) {
 				start -= 1;
 			}
 		} else {
@@ -163,7 +164,7 @@ export class OutlineGroup extends TreeElement {
 		let myMarkers: IMarker[] = [];
 		let myTopSev: MarkerSeverity;
 
-		while (start < markers.length && Range.areIntersecting(markers[start], item.symbol.definingRange)) {
+		while (start < markers.length && Range.areIntersecting(markers[start], item.symbol.fullRange)) {
 			// remove markers intersecting with this outline element
 			// and store them in a 'private' array.
 			let marker = markers.splice(start, 1)[0];
@@ -192,7 +193,49 @@ export class OutlineGroup extends TreeElement {
 
 export class OutlineModel extends TreeElement {
 
+	private static readonly _requests = new LRUCache<string, { promiseCnt: number, promise: TPromise<any>, model: OutlineModel }>(9, .75);
+
 	static create(textModel: ITextModel): TPromise<OutlineModel> {
+
+		let key = `${textModel.id}/${textModel.getVersionId()}/${DocumentSymbolProviderRegistry.all(textModel).length}`;
+		let data = OutlineModel._requests.get(key);
+
+		if (!data) {
+			data = {
+				promiseCnt: 0,
+				promise: OutlineModel._create(textModel),
+				model: undefined,
+			};
+			OutlineModel._requests.set(key, data);
+		}
+
+		if (data.model) {
+			// resolved -> return data
+			return TPromise.as(data.model);
+		}
+
+		// increase usage counter
+		data.promiseCnt += 1;
+
+		return new TPromise((resolve, reject) => {
+			data.promise.then(model => {
+				data.model = model;
+				resolve(model);
+			}, err => {
+				OutlineModel._requests.delete(key);
+				reject(err);
+			});
+		}, () => {
+			// last -> cancel provider request, remove cached promise
+			if (--data.promiseCnt === 0) {
+				data.promise.cancel();
+				OutlineModel._requests.delete(key);
+			}
+		});
+	}
+
+	static _create(textModel: ITextModel): TPromise<OutlineModel> {
+
 		let result = new OutlineModel(textModel);
 		let promises = DocumentSymbolProviderRegistry.ordered(textModel).map((provider, index) => {
 
@@ -244,7 +287,7 @@ export class OutlineModel extends TreeElement {
 		});
 	}
 
-	private static _makeOutlineElement(info: SymbolInformation, container: OutlineGroup | OutlineElement): void {
+	private static _makeOutlineElement(info: DocumentSymbol, container: OutlineGroup | OutlineElement): void {
 		let id = TreeElement.findId(info, container);
 		let res = new OutlineElement(id, container, info);
 		if (info.children) {
@@ -253,6 +296,16 @@ export class OutlineModel extends TreeElement {
 			}
 		}
 		container.children[res.id] = res;
+	}
+
+	static get(element: TreeElement): OutlineModel {
+		while (element) {
+			if (element instanceof OutlineModel) {
+				return element;
+			}
+			element = element.parent;
+		}
+		return undefined;
 	}
 
 	readonly id = 'root';

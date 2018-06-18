@@ -39,8 +39,6 @@ import { attachBadgeStyler, attachInputBoxStyler } from 'vs/platform/theme/commo
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { IStorageService } from 'vs/platform/storage/common/storage';
-import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
-import { IExtensionsViewlet, VIEWLET_ID as EXTENSIONS_VIEWLET_ID } from 'vs/workbench/parts/extensions/common/extensions';
 import { InputBox, MessageType } from 'vs/base/browser/ui/inputbox/inputBox';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { KeyMod, KeyCode } from 'vs/base/common/keyCodes';
@@ -57,7 +55,7 @@ import { ThrottledDelayer } from 'vs/base/common/async';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { IPartService } from 'vs/workbench/services/part/common/partService';
 import { IViewDescriptorRef, PersistentContributableViewsModel, IAddedViewDescriptorRef } from 'vs/workbench/browser/parts/views/views';
-import { IViewDescriptor, IViewsViewlet } from 'vs/workbench/common/views';
+import { IViewDescriptor, IViewsViewlet, IView } from 'vs/workbench/common/views';
 import { IPanelDndController, Panel } from 'vs/base/browser/ui/splitview/panelview';
 
 export interface ISpliceEvent<T> {
@@ -1008,21 +1006,6 @@ export class RepositoryPanel extends ViewletPanel {
 	}
 }
 
-class InstallAdditionalSCMProvidersAction extends Action {
-
-	constructor(@IViewletService private viewletService: IViewletService) {
-		super('scm.installAdditionalSCMProviders', localize('installAdditionalSCMProviders', "Install Additional SCM Providers..."), '', true);
-	}
-
-	run(): TPromise<void> {
-		return this.viewletService.openViewlet(EXTENSIONS_VIEWLET_ID, true).then(viewlet => viewlet as IExtensionsViewlet)
-			.then(viewlet => {
-				viewlet.search('category:"SCM Providers" @sort:installs');
-				viewlet.focus();
-			});
-	}
-}
-
 class SCMPanelDndController implements IPanelDndController {
 
 	canDrag(panel: Panel): boolean {
@@ -1226,26 +1209,11 @@ export class SCMViewlet extends PanelViewlet implements IViewModel, IViewsViewle
 	}
 
 	getSecondaryActions(): IAction[] {
-		let result: IAction[];
-
 		if (this.isSingleView()) {
-			const [panel] = this.panels;
-
-			result = [
-				...panel.getSecondaryActions(),
-				new Separator()
-			];
+			return this.panels[0].getSecondaryActions();
 		} else {
-			result = [...this.menus.getTitleSecondaryActions()];
-
-			if (result.length > 0) {
-				result.push(new Separator());
-			}
+			return this.menus.getTitleSecondaryActions();
 		}
-
-		result.push(this.instantiationService.createInstance(InstallAdditionalSCMProvidersAction));
-
-		return result;
 	}
 
 	getActionItem(action: IAction): IActionItem {
@@ -1473,14 +1441,18 @@ export class SCMViewlet extends PanelViewlet implements IViewModel, IViewsViewle
 		return super.isSingleView() && this.repositoryPanels.length + this.contributedViews.visibleViewDescriptors.length === 1;
 	}
 
-	openView(id: string, focus?: boolean): TPromise<void> {
-		this.contributedViews.setVisible(id, true);
-		const panel = this.panels.filter(panel => panel instanceof ViewletPanel && panel.id === id)[0];
-		if (panel) {
-			panel.setExpanded(true);
-			panel.focus();
+	openView(id: string, focus?: boolean): TPromise<IView> {
+		if (focus) {
+			this.focus();
 		}
-		return TPromise.as(null);
+		let panel = this.panels.filter(panel => panel instanceof ViewletPanel && panel.id === id)[0];
+		if (!panel) {
+			this.contributedViews.setVisible(id, true);
+		}
+		panel = this.panels.filter(panel => panel instanceof ViewletPanel && panel.id === id)[0];
+		panel.setExpanded(true);
+		panel.focus();
+		return TPromise.as(panel);
 	}
 
 	hide(repository: ISCMRepository): void {

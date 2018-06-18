@@ -23,6 +23,7 @@ import { IEditorService } from 'vs/workbench/services/editor/common/editorServic
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { IViewContainersRegistry, ViewContainer, Extensions as ViewContainerExtensions } from 'vs/workbench/common/views';
 import { Registry } from 'vs/platform/registry/common/platform';
+import { TaskIdentifier } from 'vs/workbench/parts/tasks/common/tasks';
 
 export const VIEWLET_ID = 'workbench.view.debug';
 export const VIEW_CONTAINER: ViewContainer = Registry.as<IViewContainersRegistry>(ViewContainerExtensions.ViewContainersRegistry).registerViewContainer(VIEWLET_ID);
@@ -39,8 +40,6 @@ export const CONTEXT_IN_DEBUG_MODE = new RawContextKey<boolean>('inDebugMode', f
 export const CONTEXT_NOT_IN_DEBUG_MODE: ContextKeyExpr = CONTEXT_IN_DEBUG_MODE.toNegated();
 export const CONTEXT_IN_DEBUG_REPL = new RawContextKey<boolean>('inDebugRepl', false);
 export const CONTEXT_NOT_IN_DEBUG_REPL: ContextKeyExpr = CONTEXT_IN_DEBUG_REPL.toNegated();
-export const CONTEXT_ON_FIRST_DEBUG_REPL_LINE = new RawContextKey<boolean>('onFirstDebugReplLine', false);
-export const CONTEXT_ON_LAST_DEBUG_REPL_LINE = new RawContextKey<boolean>('onLastDebugReplLine', false);
 export const CONTEXT_BREAKPOINT_WIDGET_VISIBLE = new RawContextKey<boolean>('breakpointWidgetVisible', false);
 export const CONTEXT_IN_BREAKPOINT_WIDGET = new RawContextKey<boolean>('inBreakpointWidget', false);
 export const CONTEXT_BREAKPOINTS_FOCUSED = new RawContextKey<boolean>('breakpointsFocused', true);
@@ -372,8 +371,8 @@ export interface IGlobalConfig {
 
 export interface IEnvConfig {
 	internalConsoleOptions?: 'neverOpen' | 'openOnSessionStart' | 'openOnFirstSessionStart';
-	preLaunchTask?: string;
-	postDebugTask?: string;
+	preLaunchTask?: string | TaskIdentifier;
+	postDebugTask?: string | TaskIdentifier;
 	debugServer?: number;
 	noDebug?: boolean;
 }

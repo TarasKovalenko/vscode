@@ -17,8 +17,7 @@ import { RawContextKey, ContextKeyExpr } from 'vs/platform/contextkey/common/con
 import { Registry } from 'vs/platform/registry/common/platform';
 import { ITextModel } from 'vs/editor/common/model';
 import { Schemas } from 'vs/base/common/network';
-import { LRUCache } from 'vs/base/common/map';
-import { IEditorGroupsService, IEditorGroup } from 'vs/workbench/services/group/common/editorGroupsService';
+import { IEditorGroup } from 'vs/workbench/services/group/common/editorGroupsService';
 import { ICompositeControl } from 'vs/workbench/common/composite';
 import { ActionRunner, IAction } from 'vs/base/common/actions';
 
@@ -58,6 +57,31 @@ export interface IEditor {
 	 * The assigned group this editor is showing in.
 	 */
 	group: IEditorGroup;
+
+	/**
+	 * The minimum width of this editor.
+	 */
+	readonly minimumWidth: number;
+
+	/**
+	 * The maximum width of this editor.
+	 */
+	readonly maximumWidth: number;
+
+	/**
+	 * The minimum height of this editor.
+	 */
+	readonly minimumHeight: number;
+
+	/**
+	 * The maximum height of this editor.
+	 */
+	readonly maximumHeight: number;
+
+	/**
+	 * An event to notify whenever minimum/maximum width/height changes.
+	 */
+	readonly onDidSizeConstraintsChange: Event<{ width: number; height: number; }>;
 
 	/**
 	 * Returns the unique identifier of this editor.
@@ -1019,115 +1043,16 @@ export enum CloseDirection {
 	RIGHT
 }
 
-interface MapGroupToViewStates<T> {
-	[group: number]: T;
-}
+export interface IEditorMemento<T> {
 
-export class EditorViewStateMemento<T> {
-	private cache: LRUCache<string, MapGroupToViewStates<T>>;
+	saveState(group: IEditorGroup, resource: URI, state: T): void;
+	saveState(group: IEditorGroup, editor: EditorInput, state: T): void;
 
-	constructor(
-		private editorGroupService: IEditorGroupsService,
-		private memento: object,
-		private key: string,
-		private limit: number = 10
-	) { }
+	loadState(group: IEditorGroup, resource: URI): T;
+	loadState(group: IEditorGroup, editor: EditorInput): T;
 
-	public saveState(group: IEditorGroup, resource: URI, state: T): void;
-	public saveState(group: IEditorGroup, editor: EditorInput, state: T): void;
-	public saveState(group: IEditorGroup, resourceOrEditor: URI | EditorInput, state: T): void {
-		const resource = this.doGetResource(resourceOrEditor);
-		if (!resource || !group) {
-			return; // we are not in a good state to save any viewstate for a resource
-		}
-
-		const cache = this.doLoad();
-
-		let viewStates = cache.get(resource.toString());
-		if (!viewStates) {
-			viewStates = Object.create(null) as MapGroupToViewStates<T>;
-			cache.set(resource.toString(), viewStates);
-		}
-
-		viewStates[group.id] = state;
-
-		// Automatically clear when editor input gets disposed if any
-		if (resourceOrEditor instanceof EditorInput) {
-			once(resourceOrEditor.onDispose)(() => {
-				this.clearState(resource);
-			});
-		}
-	}
-
-	public loadState(group: IEditorGroup, resource: URI): T;
-	public loadState(group: IEditorGroup, editor: EditorInput): T;
-	public loadState(group: IEditorGroup, resourceOrEditor: URI | EditorInput): T {
-		const resource = this.doGetResource(resourceOrEditor);
-		if (!resource || !group) {
-			return void 0; // we are not in a good state to load any viewstate for a resource
-		}
-
-		const cache = this.doLoad();
-
-		const viewStates = cache.get(resource.toString());
-		if (viewStates) {
-			return viewStates[group.id];
-		}
-
-		return void 0;
-	}
-
-	public clearState(resource: URI): void;
-	public clearState(editor: EditorInput): void;
-	public clearState(resourceOrEditor: URI | EditorInput): void {
-		const resource = this.doGetResource(resourceOrEditor);
-		if (resource) {
-			const cache = this.doLoad();
-			cache.delete(resource.toString());
-		}
-	}
-
-	private doGetResource(resourceOrEditor: URI | EditorInput): URI {
-		if (resourceOrEditor instanceof EditorInput) {
-			return resourceOrEditor.getResource();
-		}
-
-		return resourceOrEditor;
-	}
-
-	private doLoad(): LRUCache<string, MapGroupToViewStates<T>> {
-		if (!this.cache) {
-			this.cache = new LRUCache<string, MapGroupToViewStates<T>>(this.limit);
-
-			// Restore from serialized map state
-			const rawViewState = this.memento[this.key];
-			if (Array.isArray(rawViewState)) {
-				this.cache.fromJSON(rawViewState);
-			}
-		}
-
-		return this.cache;
-	}
-
-	public save(): void {
-		const cache = this.doLoad();
-
-		// Remove groups from states that no longer exist
-		cache.forEach((mapGroupToViewStates, resource) => {
-			Object.keys(mapGroupToViewStates).forEach(group => {
-				const groupId: GroupIdentifier = Number(group);
-				if (!this.editorGroupService.getGroup(groupId)) {
-					delete mapGroupToViewStates[groupId];
-
-					if (types.isEmptyObject(mapGroupToViewStates)) {
-						cache.delete(resource);
-					}
-				}
-			});
-		});
-
-		this.memento[this.key] = cache.toJSON();
-	}
+	clearState(resource: URI): void;
+	clearState(editor: EditorInput): void;
 }
 
 class EditorInputFactoryRegistry implements IEditorInputFactoryRegistry {
