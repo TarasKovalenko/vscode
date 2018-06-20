@@ -1147,7 +1147,7 @@ export class ShowEnabledExtensionsAction extends Action {
 		label: string,
 		@IViewletService private viewletService: IViewletService
 	) {
-		super(id, label, 'clear-extensions', true);
+		super(id, label, null, true);
 	}
 
 	run(): TPromise<void> {
@@ -1170,7 +1170,7 @@ export class ShowInstalledExtensionsAction extends Action {
 		label: string,
 		@IViewletService private viewletService: IViewletService
 	) {
-		super(id, label, 'clear-extensions', true);
+		super(id, label, null, true);
 	}
 
 	run(): TPromise<void> {
@@ -1485,6 +1485,36 @@ export class InstallRecommendedExtensionAction extends Action {
 	dispose(): void {
 		this.disposables = dispose(this.disposables);
 		super.dispose();
+	}
+}
+
+export class IgnoreExtensionRecommendationAction extends Action {
+
+	static readonly ID = 'extensions.ignore';
+
+	private static readonly Class = 'extension-action ignore octicon octicon-x';
+
+	private disposables: IDisposable[] = [];
+	extension: IExtension;
+
+	constructor(
+		@IExtensionTipsService private extensionsTipsService: IExtensionTipsService,
+	) {
+		super(IgnoreExtensionRecommendationAction.ID);
+
+		this.class = IgnoreExtensionRecommendationAction.Class;
+		this.tooltip = localize('ignoreExtensionRecommendation', "Do not recommend this extension again");
+		this.enabled = true;
+	}
+
+	public run(): TPromise<any> {
+		this.extensionsTipsService.ignoreExtensionRecommendation(this.extension.id);
+		return TPromise.as(null);
+	}
+
+	dispose(): void {
+		super.dispose();
+		this.disposables = dispose(this.disposables);
 	}
 }
 
