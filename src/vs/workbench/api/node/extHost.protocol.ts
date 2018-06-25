@@ -380,6 +380,10 @@ export interface TransferQuickPick extends BaseTransferQuickInput {
 
 	items?: TransferQuickPickItems[];
 
+	activeItems?: number[];
+
+	selectedItems?: number[];
+
 	canSelectMany?: boolean;
 
 	ignoreFocusOut?: boolean;
@@ -748,6 +752,13 @@ export interface LocationDto {
 	range: IRange;
 }
 
+export interface DefinitionLinkDto {
+	origin?: IRange;
+	uri: UriComponents;
+	range: IRange;
+	selectionRange?: IRange;
+}
+
 export interface WorkspaceSymbolDto extends IdObject {
 	name: string;
 	containerName?: string;
@@ -762,6 +773,7 @@ export interface WorkspaceSymbolsDto extends IdObject {
 export interface ResourceFileEditDto {
 	oldUri: UriComponents;
 	newUri: UriComponents;
+	options: { overwrite?: boolean, ignoreIfExists?: boolean };
 }
 
 export interface ResourceTextEditDto {
@@ -803,7 +815,7 @@ export interface ExtHostLanguageFeaturesShape {
 	$provideDocumentSymbols(handle: number, resource: UriComponents): TPromise<modes.DocumentSymbol[]>;
 	$provideCodeLenses(handle: number, resource: UriComponents): TPromise<modes.ICodeLensSymbol[]>;
 	$resolveCodeLens(handle: number, resource: UriComponents, symbol: modes.ICodeLensSymbol): TPromise<modes.ICodeLensSymbol>;
-	$provideDefinition(handle: number, resource: UriComponents, position: IPosition): TPromise<LocationDto | LocationDto[]>;
+	$provideDefinition(handle: number, resource: UriComponents, position: IPosition): TPromise<DefinitionLinkDto[]>;
 	$provideImplementation(handle: number, resource: UriComponents, position: IPosition): TPromise<LocationDto | LocationDto[]>;
 	$provideTypeDefinition(handle: number, resource: UriComponents, position: IPosition): TPromise<LocationDto | LocationDto[]>;
 	$provideHover(handle: number, resource: UriComponents, position: IPosition): TPromise<modes.Hover>;
