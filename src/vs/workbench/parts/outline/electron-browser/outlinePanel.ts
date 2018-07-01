@@ -27,7 +27,6 @@ import { ITree } from 'vs/base/parts/tree/browser/tree';
 import 'vs/css!./outlinePanel';
 import { ICodeEditor, isCodeEditor, isDiffEditor } from 'vs/editor/browser/editorBrowser';
 import { ServicesAccessor } from 'vs/editor/browser/editorExtensions';
-import { CursorChangeReason } from 'vs/editor/common/controller/cursorEvents';
 import { Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
 import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
@@ -335,6 +334,10 @@ export class OutlinePanel extends ViewletPanel {
 				if (this.upKeyBindingDispatcher.has(event.keyCode)) {
 					return false;
 				}
+				if (event.ctrlKey || event.metaKey) {
+					// ignore ctrl/cmd-combination but not shift/alt-combinatios
+					return false;
+				}
 				// crazy -> during keydown focus moves to the input box
 				// and because of that the keyup event is handled by the
 				// input field
@@ -539,7 +542,9 @@ export class OutlinePanel extends ViewletPanel {
 				beforePatternState = undefined;
 			}
 		};
-		onInputValueChanged(this._input.value);
+		if (this._input.value) {
+			onInputValueChanged(this._input.value);
+		}
 		this._editorDisposables.push(this._input.onDidChange(onInputValueChanged));
 
 		this._editorDisposables.push({
@@ -573,8 +578,16 @@ export class OutlinePanel extends ViewletPanel {
 		}));
 
 		// feature: reveal editor selection in outline
-		this._editorDisposables.push(editor.onDidChangeCursorSelection(e => e.reason === CursorChangeReason.Explicit && this._revealEditorSelection(model, e.selection)));
 		this._revealEditorSelection(model, editor.getSelection());
+		const versionIdThen = model.textModel.getVersionId();
+		this._editorDisposables.push(editor.onDidChangeCursorSelection(e => {
+			// first check if the document has changed and stop revealing the
+			// cursor position iff it has -> we will update/recompute the
+			// outline view then anyways
+			if (!model.textModel.isDisposed() && model.textModel.getVersionId() === versionIdThen) {
+				this._revealEditorSelection(model, e.selection);
+			}
+		}));
 
 		// feature: show markers in outline
 		const updateMarker = (e: URI[], ignoreEmpty?: boolean) => {
@@ -635,7 +648,7 @@ export class OutlinePanel extends ViewletPanel {
 	}
 
 	private async _revealEditorSelection(model: OutlineModel, selection: Selection): TPromise<void> {
-		if (!this._outlineViewState.followCursor || !this._tree.getInput()) {
+		if (!this._outlineViewState.followCursor || !this._tree.getInput() || !selection) {
 			return;
 		}
 		let [first] = this._tree.getSelection();

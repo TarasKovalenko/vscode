@@ -341,7 +341,7 @@ declare module 'vscode' {
 		 * provides access to the raw data stream from the process running within the terminal,
 		 * including VT sequences.
 		 */
-		onData: Event<string>;
+		onDidWriteData: Event<string>;
 	}
 
 	/**
@@ -351,12 +351,12 @@ declare module 'vscode' {
 		/**
 		 * The number of columns in the terminal.
 		 */
-		cols: number;
+		readonly columns: number;
 
 		/**
 		 * The number of rows in the terminal.
 		 */
-		rows: number;
+		readonly rows: number;
 	}
 
 	/**
@@ -368,10 +368,10 @@ declare module 'vscode' {
 	 * created with all its APIs available for use by extensions. When using the Terminal object
 	 * of a TerminalRenderer it acts just like normal only the extension that created the
 	 * TerminalRenderer essentially acts as a process. For example when an
-	 * [Terminal.onData](#Terminal.onData) listener is registered, that will fire when
-	 * [TerminalRenderer.write](#TerminalRenderer.write) is called. Similarly when
+	 * [Terminal.onDidWriteData](#Terminal.onDidWriteData) listener is registered, that will fire
+	 * when [TerminalRenderer.write](#TerminalRenderer.write) is called. Similarly when
 	 * [Terminal.sendText](#Terminal.sendText) is triggered that will fire the
-	 * [TerminalRenderer.onInput](#TerminalRenderer.onInput) event.
+	 * [TerminalRenderer.onDidAcceptInput](#TerminalRenderer.onDidAcceptInput) event.
 	 *
 	 * **Example:** Create a terminal renderer, show it and write hello world in red
 	 * ```typescript
@@ -399,7 +399,7 @@ declare module 'vscode' {
 		 * };
 		 * ```
 		 */
-		dimensions: TerminalDimensions;
+		dimensions: TerminalDimensions | undefined;
 
 		/**
 		 * The maximum dimensions of the terminal, this will be undefined immediately after a
@@ -407,12 +407,12 @@ declare module 'vscode' {
 		 * Listen to [onDidChangeMaximumDimensions](TerminalRenderer.onDidChangeMaximumDimensions)
 		 * to get notified when this value changes.
 		 */
-		readonly maximumDimensions: TerminalDimensions;
+		readonly maximumDimensions: TerminalDimensions | undefined;
 
 		/**
 		 * The corressponding [Terminal](#Terminal) for this TerminalRenderer.
 		 */
-		readonly terminal: Thenable<Terminal>;
+		readonly terminal: Terminal;
 
 		/**
 		 * Write text to the terminal. Unlike [Terminal.sendText](#Terminal.sendText) which sends
@@ -441,40 +441,36 @@ declare module 'vscode' {
 		 * workbench command such as `workbench.action.terminal.runSelectedText`
 		 * ```typescript
 		 * const terminalRenderer = window.createTerminalRenderer('test');
-		 * terminalRenderer.onInput(data => {
+		 * terminalRenderer.onDidAcceptInput(data => {
 		 *   cosole.log(data); // 'Hello world'
 		 * });
 		 * terminalRenderer.terminal.then(t => t.sendText('Hello world'));
 		 * ```
 		 */
-		onInput: Event<string>;
+		readonly onDidAcceptInput: Event<string>;
 
 		/**
 		 * An event which fires when the [maximum dimensions](#TerminalRenderer.maimumDimensions) of
 		 * the terminal renderer change.
 		 */
-		onDidChangeMaximumDimensions: Event<TerminalDimensions>;
+		readonly onDidChangeMaximumDimensions: Event<TerminalDimensions>;
 	}
 
 	export namespace window {
 		/**
 		 * The currently opened terminals or an empty array.
-		 *
-		 * @readonly
 		 */
-		export let terminals: Terminal[];
+		export const terminals: ReadonlyArray<Terminal>;
 
 		/**
 		 * The currently active terminal or `undefined`. The active terminal is the one that
 		 * currently has focus or most recently had focus.
-		 *
-		 * @readonly
 		 */
-		export let activeTerminal: Terminal | undefined;
+		export const activeTerminal: Terminal | undefined;
 
 		/**
 		 * An [event](#Event) which fires when the [active terminal](#window.activeTerminal)
-		 * has changed. *Note* that the event also fires when the active editor changes
+		 * has changed. *Note* that the event also fires when the active terminal changes
 		 * to `undefined`.
 		 */
 		export const onDidChangeActiveTerminal: Event<Terminal | undefined>;
@@ -536,7 +532,8 @@ declare module 'vscode' {
 		 * of items of type T.
 		 *
 		 * Note that in many cases the more convenient [window.showQuickPick](#window.showQuickPick)
-		 * is easier to use.
+		 * is easier to use. [window.createQuickPick](#window.createQuickPick) should be used,
+		 * when [window.showQuickPick](#window.showQuickPick) does not offer the required flexibility.
 		 *
 		 * @return A new [QuickPick](#QuickPick).
 		 */
@@ -546,7 +543,8 @@ declare module 'vscode' {
 		 * Creates a [InputBox](#InputBox) to let the user enter some text input.
 		 *
 		 * Note that in many cases the more convenient [window.showInputBox](#window.showInputBox)
-		 * is easier to use.
+		 * is easier to use. [window.createInputBox](#window.createInputBox) should be used,
+		 * when [window.showInputBox](#window.showInputBox) does not offer the required flexibility.
 		 *
 		 * @return A new [InputBox](#InputBox).
 		 */
@@ -650,7 +648,8 @@ declare module 'vscode' {
 	 * selecting multiple items.
 	 *
 	 * Note that in many cases the more convenient [window.showQuickPick](#window.showQuickPick)
-	 * is easier to use.
+	 * is easier to use. [window.createQuickPick](#window.createQuickPick) should be used,
+	 * when [window.showQuickPick](#window.showQuickPick) does not offer the required flexibility.
 	 */
 	export interface QuickPick<T extends QuickPickItem> extends QuickInput {
 
@@ -729,7 +728,8 @@ declare module 'vscode' {
 	 * A concrete [QuickInput](#QuickInput) to let the user input a text value.
 	 *
 	 * Note that in many cases the more convenient [window.showInputBox](#window.showInputBox)
-	 * is easier to use.
+	 * is easier to use. [window.createInputBox](#window.createInputBox) should be used,
+	 * when [window.showInputBox](#window.showInputBox) does not offer the required flexibility.
 	 */
 	export interface InputBox extends QuickInput {
 
@@ -821,7 +821,7 @@ declare module 'vscode' {
 		 *
 		 * @param uri The uri of the file that is to be deleted.
 		 */
-		deleteFile(uri: Uri): void;
+		deleteFile(uri: Uri, options?: { recursive?: boolean }): void;
 
 		/**
 		 * Rename a file or folder.
@@ -835,6 +835,21 @@ declare module 'vscode' {
 		// replaceText(uri: Uri, range: Range, newText: string): void;
 		// insertText(uri: Uri, position: Position, newText: string): void;
 		// deleteText(uri: Uri, range: Range): void;
+	}
+
+	export namespace workspace {
+		/**
+		 * Make changes to one or many resources as defined by the given
+		 * [workspace edit](#WorkspaceEdit).
+		 *
+		 * The editor implements an 'all-or-nothing'-strategy and that means failure to modify,
+		 * delete, rename, or create one file will abort the operation. In that case, the thenable returned
+		 * by this function resolves to `false`.
+		 *
+		 * @param edit A workspace edit.
+		 * @return A thenable that resolves when the edit could be applied.
+		 */
+		export function applyEdit(edit: WorkspaceEdit): Thenable<boolean>;
 	}
 
 	//#endregion
@@ -855,69 +870,6 @@ declare module 'vscode' {
 		export const onWillRenameFile: Event<FileWillRenameEvent>;
 		export const onDidRenameFile: Event<FileRenameEvent>;
 	}
-	//#endregion
-
-	//#region Matt: WebView Serializer
-
-	/**
-	 * Restore webview panels that have been persisted when vscode shuts down.
-	 *
-	 * There are two types of webview persistence:
-	 *
-	 * - Persistence within a session.
-	 * - Persistence across sessions (across restarts of VS Code).
-	 *
-	 * A `WebviewPanelSerializer` is only required for the second case: persisting a webview across sessions.
-	 *
-	 * Persistence within a session allows a webview to save its state when it becomes hidden
-	 * and restore its content from this state when it becomes visible again. It is powered entirely
-	 * by the webview content itself. To save off a persisted state, call `acquireVsCodeApi().setState()` with
-	 * any json serializable object. To restore the state again, call `getState()`
-	 *
-	 * ```js
-	 * // Within the webview
-	 * const vscode = acquireVsCodeApi();
-	 *
-	 * // Get existing state
-	 * const oldState = vscode.getState() || { value: 0 };
-	 *
-	 * // Update state
-	 * setState({ value: oldState.value + 1 })
-	 * ```
-	 *
-	 * A `WebviewPanelSerializer` extends this persistence across restarts of VS Code. When the editor is shutdown, VS Code will save off the state from `setState` of all webviews that have a serializer. When the
-	 * webview first becomes visible after the restart, this state is passed to `deserializeWebviewPanel`.
-	 * The extension can then restore the old `WebviewPanel` from this state.
-	 */
-	interface WebviewPanelSerializer {
-		/**
-		 * Restore a webview panel from its seriailzed `state`.
-		 *
-		 * Called when a serialized webview first becomes visible.
-		 *
-		 * @param webviewPanel Webview panel to restore. The serializer should take ownership of this panel.
-		 * @param state Persisted state.
-		 *
-		 * @return Thanble indicating that the webview has been fully restored.
-		 */
-		deserializeWebviewPanel(webviewPanel: WebviewPanel, state: any): Thenable<void>;
-	}
-
-	namespace window {
-		/**
-		 * Registers a webview panel serializer.
-		 *
-		 * Extensions that support reviving should have an `"onWebviewPanel:viewType"` activation method and
-		 * make sure that [registerWebviewPanelSerializer](#registerWebviewPanelSerializer) is called during activation.
-		 *
-		 * Only a single serializer may be registered at a time for a given `viewType`.
-		 *
-		 * @param viewType Type of the webview panel that can be serialized.
-		 * @param serializer Webview serializer.
-		 */
-		export function registerWebviewPanelSerializer(viewType: string, serializer: WebviewPanelSerializer): Disposable;
-	}
-
 	//#endregion
 
 	//#region Matt: Deinition range
