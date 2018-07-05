@@ -80,11 +80,11 @@ export class TextFileModelChangeEvent {
 		this._kind = kind;
 	}
 
-	public get resource(): URI {
+	get resource(): URI {
 		return this._resource;
 	}
 
-	public get kind(): StateChange {
+	get kind(): StateChange {
 		return this._kind;
 	}
 }
@@ -147,9 +147,16 @@ export interface IModelLoadOrCreateOptions {
 	encoding?: string;
 
 	/**
-	 * Wether to reload the model if it already exists.
+	 * If the model was already loaded before, allows to trigger
+	 * a reload of it to fetch the latest contents:
+	 * - async: loadOrCreate() will return immediately and trigger
+	 * a reload that will run in the background.
+	 * - sync: loadOrCreate() will only return resolved when the
+	 * model has finished reloading.
 	 */
-	reload?: boolean;
+	reload?: {
+		async: boolean
+	};
 
 	/**
 	 * Allow to load a model even if we think it is a binary file.
