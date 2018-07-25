@@ -6,6 +6,7 @@
 .monaco-workbench > .part.editor > .content .editor-group-container > .title > .label-container {
 	display: flex;
 	justify-content: flex-start;
+	align-items: center;
 	overflow: hidden;
 	flex: auto;
 }
@@ -33,8 +34,6 @@
 .monaco-workbench > .part.editor > .content .editor-group-container > .title .no-tabs-breadcrumbs.breadcrumbs-control {
 	flex: 1 50%;
 	overflow: hidden;
-	line-height: 35px;
-	height: 35px;
 	padding: 0 6px;
 }
 
@@ -58,9 +57,17 @@
 	content: '\\';
 }
 
-.monaco-workbench > .part.editor > .content .editor-group-container > .title .no-tabs-breadcrumbs.breadcrumbs-control.relative-path .monaco-breadcrumb-item:nth-child(2)::before  {
-	/* relative path -> hide first seperator */
+.monaco-workbench > .part.editor > .content .editor-group-container > .title .no-tabs-breadcrumbs.breadcrumbs-control .monaco-breadcrumb-item.root_folder::before,
+.monaco-workbench > .part.editor > .content .editor-group-container > .title .no-tabs-breadcrumbs.breadcrumbs-control .monaco-breadcrumb-item.root_folder + .monaco-breadcrumb-item::before,
+.monaco-workbench > .part.editor > .content .editor-group-container > .title .no-tabs-breadcrumbs.breadcrumbs-control.relative-path .monaco-breadcrumb-item:nth-child(2)::before {
+	/* workspace folder, item following workspace folder, or relative path -> hide first seperator */
 	display: none;
+}
+
+.monaco-workbench > .part.editor > .content .editor-group-container > .title .no-tabs-breadcrumbs.breadcrumbs-control .monaco-breadcrumb-item.root_folder::after {
+	/* use dot separator for workspace folder */
+	content: '•';
+	padding: 0 4px;
 }
 
 .monaco-workbench > .part.editor > .content .editor-group-container > .title .no-tabs-breadcrumbs.breadcrumbs-control .monaco-breadcrumb-item:last-child {

@@ -85,7 +85,13 @@ export abstract class BreadcrumbsConfig<T> {
 
 				return {
 					name,
-					get value() { return value; },
+					get value() {
+						return value;
+					},
+					set value(newValue: T) {
+						service.updateValue(name, newValue);
+						value = newValue;
+					},
 					onDidChange: onDidChange.event,
 					dispose(): void {
 						listener.dispose();
@@ -130,7 +136,7 @@ Registry.as<IConfigurationRegistry>(Extensions.Configuration).registerConfigurat
 			default: 'on',
 			enum: ['on', 'off', 'last'],
 			enumDescriptions: [
-				localize('symbolpath.on', "Show all symbols the breadcrumbs view."),
+				localize('symbolpath.on', "Show all symbols in the breadcrumbs view."),
 				localize('symbolpath.off', "Do not show symbols in the breadcrumbs view."),
 				localize('symbolpath.last', "Only show the current symbol in the breadcrumbs view."),
 			]

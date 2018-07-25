@@ -9,7 +9,7 @@ import 'vs/css!./media/actions';
 
 import URI from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
-import { Action } from 'vs/base/common/actions';
+import { Action, IAction } from 'vs/base/common/actions';
 import { IWindowService, IWindowsService, MenuBarVisibility } from 'vs/platform/windows/common/windows';
 import * as nls from 'vs/nls';
 import product from 'vs/platform/node/product';
@@ -36,7 +36,7 @@ import { webFrame, shell } from 'electron';
 import { getPathLabel, getBaseLabel } from 'vs/base/common/labels';
 import { IViewlet } from 'vs/workbench/common/viewlet';
 import { IPanel } from 'vs/workbench/common/panel';
-import { IWorkspaceIdentifier, getWorkspaceLabel, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
+import { IWorkspaceIdentifier, getWorkspaceLabel, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
 import { FileKind } from 'vs/platform/files/common/files';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IExtensionService, ActivationTimes } from 'vs/workbench/services/extensions/common/extensions';
@@ -598,8 +598,8 @@ export abstract class BaseSwitchWindow extends Action {
 			const placeHolder = nls.localize('switchWindowPlaceHolder', "Select a window to switch to");
 			const picks = windows.map(win => ({
 				payload: win.id,
-				resource: win.filename ? URI.file(win.filename) : win.folderPath ? URI.file(win.folderPath) : win.workspace ? URI.file(win.workspace.configPath) : void 0,
-				fileKind: win.filename ? FileKind.FILE : win.workspace ? FileKind.ROOT_FOLDER : win.folderPath ? FileKind.FOLDER : FileKind.FILE,
+				resource: win.filename ? URI.file(win.filename) : win.folderUri ? win.folderUri : win.workspace ? URI.file(win.workspace.configPath) : void 0,
+				fileKind: win.filename ? FileKind.FILE : win.workspace ? FileKind.ROOT_FOLDER : win.folderUri ? FileKind.FOLDER : FileKind.FILE,
 				label: win.title,
 				description: (currentWindowId === win.id) ? nls.localize('current', "Current Window") : void 0,
 				run: () => {
@@ -697,7 +697,6 @@ export class QuickSwitchWindow extends BaseSwitchWindow {
 export const inRecentFilesPickerContextKey = 'inRecentFilesPicker';
 
 export abstract class BaseOpenRecentAction extends Action {
-	private removeAction: RemoveFromRecentlyOpened;
 
 	constructor(
 		id: string,
@@ -707,11 +706,9 @@ export abstract class BaseOpenRecentAction extends Action {
 		private contextService: IWorkspaceContextService,
 		private environmentService: IEnvironmentService,
 		private keybindingService: IKeybindingService,
-		instantiationService: IInstantiationService
+		private instantiationService: IInstantiationService
 	) {
 		super(id, label);
-
-		this.removeAction = instantiationService.createInstance(RemoveFromRecentlyOpened);
 	}
 
 	protected abstract isQuickNavigate(): boolean;
@@ -723,22 +720,26 @@ export abstract class BaseOpenRecentAction extends Action {
 
 	private openRecent(recentWorkspaces: (IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier)[], recentFiles: string[]): void {
 
-		function toPick(workspace: IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier, separator: ISeparator, fileKind: FileKind, environmentService: IEnvironmentService, removeAction?: RemoveFromRecentlyOpened): IFilePickOpenEntry {
-			let path: string;
+		function toPick(workspace: IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier | string, separator: ISeparator, fileKind: FileKind, environmentService: IEnvironmentService, action: IAction): IFilePickOpenEntry {
+			let resource: URI;
 			let label: string;
 			let description: string;
 			if (isSingleFolderWorkspaceIdentifier(workspace)) {
-				path = workspace;
-				label = getBaseLabel(path);
-				description = getPathLabel(paths.dirname(path), environmentService);
-			} else {
-				path = workspace.configPath;
+				resource = workspace;
+				label = getWorkspaceLabel(workspace, environmentService);
+				description = getPathLabel(resource.with({ path: paths.dirname(resource.path) }), environmentService);
+			} else if (isWorkspaceIdentifier(workspace)) {
+				resource = URI.file(workspace.configPath);
 				label = getWorkspaceLabel(workspace, environmentService);
 				description = getPathLabel(paths.dirname(workspace.configPath), environmentService);
+			} else {
+				resource = URI.file(workspace);
+				label = getBaseLabel(workspace);
+				description = getPathLabel(paths.dirname(workspace), environmentService);
 			}
 
 			return {
-				resource: URI.file(path),
+				resource,
 				fileKind,
 				label,
 				description,
@@ -747,20 +748,20 @@ export abstract class BaseOpenRecentAction extends Action {
 					setTimeout(() => {
 						// Bug: somehow when not running this code in a timeout, it is not possible to use this picker
 						// with quick navigate keys (not able to trigger quick navigate once running it once).
-						runPick(path, fileKind === FileKind.FILE, context);
+						runPick(resource, fileKind === FileKind.FILE, context);
 					});
 				},
-				action: removeAction
+				action
 			};
 		}
 
-		const runPick = (path: string, isFile: boolean, context: IEntryRunContext) => {
+		const runPick = (resource: URI, isFile: boolean, context: IEntryRunContext) => {
 			const forceNewWindow = context.keymods.ctrlCmd;
-			this.windowService.openWindow([path], { forceNewWindow, forceOpenWorkspaceAsFile: isFile });
+			this.windowService.openWindow([resource], { forceNewWindow, forceOpenWorkspaceAsFile: isFile });
 		};
 
-		const workspacePicks: IFilePickOpenEntry[] = recentWorkspaces.map((workspace, index) => toPick(workspace, index === 0 ? { label: nls.localize('workspaces', "workspaces") } : void 0, isSingleFolderWorkspaceIdentifier(workspace) ? FileKind.FOLDER : FileKind.ROOT_FOLDER, this.environmentService, !this.isQuickNavigate() ? this.removeAction : void 0));
-		const filePicks: IFilePickOpenEntry[] = recentFiles.map((p, index) => toPick(p, index === 0 ? { label: nls.localize('files', "files"), border: true } : void 0, FileKind.FILE, this.environmentService, !this.isQuickNavigate() ? this.removeAction : void 0));
+		const workspacePicks: IFilePickOpenEntry[] = recentWorkspaces.map((workspace, index) => toPick(workspace, index === 0 ? { label: nls.localize('workspaces', "workspaces") } : void 0, isSingleFolderWorkspaceIdentifier(workspace) ? FileKind.FOLDER : FileKind.ROOT_FOLDER, this.environmentService, !this.isQuickNavigate() ? this.instantiationService.createInstance(RemoveFromRecentlyOpened, workspace) : void 0));
+		const filePicks: IFilePickOpenEntry[] = recentFiles.map((p, index) => toPick(p, index === 0 ? { label: nls.localize('files', "files"), border: true } : void 0, FileKind.FILE, this.environmentService, !this.isQuickNavigate() ? this.instantiationService.createInstance(RemoveFromRecentlyOpened, p) : void 0));
 
 		// focus second entry if the first recent workspace is the current workspace
 		let autoFocusSecondEntry: boolean = recentWorkspaces[0] && this.contextService.isCurrentWorkspace(recentWorkspaces[0]);
@@ -773,12 +774,6 @@ export abstract class BaseOpenRecentAction extends Action {
 			quickNavigateConfiguration: this.isQuickNavigate() ? { keybindings: this.keybindingService.lookupKeybindings(this.id) } : void 0
 		}).done(null, errors.onUnexpectedError);
 	}
-
-	dispose(): void {
-		super.dispose();
-
-		this.removeAction.dispose();
-	}
 }
 
 class RemoveFromRecentlyOpened extends Action implements IPickOpenAction {
@@ -787,6 +782,7 @@ class RemoveFromRecentlyOpened extends Action implements IPickOpenAction {
 	static readonly LABEL = nls.localize('remove', "Remove from Recently Opened");
 
 	constructor(
+		private path: (IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier | string),
 		@IWindowsService private windowsService: IWindowsService
 	) {
 		super(RemoveFromRecentlyOpened.ID, RemoveFromRecentlyOpened.LABEL);
@@ -795,7 +791,7 @@ class RemoveFromRecentlyOpened extends Action implements IPickOpenAction {
 	}
 
 	run(item: IPickOpenItem): TPromise<boolean> {
-		return this.windowsService.removeFromRecentlyOpened([item.getResource().fsPath]).then(() => {
+		return this.windowsService.removeFromRecentlyOpened([this.path]).then(() => {
 			item.remove();
 
 			return true;
