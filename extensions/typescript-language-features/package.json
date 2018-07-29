@@ -73,7 +73,8 @@
           "type": "boolean",
           "default": false,
           "description": "%typescript.disableAutomaticTypeAcquisition%",
-          "scope": "window"
+          "scope": "window",
+          "tags": ["usesOnlineServices"]
         },
         "typescript.npm": {
           "type": [
@@ -384,6 +385,12 @@
             "build",
             "watch"
           ],
+          "enumDescriptions": [
+            "%typescript.tsc.autoDetect.on%",
+            "%typescript.tsc.autoDetect.off%",
+            "%typescript.tsc.autoDetect.build%",
+            "%typescript.tsc.autoDetect.watch%"
+          ],
           "description": "%typescript.tsc.autoDetect%",
           "scope": "window"
         },
@@ -488,6 +495,11 @@
             "prompt",
             "always",
             "never"
+          ],
+          "enumDescriptions": [
+            "%typescript.updateImportsOnFileMove.enabled.prompt%",
+            "%typescript.updateImportsOnFileMove.enabled.always%",
+            "%typescript.updateImportsOnFileMove.enabled.never%"
           ],
           "default": "prompt",
           "description": "%typescript.updateImportsOnFileMove.enabled%",
