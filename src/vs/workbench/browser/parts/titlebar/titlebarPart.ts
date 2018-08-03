@@ -54,6 +54,7 @@ export class TitlebarPart extends Part implements ITitleService {
 	private appIcon: Builder;
 	private menubarPart: MenubarPart;
 	private menubar: Builder;
+	private resizer: Builder;
 
 	private pendingTitle: string;
 	private representedFileName: string;
@@ -294,11 +295,13 @@ export class TitlebarPart extends Part implements ITitleService {
 		}
 
 		// Maximize/Restore on doubleclick
-		this.title.on(EventType.DBLCLICK, (e) => {
-			EventHelper.stop(e);
+		if (isMacintosh) {
+			this.titleContainer.on(EventType.DBLCLICK, (e) => {
+				EventHelper.stop(e);
 
-			this.onTitleDoubleclick();
-		});
+				this.onTitleDoubleclick();
+			});
+		}
 
 		// Context menu on title
 		this.title.on([EventType.CONTEXT_MENU, EventType.MOUSE_DOWN], (e: MouseEvent) => {
@@ -334,12 +337,12 @@ export class TitlebarPart extends Part implements ITitleService {
 				this.windowService.closeWindow().then(null, errors.onUnexpectedError);
 			});
 
+			// Resizer
+			this.resizer = $(this.titleContainer).div({ class: 'resizer' });
+
 			const isMaximized = this.windowService.getConfiguration().maximized ? true : false;
 			this.onDidChangeMaximized(isMaximized);
 			this.windowService.onDidChangeMaximize(this.onDidChangeMaximized, this);
-
-			// Resizer
-			$(this.titleContainer).div({ class: 'resizer' });
 		}
 
 		// Since the title area is used to drag the window, we do not want to steal focus from the
@@ -357,16 +360,22 @@ export class TitlebarPart extends Part implements ITitleService {
 	}
 
 	private onDidChangeMaximized(maximized: boolean) {
-		if (!this.maxRestoreControl) {
-			return;
+		if (this.maxRestoreControl) {
+			if (maximized) {
+				this.maxRestoreControl.removeClass('window-maximize');
+				this.maxRestoreControl.addClass('window-unmaximize');
+			} else {
+				this.maxRestoreControl.removeClass('window-unmaximize');
+				this.maxRestoreControl.addClass('window-maximize');
+			}
 		}
 
-		if (maximized) {
-			this.maxRestoreControl.removeClass('window-maximize');
-			this.maxRestoreControl.addClass('window-unmaximize');
-		} else {
-			this.maxRestoreControl.removeClass('window-unmaximize');
-			this.maxRestoreControl.addClass('window-maximize');
+		if (this.resizer) {
+			if (maximized) {
+				this.resizer.hide();
+			} else {
+				this.resizer.show();
+			}
 		}
 	}
 

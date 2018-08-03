@@ -112,8 +112,14 @@ export class Menubar {
 		return enableNativeTabs;
 	}
 
-	updateMenu(menus: IMenubarData, windowId: number) {
+	updateMenu(menus: IMenubarData, windowId: number, additionalKeybindings?: Array<IMenubarKeybinding>) {
 		this.menubarMenus = menus;
+		if (additionalKeybindings) {
+			additionalKeybindings.forEach(keybinding => {
+				this.keybindings[keybinding.id] = keybinding;
+			});
+		}
+
 		this.scheduleUpdateMenu();
 	}
 
@@ -272,7 +278,7 @@ export class Menubar {
 
 		// Mac: Window
 		let macWindowMenuItem: Electron.MenuItem;
-		if (isMacintosh) {
+		if (this.shouldDrawMenu('Window')) {
 			const windowMenu = new Menu();
 			macWindowMenuItem = new MenuItem({ label: this.mnemonicLabel(nls.localize('mWindow', "Window")), submenu: windowMenu, role: 'window' });
 			this.setMacWindowMenu(windowMenu);
@@ -310,7 +316,11 @@ export class Menubar {
 			menubar.append(helpMenuItem);
 		}
 
-		Menu.setApplicationMenu(menubar);
+		if (menubar.items && menubar.items.length > 0) {
+			Menu.setApplicationMenu(menubar);
+		} else {
+			Menu.setApplicationMenu(null);
+		}
 	}
 
 	private setMacApplicationMenu(macApplicationMenu: Electron.Menu): void {
@@ -369,15 +379,18 @@ export class Menubar {
 
 		switch (menuId) {
 			case 'File':
+			case 'Window':
 			case 'Help':
-				return true;
+				if (isMacintosh) {
+					return this.windowsMainService.getWindowCount() === 0 || !!this.menubarMenus[menuId];
+				}
 			default:
 				return this.windowsMainService.getWindowCount() > 0 && !!this.menubarMenus[menuId];
 		}
 	}
 
 	private shouldFallback(menuId: string): boolean {
-		return this.shouldDrawMenu(menuId) && (this.windowsMainService.getWindowCount() === 0);
+		return this.shouldDrawMenu(menuId) && (this.windowsMainService.getWindowCount() === 0 && isMacintosh);
 	}
 
 	private setFallbackMenuById(menu: Electron.Menu, menuId: string): void {
@@ -489,6 +502,8 @@ export class Menubar {
 			} else if (isMenubarMenuItemAction(item)) {
 				if (item.id === 'workbench.action.openRecent') {
 					this.insertRecentMenuItems(menu);
+				} else if (item.id === 'workbench.action.showAboutDialog') {
+					this.insertCheckForUpdatesItems(menu);
 				}
 
 				// Store the keybinding
@@ -507,6 +522,14 @@ export class Menubar {
 	private setMenuById(menu: Electron.Menu, menuId: string): void {
 		if (this.menubarMenus[menuId]) {
 			this.setMenu(menu, this.menubarMenus[menuId].items);
+		}
+	}
+
+	private insertCheckForUpdatesItems(menu: Electron.Menu) {
+		const updateItems = this.getUpdateMenuItems();
+		if (updateItems.length) {
+			updateItems.forEach(i => menu.append(i));
+			menu.append(__separator__());
 		}
 	}
 

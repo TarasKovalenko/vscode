@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as DOM from 'vs/base/browser/dom';
+import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
 import { Button } from 'vs/base/browser/ui/button/button';
 import { ToolBar } from 'vs/base/browser/ui/toolbar/toolbar';
 import { Action } from 'vs/base/common/actions';
@@ -14,8 +15,7 @@ import * as collections from 'vs/base/common/collections';
 import { getErrorMessage, isPromiseCanceledError } from 'vs/base/common/errors';
 import URI from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
-import { ITreeConfiguration } from 'vs/base/parts/tree/browser/tree';
-import { OpenMode, DefaultTreestyler } from 'vs/base/parts/tree/browser/treeDefaults';
+import { collapseAll, expandAll } from 'vs/base/parts/tree/browser/treeUtils';
 import 'vs/css!./media/settingsEditor2';
 import { localize } from 'vs/nls';
 import { ConfigurationTarget, IConfigurationOverrides, IConfigurationService } from 'vs/platform/configuration/common/configuration';
@@ -23,25 +23,22 @@ import { IContextKey, IContextKeyService } from 'vs/platform/contextkey/common/c
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { WorkbenchTree, WorkbenchTreeController } from 'vs/platform/list/browser/listService';
+import { WorkbenchTree } from 'vs/platform/list/browser/listService';
 import { ILogService } from 'vs/platform/log/common/log';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { attachButtonStyler, attachStyler } from 'vs/platform/theme/common/styler';
+import { attachButtonStyler } from 'vs/platform/theme/common/styler';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
 import { EditorOptions, IEditor } from 'vs/workbench/common/editor';
+import { PreferencesEditor } from 'vs/workbench/parts/preferences/browser/preferencesEditor';
 import { SearchWidget, SettingsTarget, SettingsTargetsWidget } from 'vs/workbench/parts/preferences/browser/preferencesWidgets';
 import { commonlyUsedData, tocData } from 'vs/workbench/parts/preferences/browser/settingsLayout';
-import { ISettingsEditorViewState, resolveExtensionsSettings, resolveSettingsTree, SearchResultIdx, SearchResultModel, SettingsRenderer, SettingsTree, SettingsTreeElement, SettingsTreeFilter, SettingsTreeGroupElement, SettingsTreeModel, SettingsTreeSettingElement, MODIFIED_SETTING_TAG, ONLINE_SERVICES_SETTING_TAG } from 'vs/workbench/parts/preferences/browser/settingsTree';
-import { TOCDataSource, TOCRenderer, TOCTreeModel } from 'vs/workbench/parts/preferences/browser/tocTree';
+import { ISettingsEditorViewState, MODIFIED_SETTING_TAG, ONLINE_SERVICES_SETTING_TAG, resolveExtensionsSettings, resolveSettingsTree, SearchResultIdx, SearchResultModel, SettingsRenderer, SettingsTree, SettingsTreeElement, SettingsTreeGroupElement, SettingsTreeModel, SettingsTreeSettingElement } from 'vs/workbench/parts/preferences/browser/settingsTree';
+import { TOCRenderer, TOCTree, TOCTreeModel } from 'vs/workbench/parts/preferences/browser/tocTree';
 import { CONTEXT_SETTINGS_EDITOR, CONTEXT_SETTINGS_FIRST_ROW_FOCUS, CONTEXT_SETTINGS_ROW_FOCUS, CONTEXT_SETTINGS_SEARCH_FOCUS, CONTEXT_TOC_ROW_FOCUS, IPreferencesSearchService, ISearchProvider } from 'vs/workbench/parts/preferences/common/preferences';
 import { IPreferencesService, ISearchResult, ISettingsEditorModel } from 'vs/workbench/services/preferences/common/preferences';
 import { SettingsEditor2Input } from 'vs/workbench/services/preferences/common/preferencesEditorInput';
 import { DefaultSettingsEditorModel } from 'vs/workbench/services/preferences/common/preferencesModels';
-import { editorBackground, foreground } from 'vs/platform/theme/common/colorRegistry';
-import { settingsHeaderForeground } from 'vs/workbench/parts/preferences/browser/settingsWidgets';
-import { Separator } from 'vs/base/browser/ui/actionbar/actionbar';
-import { PreferencesEditor } from 'vs/workbench/parts/preferences/browser/preferencesEditor';
 
 const $ = DOM.$;
 
@@ -86,8 +83,6 @@ export class SettingsEditor2 extends BaseEditor {
 
 	private tagRegex = /(^|\s)@tag:("([^"]*)"|[^"]\S*)/g;
 
-	private layoutDelayer: Delayer<void>;
-
 	/** Don't spam warnings */
 	private hasWarnedMissingSettings: boolean;
 
@@ -108,7 +103,6 @@ export class SettingsEditor2 extends BaseEditor {
 		this.localSearchDelayer = new Delayer(100);
 		this.remoteSearchThrottle = new ThrottledDelayer(200);
 		this.viewState = { settingsTarget: ConfigurationTarget.USER };
-		this.layoutDelayer = new Delayer(100);
 
 		this.settingUpdateDelayer = new Delayer<void>(500);
 
@@ -139,8 +133,8 @@ export class SettingsEditor2 extends BaseEditor {
 		this.inSettingsEditorContextKey.set(true);
 		return super.setInput(input, options, token)
 			.then(() => {
-				this.render(token);
-			});
+				return this.render(token);
+			}).then(() => new Promise(process.nextTick)); // Force setInput to be async
 	}
 
 	clearInput(): void {
@@ -153,8 +147,6 @@ export class SettingsEditor2 extends BaseEditor {
 		this.layoutTrees(dimension);
 
 		DOM.toggleClass(this.rootElement, 'narrow', dimension.width < 600);
-
-		this.layoutDelayer.trigger(() => this.refreshTreeAndMaintainFocus());
 	}
 
 	focus(): void {
@@ -233,24 +225,28 @@ export class SettingsEditor2 extends BaseEditor {
 	private createHeaderControls(parent: HTMLElement): void {
 		const headerControlsContainerRight = DOM.append(parent, $('.settings-header-controls-right'));
 
-		this.toolbar = new ToolBar(headerControlsContainerRight, this.contextMenuService, {
+		this.toolbar = this._register(new ToolBar(headerControlsContainerRight, this.contextMenuService, {
 			ariaLabel: localize('settingsToolbarLabel', "Settings Editor Actions"),
 			actionRunner: this.actionRunner
-		});
+		}));
 
-		const actions = [
+		const actions: Action[] = [
 			this.instantiationService.createInstance(FilterByTagAction,
 				localize('filterModifiedLabel', "Show modified settings"),
 				MODIFIED_SETTING_TAG,
-				this),
-			this.instantiationService.createInstance(
-				FilterByTagAction,
-				localize('filterOnlineServicesLabel', "Show settings for online services"),
-				ONLINE_SERVICES_SETTING_TAG,
-				this),
-			new Separator(),
-			this.instantiationService.createInstance(OpenSettingsAction)
+				this)
 		];
+		if (this.environmentService.appQuality !== 'stable') {
+			actions.push(
+				this.instantiationService.createInstance(
+					FilterByTagAction,
+					localize('filterOnlineServicesLabel', "Show settings for online services"),
+					ONLINE_SERVICES_SETTING_TAG,
+					this));
+			actions.push(new Separator());
+		}
+		actions.push(this.instantiationService.createInstance(OpenSettingsAction));
+
 		this.toolbar.setActions([], actions)();
 		this.toolbar.context = <ISettingsToolbarContext>{ target: this.settingsTargetsWidget.settingsTarget };
 	}
@@ -289,53 +285,34 @@ export class SettingsEditor2 extends BaseEditor {
 	}
 
 	private createTOC(parent: HTMLElement): void {
+		this.tocTreeModel = new TOCTreeModel();
 		this.tocTreeContainer = DOM.append(parent, $('.settings-toc-container'));
 
-		const tocDataSource = this.instantiationService.createInstance(TOCDataSource);
 		const tocRenderer = this.instantiationService.createInstance(TOCRenderer);
-		this.tocTreeModel = new TOCTreeModel();
 
-		this.tocTree = this.instantiationService.createInstance(WorkbenchTree, this.tocTreeContainer,
-			<ITreeConfiguration>{
-				dataSource: tocDataSource,
-				renderer: tocRenderer,
-				controller: this.instantiationService.createInstance(WorkbenchTreeController, { openMode: OpenMode.DOUBLE_CLICK }),
-				filter: this.instantiationService.createInstance(SettingsTreeFilter, this.viewState),
-				styler: new DefaultTreestyler(DOM.createStyleSheet(), 'settings-toc-tree'),
-			},
+		this.tocTree = this._register(this.instantiationService.createInstance(TOCTree, this.tocTreeContainer,
+			this.viewState,
 			{
-				showLoading: false,
-				twistiePixels: 15
-			});
-		this.tocTree.getHTMLElement().classList.add('settings-toc-tree');
-
-		this._register(attachStyler(this.themeService, {
-			listActiveSelectionBackground: editorBackground,
-			listActiveSelectionForeground: settingsHeaderForeground,
-			listFocusAndSelectionBackground: editorBackground,
-			listFocusAndSelectionForeground: settingsHeaderForeground,
-			listFocusBackground: editorBackground,
-			listFocusForeground: settingsHeaderForeground,
-			listHoverForeground: foreground,
-			listHoverBackground: editorBackground,
-			listInactiveSelectionBackground: editorBackground,
-			listInactiveSelectionForeground: settingsHeaderForeground,
-		}, colors => {
-			this.tocTree.style(colors);
-		}));
+				renderer: tocRenderer
+			}));
 
 		this._register(this.tocTree.onDidChangeFocus(e => {
-			const element = e.focus;
-			if (this.searchResultModel) {
-				this.viewState.filterToCategory = element;
-				this.refreshTreeAndMaintainFocus();
-			} else if (this.settingsTreeModel) {
-				if (element && !e.payload.fromScroll) {
-					this.settingsTree.reveal(element, 0);
-					this.settingsTree.setSelection([element]);
-					this.settingsTree.setFocus(element);
+			// Let the caller finish before trying to sync with settings tree.
+			// e.g. clicking this twistie, which will toggle the row's expansion state _after_ this event is fired.
+			process.nextTick(() => {
+				const element = e.focus;
+				if (this.searchResultModel) {
+					this.viewState.filterToCategory = element;
+					this.refreshTreeAndMaintainFocus();
+				} else if (this.settingsTreeModel) {
+					if (element && !e.payload.fromScroll) {
+						const payload = { fromTOC: true };
+						this.settingsTree.reveal(element, 0);
+						this.settingsTree.setSelection([element], payload);
+						this.settingsTree.setFocus(element, payload);
+					}
 				}
-			}
+			});
 		}));
 
 		this._register(this.tocTree.onDidFocus(() => {
@@ -368,15 +345,15 @@ export class SettingsEditor2 extends BaseEditor {
 		}));
 		this._register(renderer.onDidClickSettingLink(settingName => this.revealSetting(settingName)));
 
-		this.settingsTree = this.instantiationService.createInstance(SettingsTree,
+		this.settingsTree = this._register(this.instantiationService.createInstance(SettingsTree,
 			this.settingsTreeContainer,
 			this.viewState,
 			{
 				renderer
-			});
+			}));
 
 		this._register(this.settingsTree.onDidChangeFocus(e => {
-			this.settingsTree.setSelection([e.focus]);
+			this.settingsTree.setSelection([e.focus], e.payload);
 			if (this.selectedElement) {
 				this.settingsTree.refresh(this.selectedElement);
 			}
@@ -394,7 +371,9 @@ export class SettingsEditor2 extends BaseEditor {
 		}));
 
 		this._register(this.settingsTree.onDidChangeSelection(e => {
-			this.updateTreeScrollSync();
+			if (!e.payload || !e.payload.fromTOC) {
+				this.updateTreeScrollSync();
+			}
 
 			let firstRowFocused = false;
 			let rowFocused = false;
@@ -462,11 +441,13 @@ export class SettingsEditor2 extends BaseEditor {
 				null;
 
 		if (element && this.tocTree.getSelection()[0] !== element) {
+			this.tocTree.reveal(element);
 			const elementTop = this.tocTree.getRelativeTop(element);
-			if (elementTop < 0) {
-				this.tocTree.reveal(element, 0);
-			} else if (elementTop > 1) {
-				this.tocTree.reveal(element, 1);
+			collapseAll(this.tocTree, element);
+			if (elementTop < 0 || elementTop > 1) {
+				this.tocTree.reveal(element);
+			} else {
+				this.tocTree.reveal(element, elementTop);
 			}
 
 			this.tocTree.setSelection([element]);
@@ -573,7 +554,7 @@ export class SettingsEditor2 extends BaseEditor {
 
 					this._register(model.onDidChangeGroups(() => this.onConfigUpdate()));
 					this.defaultSettingsEditorModel = model;
-					this.onConfigUpdate();
+					return this.onConfigUpdate();
 				});
 		}
 		return TPromise.as(null);
@@ -644,13 +625,16 @@ export class SettingsEditor2 extends BaseEditor {
 				}
 			})
 			.then(() => {
+				// TODO@roblou - hack
+				this.tocTreeModel.update();
+
 				return this.tocTree.refresh();
 			});
 	}
 
 	private focusEditControlForRow(id: string, selection?: number): void {
 		const rowSelector = `.setting-item#${id}`;
-		const inputElementToFocus: HTMLElement = this.settingsTreeContainer.querySelector(`${rowSelector} input, ${rowSelector} select, ${rowSelector} a, ${rowSelector} .monaco-custom-checkbox`);
+		const inputElementToFocus: HTMLElement = this.settingsTreeContainer.querySelector(`${rowSelector} input, ${rowSelector} select, ${rowSelector} .monaco-custom-checkbox`);
 		if (inputElementToFocus) {
 			inputElementToFocus.focus();
 			if (typeof selection === 'number') {
@@ -701,9 +685,8 @@ export class SettingsEditor2 extends BaseEditor {
 			this.viewState.filterToCategory = null;
 			this.tocTree.refresh();
 			this.toggleSearchMode();
-			this.settingsTree.setInput(this.settingsTreeModel.root);
-
-			return TPromise.wrap(null);
+			collapseAll(this.tocTree);
+			return this.settingsTree.setInput(this.settingsTreeModel.root);
 		}
 	}
 
@@ -776,6 +759,8 @@ export class SettingsEditor2 extends BaseEditor {
 				}
 
 				this.tocTreeModel.update();
+				expandAll(this.tocTree);
+
 				resolve(this.refreshTreeAndMaintainFocus());
 			});
 		}, () => {
