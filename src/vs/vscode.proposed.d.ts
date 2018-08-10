@@ -362,9 +362,9 @@ declare module 'vscode' {
 		priority?: number;
 		title?: string;
 		bubble?: boolean;
-		abbreviation?: string;
+		abbreviation?: string; // letter, not optional
 		color?: ThemeColor;
-		source?: string;
+		source?: string; // hacky... we should remove it and use equality under the hood
 	}
 
 	export interface SourceControlResourceDecorations {
@@ -519,6 +519,23 @@ declare module 'vscode' {
 		 * the validation provider simply by setting this property to a different function.
 		 */
 		validateInput?(value: string, cursorPosition: number): ProviderResult<SourceControlInputBoxValidation | undefined | null>;
+	}
+
+	//#endregion
+
+	//#region Joao: SCM selected provider
+
+	export interface SourceControl {
+
+		/**
+		 * Whether the source control is selected.
+		 */
+		readonly selected: boolean;
+
+		/**
+		 * An event signaling when the selection state changes.
+		 */
+		readonly onDidChangeSelection: Event<boolean>;
 	}
 
 	//#endregion

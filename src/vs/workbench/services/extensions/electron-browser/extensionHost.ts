@@ -8,7 +8,6 @@
 import * as nls from 'vs/nls';
 import { toErrorMessage } from 'vs/base/common/errorMessage';
 import * as objects from 'vs/base/common/objects';
-import URI from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { isWindows, isLinux } from 'vs/base/common/platform';
 import { findFreePort } from 'vs/base/node/ports';
@@ -36,6 +35,8 @@ import { IRemoteConsoleLog, log, parse } from 'vs/base/node/console';
 import { getScopes } from 'vs/platform/configuration/common/configurationRegistry';
 import { ILogService } from 'vs/platform/log/common/log';
 import { INotificationService, Severity } from 'vs/platform/notification/common/notification';
+import { getPathFromAmdModule } from 'vs/base/common/amd';
+import { timeout } from 'vs/base/common/async';
 
 export class ExtensionHostProcessWorker {
 
@@ -171,7 +172,7 @@ export class ExtensionHostProcessWorker {
 				}
 
 				// Run Extension Host as fork of current process
-				this._extensionHostProcess = fork(URI.parse(require.toUrl('bootstrap')).fsPath, ['--type=extensionHost'], opts);
+				this._extensionHostProcess = fork(getPathFromAmdModule(require, 'bootstrap'), ['--type=extensionHost'], opts);
 
 				// Catch all output coming from the extension host process
 				type Output = { data: string, format: string[] };
@@ -505,7 +506,7 @@ export class ExtensionHostProcessWorker {
 				}
 			});
 
-			event.veto(TPromise.timeout(100 /* wait a bit for IPC to get delivered */).then(() => false));
+			event.veto(timeout(100 /* wait a bit for IPC to get delivered */).then(() => false));
 		}
 	}
 }

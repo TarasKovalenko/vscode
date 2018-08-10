@@ -31,12 +31,13 @@ export class Menubar {
 	private static readonly MAX_MENU_RECENT_ENTRIES = 10;
 	private isQuitting: boolean;
 	private appMenuInstalled: boolean;
+	private closedLastWindow: boolean;
 
 	private menuUpdater: RunOnceScheduler;
 
 	private nativeTabMenuItems: Electron.MenuItem[];
 
-	private menubarMenus: IMenubarData = {};
+	private menubarMenus: IMenubarData;
 
 	private keybindings: { [commandId: string]: IMenubarKeybinding };
 
@@ -53,6 +54,8 @@ export class Menubar {
 		this.menuUpdater = new RunOnceScheduler(() => this.doUpdateMenu(), 0);
 
 		this.keybindings = Object.create(null);
+
+		this.closedLastWindow = false;
 
 		this.install();
 
@@ -149,9 +152,9 @@ export class Menubar {
 			return;
 		}
 
-
 		// Update menu if window count goes from N > 0 or 0 > N to update menu item enablement
 		if ((e.oldCount === 0 && e.newCount > 0) || (e.oldCount > 0 && e.newCount === 0)) {
+			this.closedLastWindow = e.newCount === 0;
 			this.scheduleUpdateMenu();
 		}
 
@@ -379,18 +382,23 @@ export class Menubar {
 
 		switch (menuId) {
 			case 'File':
-			case 'Window':
 			case 'Help':
 				if (isMacintosh) {
-					return this.windowsMainService.getWindowCount() === 0 || !!this.menubarMenus[menuId];
+					return (this.windowsMainService.getWindowCount() === 0 && this.closedLastWindow) || (!!this.menubarMenus && !!this.menubarMenus[menuId]);
 				}
+
+			case 'Window':
+				if (isMacintosh) {
+					return (this.windowsMainService.getWindowCount() === 0 && this.closedLastWindow) || !!this.menubarMenus;
+				}
+
 			default:
-				return this.windowsMainService.getWindowCount() > 0 && !!this.menubarMenus[menuId];
+				return this.windowsMainService.getWindowCount() > 0 && (!!this.menubarMenus && !!this.menubarMenus[menuId]);
 		}
 	}
 
 	private shouldFallback(menuId: string): boolean {
-		return this.shouldDrawMenu(menuId) && (this.windowsMainService.getWindowCount() === 0 && isMacintosh);
+		return this.shouldDrawMenu(menuId) && (this.windowsMainService.getWindowCount() === 0 && this.closedLastWindow && isMacintosh);
 	}
 
 	private setFallbackMenuById(menu: Electron.Menu, menuId: string): void {
@@ -475,16 +483,12 @@ export class Menubar {
 					});
 				}
 
-				const openProcessExplorer = new MenuItem({ label: this.mnemonicLabel(nls.localize({ key: 'miOpenProcessExplorerer', comment: ['&& denotes a mnemonic'] }, "Open &&Process Explorer")), click: () => this.runActionInRenderer('workbench.action.openProcessExplorer') });
-
 				if (twitterItem) { menu.append(twitterItem); }
 				if (featureRequestsItem) { menu.append(featureRequestsItem); }
 				if (reportIssuesItem) { menu.append(reportIssuesItem); }
-				if (twitterItem || featureRequestsItem || reportIssuesItem) { menu.append(__separator__()); }
+				if ((twitterItem || featureRequestsItem || reportIssuesItem) && (licenseItem || privacyStatementItem)) { menu.append(__separator__()); }
 				if (licenseItem) { menu.append(licenseItem); }
 				if (privacyStatementItem) { menu.append(privacyStatementItem); }
-				if (licenseItem || privacyStatementItem) { menu.append(__separator__()); }
-				menu.append(openProcessExplorer);
 
 				break;
 		}
@@ -520,7 +524,7 @@ export class Menubar {
 	}
 
 	private setMenuById(menu: Electron.Menu, menuId: string): void {
-		if (this.menubarMenus[menuId]) {
+		if (this.menubarMenus && this.menubarMenus[menuId]) {
 			this.setMenu(menu, this.menubarMenus[menuId].items);
 		}
 	}
@@ -603,6 +607,7 @@ export class Menubar {
 		if (this.currentEnableNativeTabs) {
 			const hasMultipleWindows = this.windowsMainService.getWindowCount() > 1;
 
+			this.nativeTabMenuItems.push(this.createMenuItem(nls.localize('mNewTab', "New Tab"), 'workbench.action.newWindowTab'));
 			this.nativeTabMenuItems.push(this.createMenuItem(nls.localize('mShowPreviousTab', "Show Previous Tab"), 'workbench.action.showPreviousWindowTab', hasMultipleWindows));
 			this.nativeTabMenuItems.push(this.createMenuItem(nls.localize('mShowNextTab', "Show Next Tab"), 'workbench.action.showNextWindowTab', hasMultipleWindows));
 			this.nativeTabMenuItems.push(this.createMenuItem(nls.localize('mMoveTabToNewWindow', "Move Tab to New Window"), 'workbench.action.moveWindowTabToNewWindow', hasMultipleWindows));
