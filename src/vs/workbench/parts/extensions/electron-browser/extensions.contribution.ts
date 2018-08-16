@@ -45,8 +45,8 @@ import { ExtensionHostProfileService } from 'vs/workbench/parts/extensions/elect
 
 // Singletons
 registerSingleton(IExtensionGalleryService, ExtensionGalleryService);
-registerSingleton(IExtensionTipsService, ExtensionTipsService);
 registerSingleton(IExtensionsWorkbenchService, ExtensionsWorkbenchService);
+registerSingleton(IExtensionTipsService, ExtensionTipsService);
 registerSingleton(IExtensionHostProfileService, ExtensionHostProfileService);
 
 const workbenchRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
@@ -254,6 +254,15 @@ MenuRegistry.appendMenuItem(MenuId.MenubarPreferencesMenu, {
 	command: {
 		id: ShowRecommendedKeymapExtensionsAction.ID,
 		title: localize({ key: 'miOpenKeymapExtensions', comment: ['&& denotes a mnemonic'] }, "&&Keymap Extensions")
+	},
+	order: 2
+});
+
+MenuRegistry.appendMenuItem(MenuId.MenubarPreferencesMenu, {
+	group: '1_settings',
+	command: {
+		id: VIEWLET_ID,
+		title: localize({ key: 'miPreferencesExtensions', comment: ['&& denotes a mnemonic'] }, "&&Extensions")
 	},
 	order: 2
 });
