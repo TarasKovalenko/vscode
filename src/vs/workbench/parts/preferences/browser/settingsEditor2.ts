@@ -27,7 +27,7 @@ import { IInstantiationService } from 'vs/platform/instantiation/common/instanti
 import { WorkbenchTree } from 'vs/platform/list/browser/listService';
 import { ILogService } from 'vs/platform/log/common/log';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { attachButtonStyler } from 'vs/platform/theme/common/styler';
+import { attachButtonStyler, attachStylerCallback } from 'vs/platform/theme/common/styler';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
 import { EditorOptions, IEditor } from 'vs/workbench/common/editor';
@@ -44,6 +44,7 @@ import { IPreferencesService, ISearchResult, ISettingsEditorModel } from 'vs/wor
 import { SettingsEditor2Input } from 'vs/workbench/services/preferences/common/preferencesEditorInput';
 import { DefaultSettingsEditorModel } from 'vs/workbench/services/preferences/common/preferencesModels';
 import { ResourceEditorModel } from 'vs/workbench/common/editor/resourceEditorModel';
+import { badgeBackground, contrastBorder, badgeForeground, editorForeground } from 'vs/platform/theme/common/colorRegistry';
 
 const $ = DOM.$;
 
@@ -61,6 +62,7 @@ export class SettingsEditor2 extends BaseEditor {
 	private rootElement: HTMLElement;
 	private headerContainer: HTMLElement;
 	private searchWidget: SuggestEnabledInput;
+	private countElement: HTMLElement;
 	private settingsTargetsWidget: SettingsTargetsWidget;
 	private toolbar: ToolBar;
 
@@ -69,6 +71,7 @@ export class SettingsEditor2 extends BaseEditor {
 	private settingsTreeRenderer: SettingsRenderer;
 	private tocTreeModel: TOCTreeModel;
 	private settingsTreeModel: SettingsTreeModel;
+	private noResultsMessage: HTMLElement;
 
 	private tocTreeContainer: HTMLElement;
 	private tocTree: WorkbenchTree;
@@ -243,6 +246,19 @@ export class SettingsEditor2 extends BaseEditor {
 				// TODO: Aria-live
 			}));
 
+		this.countElement = DOM.append(searchContainer, DOM.$('.settings-count-widget'));
+		this._register(attachStylerCallback(this.themeService, { badgeBackground, contrastBorder, badgeForeground }, colors => {
+			const background = colors.badgeBackground ? colors.badgeBackground.toString() : null;
+			const border = colors.contrastBorder ? colors.contrastBorder.toString() : null;
+
+			this.countElement.style.backgroundColor = background;
+			this.countElement.style.color = colors.badgeForeground.toString();
+
+			this.countElement.style.borderWidth = border ? '1px' : null;
+			this.countElement.style.borderStyle = border ? 'solid' : null;
+			this.countElement.style.borderColor = border;
+		}));
+
 		this._register(this.searchWidget.onInputDidChange(() => this.onSearchInputChanged()));
 
 		const headerControlsContainer = DOM.append(this.headerContainer, $('.settings-header-controls'));
@@ -286,7 +302,14 @@ export class SettingsEditor2 extends BaseEditor {
 					this));
 			actions.push(new Separator());
 		}
-		actions.push(this.instantiationService.createInstance(OpenSettingsAction));
+		actions.push(new Action('settings.openSettingsJson', localize('openSettingsJsonLabel', "Open settings.json"), undefined, undefined, () => {
+			return this.openSettingsFile().then(editor => {
+				const currentSearch = this.searchWidget.getValue();
+				if (editor instanceof PreferencesEditor && currentSearch) {
+					editor.focusSearch(currentSearch);
+				}
+			});
+		}));
 
 		this.toolbar.setActions([], actions)();
 		this.toolbar.context = <ISettingsToolbarContext>{ target: this.settingsTargetsWidget.settingsTarget };
@@ -321,6 +344,12 @@ export class SettingsEditor2 extends BaseEditor {
 
 	private createBody(parent: HTMLElement): void {
 		const bodyContainer = DOM.append(parent, $('.settings-body'));
+
+		this.noResultsMessage = DOM.append(bodyContainer, $('.no-results'));
+		this.noResultsMessage.innerText = localize('noResults', "No Settings Found");
+		this._register(attachStylerCallback(this.themeService, { editorForeground }, colors => {
+			this.noResultsMessage.style.color = colors.editorForeground ? colors.editorForeground.toString() : null;
+		}));
 
 		this.createFocusSink(
 			bodyContainer,
@@ -739,6 +768,7 @@ export class SettingsEditor2 extends BaseEditor {
 
 	private onSearchInputChanged(): void {
 		const query = this.searchWidget.getValue().trim();
+		if (query === '') { this.countElement.style.display = 'none'; this.noResultsMessage.style.display = 'none'; }
 		this.delayedFilterLogging.cancel();
 		this.triggerSearch(query).then(() => {
 			if (query && this.searchResultModel) {
@@ -914,14 +944,29 @@ export class SettingsEditor2 extends BaseEditor {
 				this.settingsTree.setInput(this.searchResultModel.root);
 			} else {
 				this.tocTreeModel.update();
+				expandAll(this.tocTree);
 				this.searchResultModel.setResult(type, result);
 			}
+
+			let count = this.searchResultModel.getUniqueResults().map(result => result ? result.filterMatches.length : 0).reduce((a, b) => a + b);
+			this.renderResultCountMessages(count);
 
 			this.tocTree.setSelection([]);
 			expandAll(this.tocTree);
 
 			return this.renderTree().then(() => result);
 		});
+	}
+
+	private renderResultCountMessages(count: number) {
+		switch (count) {
+			case 0: this.countElement.innerText = localize('noResults', "No Settings Found"); break;
+			case 1: this.countElement.innerText = localize('oneResult', "1 Setting Found"); break;
+			default: this.countElement.innerText = localize('moreThanOneResult', "{0} Settings Found", count);
+		}
+
+		this.countElement.style.display = 'block';
+		this.noResultsMessage.style.display = count === 0 ? 'block' : 'none';
 	}
 
 	private _filterOrSearchPreferencesModel(filter: string, model: ISettingsEditorModel, provider: ISearchProvider, token?: CancellationToken): TPromise<ISearchResult> {
@@ -978,36 +1023,6 @@ export class SettingsEditor2 extends BaseEditor {
 
 interface ISettingsToolbarContext {
 	target: SettingsTarget;
-}
-
-class OpenSettingsAction extends Action {
-	static readonly ID = 'settings.openSettingsJson';
-	static readonly LABEL = localize('openSettingsJsonLabel', "Open settings.json");
-
-	constructor(
-		@IPreferencesService private readonly preferencesService: IPreferencesService,
-	) {
-		super(OpenSettingsAction.ID, OpenSettingsAction.LABEL, 'open-settings-json');
-	}
-
-
-	run(context?: ISettingsToolbarContext): TPromise<void> {
-		return this._run(context)
-			.then(() => { });
-	}
-
-	private _run(context?: ISettingsToolbarContext): TPromise<any> {
-		const target = context && context.target;
-		if (target === ConfigurationTarget.USER) {
-			return this.preferencesService.openGlobalSettings(true);
-		} else if (target === ConfigurationTarget.WORKSPACE) {
-			return this.preferencesService.openWorkspaceSettings(true);
-		} else if (URI.isUri(target)) {
-			return this.preferencesService.openFolderSettings(target, true);
-		}
-
-		return TPromise.wrap(null);
-	}
 }
 
 class FilterByTagAction extends Action {
