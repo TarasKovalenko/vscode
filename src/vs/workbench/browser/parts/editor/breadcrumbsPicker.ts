@@ -5,32 +5,33 @@
 
 'use strict';
 
+import { onDidChangeZoomLevel } from 'vs/base/browser/browser';
 import * as dom from 'vs/base/browser/dom';
 import { compareFileNames } from 'vs/base/common/comparers';
+import { onUnexpectedError } from 'vs/base/common/errors';
 import { Emitter, Event } from 'vs/base/common/event';
+import { createMatches, FuzzyScore, fuzzyScore } from 'vs/base/common/filters';
+import * as glob from 'vs/base/common/glob';
 import { dispose, IDisposable } from 'vs/base/common/lifecycle';
-import { dirname, isEqual, basename } from 'vs/base/common/resources';
+import { join } from 'vs/base/common/paths';
+import { basename, dirname, isEqual } from 'vs/base/common/resources';
 import URI from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
-import { IDataSource, IRenderer, ISelectionEvent, ISorter, ITree, IFilter } from 'vs/base/parts/tree/browser/tree';
+import { IDataSource, IFilter, IRenderer, ISorter, ITree } from 'vs/base/parts/tree/browser/tree';
 import 'vs/css!./media/breadcrumbscontrol';
 import { OutlineElement, OutlineModel, TreeElement } from 'vs/editor/contrib/documentSymbols/outlineModel';
 import { OutlineDataSource, OutlineItemComparator, OutlineRenderer } from 'vs/editor/contrib/documentSymbols/outlineTree';
 import { localize } from 'vs/nls';
-import { FileKind, IFileService, IFileStat } from 'vs/platform/files/common/files';
-import { IInstantiationService, IConstructorSignature1 } from 'vs/platform/instantiation/common/instantiation';
-import { HighlightingWorkbenchTree, IHighlightingTreeConfiguration, IHighlightingRenderer } from 'vs/platform/list/browser/listService';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { FileLabel } from 'vs/workbench/browser/labels';
-import { BreadcrumbElement, FileElement } from 'vs/workbench/browser/parts/editor/breadcrumbsModel';
-import { onUnexpectedError } from 'vs/base/common/errors';
-import { breadcrumbsPickerBackground, widgetShadow } from 'vs/platform/theme/common/colorRegistry';
-import { FuzzyScore, createMatches, fuzzyScore } from 'vs/base/common/filters';
-import { IWorkspaceContextService, IWorkspace, IWorkspaceFolder } from 'vs/platform/workspace/common/workspace';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
+import { FileKind, IFileService, IFileStat } from 'vs/platform/files/common/files';
+import { IConstructorSignature1, IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
+import { HighlightingWorkbenchTree, IHighlighter, IHighlightingTreeConfiguration, IHighlightingTreeOptions } from 'vs/platform/list/browser/listService';
+import { breadcrumbsPickerBackground, widgetShadow } from 'vs/platform/theme/common/colorRegistry';
+import { IWorkspace, IWorkspaceContextService, IWorkspaceFolder } from 'vs/platform/workspace/common/workspace';
+import { FileLabel } from 'vs/workbench/browser/labels';
 import { BreadcrumbsConfig } from 'vs/workbench/browser/parts/editor/breadcrumbs';
-import * as glob from 'vs/base/common/glob';
-import { } from 'vs/base/common/paths';
+import { BreadcrumbElement, FileElement } from 'vs/workbench/browser/parts/editor/breadcrumbsModel';
+import { IFileIconTheme, IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
 
 export function createBreadcrumbsPicker(instantiationService: IInstantiationService, parent: HTMLElement, element: BreadcrumbElement): BreadcrumbsPicker {
 	let ctor: IConstructorSignature1<HTMLElement, BreadcrumbsPicker> = element instanceof FileElement ? BreadcrumbsFilePicker : BreadcrumbsOutlinePicker;
@@ -49,10 +50,14 @@ export abstract class BreadcrumbsPicker {
 	private readonly _onDidPickElement = new Emitter<{ target: any, payload: any }>();
 	readonly onDidPickElement: Event<{ target: any, payload: any }> = this._onDidPickElement.event;
 
+	private readonly _onDidFocusElement = new Emitter<{ target: any, payload: any }>();
+	readonly onDidFocusElement: Event<{ target: any, payload: any }> = this._onDidFocusElement.event;
+
 	constructor(
 		parent: HTMLElement,
 		@IInstantiationService protected readonly _instantiationService: IInstantiationService,
-		@IThemeService protected readonly _themeService: IThemeService,
+		@IWorkbenchThemeService protected readonly _themeService: IWorkbenchThemeService,
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
 	) {
 		this._domNode = document.createElement('div');
 		this._domNode.className = 'monaco-breadcrumbs-picker show-file-icons';
@@ -60,6 +65,7 @@ export abstract class BreadcrumbsPicker {
 
 		this._focus = dom.trackFocus(this._domNode);
 		this._focus.onDidBlur(_ => this._onDidPickElement.fire({ target: undefined, payload: undefined }), undefined, this._disposables);
+		this._disposables.push(onDidChangeZoomLevel(_ => this._onDidPickElement.fire({ target: undefined, payload: undefined })));
 
 		const theme = this._themeService.getTheme();
 		const color = theme.getColor(breadcrumbsPickerBackground);
@@ -77,25 +83,43 @@ export abstract class BreadcrumbsPicker {
 		this._treeContainer.style.boxShadow = `0px 5px 8px ${this._themeService.getTheme().getColor(widgetShadow)}`;
 		this._domNode.appendChild(this._treeContainer);
 
-		const treeConifg = this._completeTreeConfiguration({ dataSource: undefined, renderer: undefined });
+		const filterConfig = BreadcrumbsConfig.FilterOnType.bindTo(this._configurationService);
+		this._disposables.push(filterConfig);
+
+		const treeConifg = this._completeTreeConfiguration({ dataSource: undefined, renderer: undefined, highlighter: undefined });
 		this._tree = this._instantiationService.createInstance(
 			HighlightingWorkbenchTree,
 			this._treeContainer,
 			treeConifg,
-			{ useShadows: false },
+			<IHighlightingTreeOptions>{ useShadows: false, filterOnType: filterConfig.getValue(), showTwistie: false, twistiePixels: 12 },
 			{ placeholder: localize('placeholder', "Find") }
 		);
 		this._disposables.push(this._tree.onDidChangeSelection(e => {
 			if (e.payload !== this._tree) {
-				const target = this._getTargetFromSelectionEvent(e);
-				if (!target) {
-					return;
+				const target = this._getTargetFromEvent(e.selection[0], e.payload);
+				if (target) {
+					setTimeout(_ => {// need to debounce here because this disposes the tree and the tree doesn't like to be disposed on click
+						this._onDidPickElement.fire({ target, payload: e.payload });
+					}, 0);
 				}
-				setTimeout(_ => {// need to debounce here because this disposes the tree and the tree doesn't like to be disposed on click
-					this._onDidPickElement.fire({ target, payload: e.payload });
-				}, 0);
 			}
 		}));
+		this._disposables.push(this._tree.onDidChangeFocus(e => {
+			const target = this._getTargetFromEvent(e.focus, e.payload);
+			if (target) {
+				this._onDidFocusElement.fire({ target, payload: e.payload });
+			}
+		}));
+
+		// tree icon theme specials
+		dom.addClass(this._treeContainer, 'file-icon-themable-tree');
+		dom.addClass(this._treeContainer, 'show-file-icons');
+		const onFileIconThemeChange = (fileIconTheme: IFileIconTheme) => {
+			dom.toggleClass(this._treeContainer, 'align-icons-and-twisties', fileIconTheme.hasFileIcons && !fileIconTheme.hasFolderIcons);
+			dom.toggleClass(this._treeContainer, 'hide-arrows', fileIconTheme.hidesExplorerArrows === true);
+		};
+		this._disposables.push(_themeService.onDidFileIconThemeChange(onFileIconThemeChange));
+		onFileIconThemeChange(_themeService.getFileIconTheme());
 
 		this._domNode.focus();
 	}
@@ -147,7 +171,7 @@ export abstract class BreadcrumbsPicker {
 	protected abstract _getInput(input: BreadcrumbElement): any;
 	protected abstract _getInitialSelection(tree: ITree, input: BreadcrumbElement): any;
 	protected abstract _completeTreeConfiguration(config: IHighlightingTreeConfiguration): IHighlightingTreeConfiguration;
-	protected abstract _getTargetFromSelectionEvent(e: ISelectionEvent): any | undefined;
+	protected abstract _getTargetFromEvent(element: any, payload: any): any | undefined;
 }
 
 //#region - Files
@@ -219,9 +243,23 @@ export class FileFilter implements IFilter {
 		const update = () => {
 			_workspaceService.getWorkspace().folders.forEach(folder => {
 				const excludesConfig = config.getValue({ resource: folder.uri });
-				if (excludesConfig) {
-					this._cachedExpressions.set(folder.uri.toString(), glob.parse(excludesConfig));
+				if (!excludesConfig) {
+					return;
 				}
+				// adjust patterns to be absolute in case they aren't
+				// free floating (**/)
+				const adjustedConfig: glob.IExpression = {};
+				for (const pattern in excludesConfig) {
+					if (typeof excludesConfig[pattern] !== 'boolean') {
+						continue;
+					}
+					let patternAbs = pattern.indexOf('**/') !== 0
+						? join(folder.uri.path, pattern)
+						: pattern;
+
+					adjustedConfig[patternAbs] = excludesConfig[pattern];
+				}
+				this._cachedExpressions.set(folder.uri.toString(), glob.parse(adjustedConfig));
 			});
 		};
 		update();
@@ -248,13 +286,20 @@ export class FileFilter implements IFilter {
 		}
 
 		const expression = this._cachedExpressions.get(folder.uri.toString());
-		return !expression(element.resource.path.substr(folder.uri.path.length), basename(element.resource));
+		return !expression(element.resource.path, basename(element.resource));
 	}
 }
 
-export class FileRenderer implements IRenderer, IHighlightingRenderer {
+export class FileHighlighter implements IHighlighter {
+	getHighlightsStorageKey(element: IFileStat | IWorkspaceFolder): string {
+		return IWorkspaceFolder.isIWorkspaceFolder(element) ? element.uri.toString() : element.resource.toString();
+	}
+	getHighlights(tree: ITree, element: IFileStat | IWorkspaceFolder, pattern: string): FuzzyScore {
+		return fuzzyScore(pattern, element.name, undefined, true);
+	}
+}
 
-	private readonly _scores = new Map<string, FuzzyScore>();
+export class FileRenderer implements IRenderer {
 
 	constructor(
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
@@ -288,29 +333,13 @@ export class FileRenderer implements IRenderer, IHighlightingRenderer {
 			fileKind,
 			hidePath: true,
 			fileDecorations: fileDecorations,
-			matches: createMatches((this._scores.get(resource.toString()) || [, []])[1]),
+			matches: createMatches((tree as HighlightingWorkbenchTree).getHighlighterScore(element)),
 			extraClasses: ['picker-item']
 		});
 	}
 
 	disposeTemplate(tree: ITree, templateId: string, templateData: FileLabel): void {
 		templateData.dispose();
-	}
-
-	updateHighlights(tree: ITree, pattern: string): any {
-		let nav = tree.getNavigator(undefined, false);
-		let topScore: FuzzyScore;
-		let topElement: any;
-		while (nav.next()) {
-			let element = nav.current() as IFileStat | IWorkspaceFolder;
-			let score = fuzzyScore(pattern, element.name, undefined, true);
-			this._scores.set(IWorkspaceFolder.isIWorkspaceFolder(element) ? element.uri.toString() : element.resource.toString(), score);
-			if (!topScore || score && topScore[0] < score[0]) {
-				topScore = score;
-				topElement = element;
-			}
-		}
-		return topElement;
 	}
 }
 
@@ -336,10 +365,11 @@ export class BreadcrumbsFilePicker extends BreadcrumbsPicker {
 	constructor(
 		parent: HTMLElement,
 		@IInstantiationService instantiationService: IInstantiationService,
-		@IThemeService themeService: IThemeService,
+		@IWorkbenchThemeService themeService: IWorkbenchThemeService,
+		@IConfigurationService configService: IConfigurationService,
 		@IWorkspaceContextService private readonly _workspaceService: IWorkspaceContextService,
 	) {
-		super(parent, instantiationService, themeService);
+		super(parent, instantiationService, themeService, configService);
 	}
 
 	protected _getInput(input: BreadcrumbElement): any {
@@ -372,14 +402,14 @@ export class BreadcrumbsFilePicker extends BreadcrumbsPicker {
 		config.dataSource = this._instantiationService.createInstance(FileDataSource);
 		config.renderer = this._instantiationService.createInstance(FileRenderer);
 		config.sorter = new FileSorter();
+		config.highlighter = new FileHighlighter();
 		config.filter = filter;
 		return config;
 	}
 
-	protected _getTargetFromSelectionEvent(e: ISelectionEvent): any | undefined {
-		let [first] = e.selection;
-		if (first && !IWorkspaceFolder.isIWorkspaceFolder(first) && !(first as IFileStat).isDirectory) {
-			return new FileElement((first as IFileStat).resource, FileKind.FILE);
+	protected _getTargetFromEvent(element: any, _payload: any): any | undefined {
+		if (element && !IWorkspaceFolder.isIWorkspaceFolder(element) && !(element as IFileStat).isDirectory) {
+			return new FileElement((element as IFileStat).resource, FileKind.FILE);
 		}
 	}
 }
@@ -387,11 +417,10 @@ export class BreadcrumbsFilePicker extends BreadcrumbsPicker {
 
 //#region - Symbols
 
-class HighlightingOutlineRenderer extends OutlineRenderer implements IHighlightingRenderer {
-
-	updateHighlights(tree: ITree, pattern: string): any {
-		let model = OutlineModel.get(tree.getInput());
-		return model.updateMatches(pattern);
+class OutlineHighlighter implements IHighlighter {
+	getHighlights(tree: ITree, element: OutlineElement, pattern: string): FuzzyScore {
+		OutlineModel.get(element).updateMatches(pattern);
+		return element.score;
 	}
 }
 
@@ -410,18 +439,18 @@ export class BreadcrumbsOutlinePicker extends BreadcrumbsPicker {
 
 	protected _completeTreeConfiguration(config: IHighlightingTreeConfiguration): IHighlightingTreeConfiguration {
 		config.dataSource = this._instantiationService.createInstance(OutlineDataSource);
-		config.renderer = this._instantiationService.createInstance(HighlightingOutlineRenderer);
+		config.renderer = this._instantiationService.createInstance(OutlineRenderer);
 		config.sorter = new OutlineItemComparator();
+		config.highlighter = new OutlineHighlighter();
 		return config;
 	}
 
-	protected _getTargetFromSelectionEvent(e: ISelectionEvent): any | undefined {
-		if (e.payload && e.payload.didClickOnTwistie) {
+	protected _getTargetFromEvent(element: any, payload: any): any | undefined {
+		if (payload && payload.didClickOnTwistie) {
 			return;
 		}
-		let [first] = e.selection;
-		if (first instanceof OutlineElement) {
-			return first;
+		if (element instanceof OutlineElement) {
+			return element;
 		}
 	}
 }

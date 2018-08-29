@@ -230,6 +230,10 @@ export function createApiFactory(
 			get logLevel() {
 				checkProposedApiEnabled(extension);
 				return extHostLogService.getLevel();
+			},
+			get onDidChangeLogLevel() {
+				checkProposedApiEnabled(extension);
+				return extHostLogService.onDidChangeLogLevel;
 			}
 		});
 
@@ -260,6 +264,10 @@ export function createApiFactory(
 			},
 			getLanguages(): TPromise<string[]> {
 				return extHostLanguages.getLanguages();
+			},
+			changeLanguage(document: vscode.TextDocument, languageId: string): TPromise<void> {
+				checkProposedApiEnabled(extension);
+				return extHostLanguages.changeLanguage(document.uri, languageId);
 			},
 			match(selector: vscode.DocumentSelector, document: vscode.TextDocument): number {
 				return score(typeConverters.LanguageSelector.from(selector), document.uri, document.languageId, true);
@@ -436,9 +444,9 @@ export function createApiFactory(
 				}
 				return extHostTerminalService.createTerminal(<string>nameOrOptions, shellPath, shellArgs);
 			},
-			createTerminalRenderer(name: string): vscode.TerminalRenderer {
+			createTerminalRenderer: proposedApiFunction(extension, (name: string) => {
 				return extHostTerminalService.createTerminalRenderer(name);
-			},
+			}),
 			registerTreeDataProvider(viewId: string, treeDataProvider: vscode.TreeDataProvider<any>): vscode.Disposable {
 				return extHostTreeViews.registerTreeDataProvider(viewId, treeDataProvider);
 			},
@@ -481,7 +489,7 @@ export function createApiFactory(
 				return extHostWorkspace.getWorkspaceFolders();
 			},
 			get name() {
-				return extHostWorkspace.workspace ? extHostWorkspace.workspace.name : undefined;
+				return extHostWorkspace.name;
 			},
 			set name(value) {
 				throw errors.readonly();

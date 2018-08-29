@@ -115,7 +115,6 @@ export interface IRawSession {
 	variables(args: DebugProtocol.VariablesArguments): TPromise<DebugProtocol.VariablesResponse>;
 	evaluate(args: DebugProtocol.EvaluateArguments): TPromise<DebugProtocol.EvaluateResponse>;
 
-	readonly capabilities: DebugProtocol.Capabilities;
 	disconnect(restart?: boolean): TPromise<any>;
 	terminate(restart?: boolean): TPromise<DebugProtocol.TerminateResponse>;
 	custom(request: string, args: any): TPromise<DebugProtocol.Response>;
@@ -142,6 +141,7 @@ export interface ISession extends ITreeElement, IDisposable {
 	readonly raw: IRawSession;
 	readonly state: State;
 	readonly root: IWorkspaceFolder;
+	readonly capabilities: DebugProtocol.Capabilities;
 
 	getName(includeRoot: boolean): string;
 	getSourceForUri(modelUri: uri): Source;
@@ -405,6 +405,7 @@ export interface IConfig extends IEnvConfig {
 	// internals
 	__sessionId?: string;
 	__restart?: any;
+	__autoAttach?: boolean;
 	port?: number; // TODO
 }
 
@@ -574,7 +575,7 @@ export interface ILaunch {
 	/**
 	 * Opens the launch.json file. Creates if it does not exist.
 	 */
-	openConfigFile(sideBySide: boolean, type?: string): TPromise<{ editor: IEditor, created: boolean }>;
+	openConfigFile(sideBySide: boolean, preserveFocus: boolean, type?: string): TPromise<{ editor: IEditor, created: boolean }>;
 }
 
 // Debug service interfaces
@@ -667,6 +668,12 @@ export interface IDebugService {
 	 * Notifies debug adapter of breakpoint changes.
 	 */
 	removeFunctionBreakpoints(id?: string): TPromise<void>;
+
+	/**
+	 * Sends all breakpoints to the passed session.
+	 * If session is not passed, sends all breakpoints to each session.
+	 */
+	sendAllBreakpoints(session?: ISession): TPromise<any>;
 
 	/**
 	 * Adds a new expression to the repl.

@@ -436,7 +436,7 @@ const editorConfiguration: IConfigurationNode = {
 		'editor.multiCursorModifier': {
 			'type': 'string',
 			'enum': ['ctrlCmd', 'alt'],
-			'enumDescriptions': [
+			'markdownEnumDescriptions': [
 				nls.localize('multiCursorModifier.ctrlCmd', "Maps to `Control` on Windows and Linux and to `Command` on macOS."),
 				nls.localize('multiCursorModifier.alt', "Maps to `Alt` on Windows and Linux and to `Option` on macOS.")
 			],
@@ -500,9 +500,41 @@ const editorConfiguration: IConfigurationNode = {
 			'description': nls.localize('parameterHints.cycle', "Controls whether the parameter hints menu cycles or closes when reaching the end of the list.")
 		},
 		'editor.autoClosingBrackets': {
-			'type': 'boolean',
+			type: 'string',
+			enum: ['always', 'languageDefined', 'beforeWhitespace', 'never'],
+			enumDescriptions: [
+				'',
+				nls.localize('editor.autoClosingBrackets.languageDefined', "Use language configurations to determine when to autoclose brackets."),
+				nls.localize('editor.autoClosingBrackets.beforeWhitespace', "Autoclose brackets only when the cursor is to the left of whitespace."),
+				'',
+
+			],
 			'default': EDITOR_DEFAULTS.autoClosingBrackets,
 			'description': nls.localize('autoClosingBrackets', "Controls whether the editor should automatically close brackets after the user adds an opening bracket.")
+		},
+		'editor.autoClosingQuotes': {
+			type: 'string',
+			enum: ['always', 'languageDefined', 'beforeWhitespace', 'never'],
+			enumDescriptions: [
+				'',
+				nls.localize('editor.autoClosingQuotes.languageDefined', "Use language configurations to determine when to autoclose quotes."),
+				nls.localize('editor.autoClosingQuotes.beforeWhitespace', "Autoclose quotes only when the cursor is to the left of whitespace."),
+				'',
+			],
+			'default': EDITOR_DEFAULTS.autoClosingQuotes,
+			'description': nls.localize('autoClosingQuotes', "Controls whether the editor should automatically close quotes after the user adds an opening quote.")
+		},
+		'editor.autoWrapping': {
+			type: 'string',
+			enum: ['always', 'brackets', 'quotes', 'never'],
+			enumDescriptions: [
+				'',
+				nls.localize('editor.autoWrapping.brackets', "Wrap with brackets but not quotes."),
+				nls.localize('editor.autoWrapping.quotes', "Wrap with quotes but not brackets."),
+				''
+			],
+			'default': EDITOR_DEFAULTS.autoWrapping,
+			'description': nls.localize('autoWrapping', "Controls whether the editor should automatically wrap selections.")
 		},
 		'editor.formatOnType': {
 			'type': 'boolean',
@@ -528,7 +560,7 @@ const editorConfiguration: IConfigurationNode = {
 			'type': 'string',
 			'enum': ['on', 'smart', 'off'],
 			'default': EDITOR_DEFAULTS.contribInfo.acceptSuggestionOnEnter,
-			'enumDescriptions': [
+			'markdownEnumDescriptions': [
 				'',
 				nls.localize('acceptSuggestionOnEnterSmart', "Only accept a suggestion with `Enter` when it makes a textual change."),
 				''
@@ -565,7 +597,7 @@ const editorConfiguration: IConfigurationNode = {
 		'editor.suggestSelection': {
 			'type': 'string',
 			'enum': ['first', 'recentlyUsed', 'recentlyUsedByPrefix'],
-			'enumDescriptions': [
+			'markdownEnumDescriptions': [
 				nls.localize('suggestSelection.first', "Always select the first suggestion."),
 				nls.localize('suggestSelection.recentlyUsed', "Select recent suggestions unless further typing selects one, e.g. `console.| -> console.log` because `log` has been completed recently."),
 				nls.localize('suggestSelection.recentlyUsedByPrefix', "Select suggestions based on previous prefixes that have completed those suggestions, e.g. `co -> console` and `con -> const`."),

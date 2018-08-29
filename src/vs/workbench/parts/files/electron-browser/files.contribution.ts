@@ -34,7 +34,7 @@ import { DataUriEditorInput } from 'vs/workbench/common/editor/dataUriEditorInpu
 import { LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IEditorGroupsService } from 'vs/workbench/services/group/common/editorGroupsService';
-import { IUriLabelService } from 'vs/platform/uriLabel/common/uriLabel';
+import { ILabelService } from 'vs/platform/label/common/label';
 import { Schemas } from 'vs/base/common/network';
 import { nativeSep } from 'vs/base/common/paths';
 
@@ -55,12 +55,14 @@ export class OpenExplorerViewletAction extends ToggleViewletAction {
 
 class FileUriLabelContribution implements IWorkbenchContribution {
 
-	constructor(@IUriLabelService uriLabelService: IUriLabelService) {
-		uriLabelService.registerFormater(Schemas.file, {
-			label: '${path}',
-			separator: nativeSep,
-			tildify: !platform.isWindows,
-			normalizeDriveLetter: platform.isWindows
+	constructor(@ILabelService labelService: ILabelService) {
+		labelService.registerFormatter(Schemas.file, {
+			uri: {
+				label: '${path}',
+				separator: nativeSep,
+				tildify: !platform.isWindows,
+				normalizeDriveLetter: platform.isWindows
+			}
 		});
 	}
 }
@@ -152,7 +154,7 @@ class FileEditorInputFactory implements IEditorInputFactory {
 			const resource = !!fileInput.resourceJSON ? URI.revive(fileInput.resourceJSON) : URI.parse(fileInput.resource);
 			const encoding = fileInput.encoding;
 
-			return accessor.get(IEditorService).createInput({ resource, encoding }, { forceFileInput: true }) as FileEditorInput;
+			return accessor.get(IEditorService).createInput({ resource, encoding, isFile: true }) as FileEditorInput;
 		});
 	}
 }

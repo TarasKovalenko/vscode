@@ -39,6 +39,10 @@ export class MockDebugService implements IDebugService {
 	public focusStackFrame(focusedStackFrame: IStackFrame): void {
 	}
 
+	sendAllBreakpoints(session?: ISession): TPromise<any> {
+		return TPromise.as(null);
+	}
+
 	public addBreakpoints(uri: uri, rawBreakpoints: IBreakpointData[]): TPromise<IBreakpoint[]> {
 		return TPromise.as(null);
 	}
@@ -123,6 +127,10 @@ export class MockSession implements ISession {
 
 	getName(includeRoot: boolean): string {
 		return 'mockname';
+	}
+
+	public get capabilities(): DebugProtocol.Capabilities {
+		return {};
 	}
 
 	getSourceForUri(modelUri: uri): Source {
@@ -217,10 +225,6 @@ export class MockRawSession implements IRawSession {
 
 	evaluate(args: DebugProtocol.EvaluateArguments): TPromise<DebugProtocol.EvaluateResponse> {
 		return TPromise.as(null);
-	}
-
-	public get capabilities(): DebugProtocol.Capabilities {
-		return {};
 	}
 
 	public custom(request: string, args: any): TPromise<DebugProtocol.Response> {

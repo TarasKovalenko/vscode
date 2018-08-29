@@ -114,7 +114,7 @@ export class DebugService implements IDebugService {
 		this.inDebugMode = CONTEXT_IN_DEBUG_MODE.bindTo(contextKeyService);
 
 		this.model = new Model(this.loadBreakpoints(), this.storageService.getBoolean(DEBUG_BREAKPOINTS_ACTIVATED_KEY, StorageScope.WORKSPACE, true), this.loadFunctionBreakpoints(),
-			this.loadExceptionBreakpoints(), this.loadWatchExpressions());
+			this.loadExceptionBreakpoints(), this.loadWatchExpressions(), this.textFileService);
 		this.toDispose.push(this.model);
 		this.viewModel = new ViewModel(contextKeyService);
 
@@ -154,7 +154,9 @@ export class DebugService implements IDebugService {
 		}
 
 		if (broadcast.channel === EXTENSION_TERMINATE_BROADCAST_CHANNEL) {
-			session.raw.terminate().done(undefined, errors.onUnexpectedError);
+			if (session.raw) {
+				session.raw.terminate().done(undefined, errors.onUnexpectedError);
+			}
 			return;
 		}
 
@@ -267,7 +269,7 @@ export class DebugService implements IDebugService {
 		let result: Breakpoint[];
 		try {
 			result = JSON.parse(this.storageService.get(DEBUG_BREAKPOINTS_KEY, StorageScope.WORKSPACE, '[]')).map((breakpoint: any) => {
-				return new Breakpoint(uri.parse(breakpoint.uri.external || breakpoint.source.uri.external), breakpoint.lineNumber, breakpoint.column, breakpoint.enabled, breakpoint.condition, breakpoint.hitCondition, breakpoint.logMessage, breakpoint.adapterData);
+				return new Breakpoint(uri.parse(breakpoint.uri.external || breakpoint.source.uri.external), breakpoint.lineNumber, breakpoint.column, breakpoint.enabled, breakpoint.condition, breakpoint.hitCondition, breakpoint.logMessage, breakpoint.adapterData, this.textFileService);
 			});
 		} catch (e) { }
 
@@ -557,7 +559,7 @@ export class DebugService implements IDebugService {
 						}
 
 						if (launch && type) {
-							return launch.openConfigFile(false, type).done(undefined, errors.onUnexpectedError);
+							return launch.openConfigFile(false, true, type).done(undefined, errors.onUnexpectedError);
 						}
 					})
 				).then(() => undefined);
@@ -628,7 +630,7 @@ export class DebugService implements IDebugService {
 					return this.showError(nls.localize('noFolderWorkspaceDebugError', "The active file can not be debugged. Make sure it is saved on disk and that you have a debug extension installed for that file type."));
 				}
 
-				return launch && launch.openConfigFile(false).then(editor => void 0);
+				return launch && launch.openConfigFile(false, true).then(editor => void 0);
 			})
 		).then(() => {
 			this.initializing = false;
@@ -693,6 +695,10 @@ export class DebugService implements IDebugService {
 						launchJsonExists: root && !!this.configurationService.getValue<IGlobalConfig>('launch', { resource: root.uri })
 					});
 				}).then(() => session, (error: Error | string) => {
+					if (session) {
+						session.dispose();
+					}
+
 					if (errors.isPromiseCanceledError(error)) {
 						// Do not show 'canceled' error messages to the user #7906
 						return TPromise.as(null);
@@ -706,20 +712,25 @@ export class DebugService implements IDebugService {
 						}
 					*/
 					this.telemetryService.publicLog('debugMisconfiguration', { type: resolved ? resolved.type : undefined, error: errorMessage });
-					if (!raw.disconnected) {
-						raw.disconnect();
-					} else if (session) {
-						dispose(session);
-					}
 
 					// Show the repl if some error got logged there #5870
 					if (this.model.getReplElements().length > 0) {
 						this.panelService.openPanel(REPL_ID, false).done(undefined, errors.onUnexpectedError);
 					}
 
-					this.showError(errorMessage, errors.isErrorWithActions(error) ? error.actions : []);
+					if (resolved && resolved.request === 'attach' && resolved.__autoAttach) {
+						// ignore attach timeouts in auto attach mode
+					} else {
+						this.showError(errorMessage, errors.isErrorWithActions(error) ? error.actions : []);
+					}
 					return undefined;
 				});
+		}).then(undefined, err => {
+			if (session) {
+				session.dispose();
+			}
+
+			return TPromise.wrapError(err);
 		});
 	}
 
@@ -749,7 +760,7 @@ export class DebugService implements IDebugService {
 			if (equalsIgnoreCase(session.configuration.type, 'extensionhost') && session.state === State.Running && session.configuration.noDebug) {
 				this.broadcastService.broadcast({
 					channel: EXTENSION_CLOSE_EXTHOST_BROADCAST_CHANNEL,
-					payload: [session.root.uri.fsPath]
+					payload: [session.root.uri.toString()]
 				});
 			}
 
@@ -904,7 +915,7 @@ export class DebugService implements IDebugService {
 	restartSession(session: ISession, restartData?: any): TPromise<any> {
 		return this.textFileService.saveAll().then(() => {
 			const unresolvedConfiguration = (<Session>session).unresolvedConfiguration;
-			if (session.raw.capabilities.supportsRestartRequest) {
+			if (session.capabilities.supportsRestartRequest) {
 				return this.runTask(session.getId(), session.root, session.configuration.postDebugTask, session.configuration, unresolvedConfiguration)
 					.then(success => success ? this.runTask(session.getId(), session.root, session.configuration.preLaunchTask, session.configuration, unresolvedConfiguration)
 						.then(success => success ? session.raw.custom('restart', null) : undefined) : TPromise.as(<any>undefined));
@@ -918,7 +929,7 @@ export class DebugService implements IDebugService {
 			if (equalsIgnoreCase(session.configuration.type, 'extensionHost') && session.root) {
 				return this.broadcastService.broadcast({
 					channel: EXTENSION_RELOAD_BROADCAST_CHANNEL,
-					payload: [session.root.uri.fsPath]
+					payload: [session.root.uri.toString()]
 				});
 			}
 
@@ -983,7 +994,7 @@ export class DebugService implements IDebugService {
 		return this.configurationManager;
 	}
 
-	private sendAllBreakpoints(session?: ISession): TPromise<any> {
+	sendAllBreakpoints(session?: ISession): TPromise<any> {
 		return TPromise.join(distinct(this.model.getBreakpoints(), bp => bp.uri.toString()).map(bp => this.sendBreakpoints(bp.uri, false, session)))
 			.then(() => this.sendFunctionBreakpoints(session))
 			// send exception breakpoints at the end since some debug adapters rely on the order

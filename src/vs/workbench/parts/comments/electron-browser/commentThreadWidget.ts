@@ -14,6 +14,7 @@ import * as arrays from 'vs/base/common/arrays';
 import { Color } from 'vs/base/common/color';
 import { Emitter, Event } from 'vs/base/common/event';
 import { IDisposable } from 'vs/base/common/lifecycle';
+import * as platform from 'vs/base/common/platform';
 import { ICodeEditor, IEditorMouseEvent, MouseTargetType } from 'vs/editor/browser/editorBrowser';
 import * as modes from 'vs/editor/common/modes';
 import { peekViewBorder } from 'vs/editor/contrib/referenceSearch/referencesWidget';
@@ -97,6 +98,7 @@ export class CommentNode {
 }
 
 let INMEM_MODEL_ID = 0;
+
 export class ReviewZoneWidget extends ZoneWidget {
 	private _headElement: HTMLElement;
 	protected _headingLabel: HTMLElement;
@@ -109,6 +111,7 @@ export class ReviewZoneWidget extends ZoneWidget {
 	private _reviewThreadReplyButton: HTMLElement;
 	private _resizeObserver: any;
 	private _onDidClose = new Emitter<ReviewZoneWidget>();
+	private _onDidCreateThread = new Emitter<ReviewZoneWidget>();
 	private _isCollapsed;
 	private _toggleAction: Action;
 	private _commentThread: modes.CommentThread;
@@ -162,6 +165,10 @@ export class ReviewZoneWidget extends ZoneWidget {
 
 	public get onDidClose(): Event<ReviewZoneWidget> {
 		return this._onDidClose.event;
+	}
+
+	public get onDidCreateThread(): Event<ReviewZoneWidget> {
+		return this._onDidCreateThread.event;
 	}
 
 	protected revealLine(lineNumber: number) {
@@ -395,9 +402,9 @@ export class ReviewZoneWidget extends ZoneWidget {
 	private async createComment(lineNumber: number): Promise<void> {
 		try {
 			let newCommentThread;
+			const isReply = this._commentThread.threadId !== null;
 
-			if (this._commentThread.threadId) {
-				// reply
+			if (isReply) {
 				newCommentThread = await this.commentService.replyToCommentThread(
 					this._owner,
 					this.editor.getModel().uri,
@@ -427,6 +434,10 @@ export class ReviewZoneWidget extends ZoneWidget {
 				this._error.textContent = '';
 				dom.addClass(this._error, 'hidden');
 				this.update(newCommentThread);
+
+				if (!isReply) {
+					this._onDidCreateThread.fire(this);
+				}
 			}
 		} catch (e) {
 			this._error.textContent = e.message
@@ -487,11 +498,12 @@ export class ReviewZoneWidget extends ZoneWidget {
 		if (model) {
 			let valueLength = model.getValueLength();
 			const hasExistingComments = this._commentThread.comments.length > 0;
+			let keybinding = platform.isMacintosh ? 'Cmd+Enter' : 'Ctrl+Enter';
 			let placeholder = valueLength > 0
 				? ''
 				: (hasExistingComments
-					? nls.localize('replytoCommentThread', "Reply... (press Ctrl+Enter to submit)")
-					: nls.localize('createCommentThread', "Type a new comment (press Ctrl+Enter to submit)"));
+					? `Reply... (press ${keybinding} to submit)`
+					: `Type a new comment (press ${keybinding} to submit)`);
 			const decorations = [{
 				range: {
 					startLineNumber: 0,
@@ -572,7 +584,7 @@ export class ReviewZoneWidget extends ZoneWidget {
 				this.show({ lineNumber: lineNumber, column: 1 }, 2);
 			} else {
 				this.hide();
-				if (this._commentThread === null) {
+				if (this._commentThread === null || this._commentThread.threadId === null) {
 					this.dispose();
 				}
 			}

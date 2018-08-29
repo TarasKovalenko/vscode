@@ -168,7 +168,7 @@ export class QuickOpenWidget extends Disposable implements IModelProvider {
 				.on(DOM.EventType.BLUR, (e: FocusEvent) => this.loosingFocus(e), null, true);
 
 			// Progress Bar
-			this.progressBar = this._register(new ProgressBar(div.clone(), { progressBarBackground: this.styles.progressBarBackground }));
+			this.progressBar = this._register(new ProgressBar(div.getHTMLElement(), { progressBarBackground: this.styles.progressBarBackground }));
 			this.progressBar.hide();
 
 			// Input Field
@@ -235,7 +235,8 @@ export class QuickOpenWidget extends Disposable implements IModelProvider {
 			// Result count for screen readers
 			this.resultCount = div.div({
 				'class': 'quick-open-result-count',
-				'aria-live': 'polite'
+				'aria-live': 'polite',
+				'aria-atomic': 'true'
 			}).clone();
 
 			// Tree

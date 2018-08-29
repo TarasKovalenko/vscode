@@ -24,6 +24,7 @@ import { Source } from 'vs/workbench/parts/debug/common/debugSource';
 import { commonSuffixLength } from 'vs/base/common/strings';
 import { sep } from 'vs/base/common/paths';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
 
 const MAX_REPL_LENGTH = 10000;
 
@@ -185,7 +186,7 @@ export class ExpressionContainer implements IExpressionContainer {
 	}
 
 	private fetchVariables(start: number, count: number, filter: 'indexed' | 'named'): TPromise<Variable[]> {
-		return this.session.raw.variables({
+		return this.session.raw ? this.session.raw.variables({
 			variablesReference: this.reference,
 			start,
 			count,
@@ -194,7 +195,7 @@ export class ExpressionContainer implements IExpressionContainer {
 			return response && response.body && response.body.variables ? distinct(response.body.variables.filter(v => !!v && isString(v.name)), v => v.name).map(
 				v => new Variable(this.session, this, v.variablesReference, v.name, v.evaluateName, v.value, v.namedVariables, v.indexedVariables, v.presentationHint, v.type)
 			) : [];
-		}, (e: Error) => [new Variable(this.session, this, 0, null, e.message, '', 0, 0, { kind: 'virtual' }, null, false)]);
+		}, (e: Error) => [new Variable(this.session, this, 0, e.message, e.message, '', 0, 0, { kind: 'virtual' }, null, false)]) : TPromise.as([]);
 	}
 
 	// The adapter explicitly sents the children count of an expression only if there are lots of children which should be chunked.
@@ -490,16 +491,15 @@ export class Thread implements IThread {
 	 * Returns exception info promise if the exception was thrown, otherwise null
 	 */
 	public get exceptionInfo(): TPromise<IExceptionInfo> {
-		const session = this.session.raw;
 		if (this.stoppedDetails && this.stoppedDetails.reason === 'exception') {
-			if (!session.capabilities.supportsExceptionInfoRequest) {
+			if (!this.session.capabilities.supportsExceptionInfoRequest) {
 				return TPromise.as({
 					description: this.stoppedDetails.text,
 					breakMode: null
 				});
 			}
 
-			return session.exceptionInfo({ threadId: this.threadId }).then(exception => {
+			return this.session.raw.exceptionInfo({ threadId: this.threadId }).then(exception => {
 				if (!exception) {
 					return null;
 				}
@@ -622,6 +622,7 @@ export class Breakpoint extends BaseBreakpoint implements IBreakpoint {
 		hitCondition: string,
 		logMessage: string,
 		private _adapterData: any,
+		private textFileService: ITextFileService,
 		id = generateUuid()
 	) {
 		super(enabled, hitCondition, condition, logMessage, id);
@@ -629,7 +630,16 @@ export class Breakpoint extends BaseBreakpoint implements IBreakpoint {
 
 	public get lineNumber(): number {
 		const data = this.getSessionData();
-		return data && typeof data.line === 'number' ? data.line : this._lineNumber;
+		return this.verified && data && typeof data.line === 'number' ? data.line : this._lineNumber;
+	}
+
+	public get verified(): boolean {
+		const data = this.getSessionData();
+		if (data) {
+			return data.verified && !this.textFileService.isDirty(this.uri);
+		}
+
+		return true;
 	}
 
 	public get column(): number {
@@ -640,7 +650,14 @@ export class Breakpoint extends BaseBreakpoint implements IBreakpoint {
 
 	public get message(): string {
 		const data = this.getSessionData();
-		return data ? data.message : undefined;
+		if (!data) {
+			return undefined;
+		}
+		if (this.textFileService.isDirty(this.uri)) {
+			return nls.localize('breakpointDirtydHover', "Unverified breakpoint. File is modified, please restart debug session.");
+		}
+
+		return data.message;
 	}
 
 	public get adapterData(): any {
@@ -695,7 +712,8 @@ export class FunctionBreakpoint extends BaseBreakpoint implements IFunctionBreak
 		hitCondition: string,
 		condition: string,
 		logMessage: string,
-		id = generateUuid()) {
+		id = generateUuid()
+	) {
 		super(enabled, hitCondition, condition, logMessage, id);
 	}
 
@@ -748,7 +766,8 @@ export class Model implements IModel {
 		private breakpointsActivated: boolean,
 		private functionBreakpoints: FunctionBreakpoint[],
 		private exceptionBreakpoints: ExceptionBreakpoint[],
-		private watchExpressions: Expression[]
+		private watchExpressions: Expression[],
+		private textFileService: ITextFileService
 	) {
 		this.sessions = [];
 		this.replElements = [];
@@ -812,7 +831,7 @@ export class Model implements IModel {
 	}
 
 	public fetchCallStack(thread: Thread): TPromise<void> {
-		if (thread.session.raw.capabilities.supportsDelayedStackTraceLoading) {
+		if (thread.session.capabilities.supportsDelayedStackTraceLoading) {
 			// For improved performance load the first stack frame and then load the rest async.
 			return thread.fetchCallStack(1).then(() => {
 				if (!this.schedulers.has(thread.getId())) {
@@ -886,7 +905,7 @@ export class Model implements IModel {
 	}
 
 	public addBreakpoints(uri: uri, rawData: IBreakpointData[], fireEvent = true): IBreakpoint[] {
-		const newBreakpoints = rawData.map(rawBp => new Breakpoint(uri, rawBp.lineNumber, rawBp.column, rawBp.enabled, rawBp.condition, rawBp.hitCondition, rawBp.logMessage, undefined, rawBp.id));
+		const newBreakpoints = rawData.map(rawBp => new Breakpoint(uri, rawBp.lineNumber, rawBp.column, rawBp.enabled, rawBp.condition, rawBp.hitCondition, rawBp.logMessage, undefined, this.textFileService, rawBp.id));
 		newBreakpoints.forEach(bp => bp.setSessionId(this.breakpointsSessionId));
 		this.breakpoints = this.breakpoints.concat(newBreakpoints);
 		this.breakpointsActivated = true;

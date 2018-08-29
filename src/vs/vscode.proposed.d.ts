@@ -11,6 +11,14 @@ declare module 'vscode' {
 		export function sampleFunction(): Thenable<any>;
 	}
 
+	export namespace languages {
+
+		/**
+		 *
+		 */
+		export function changeLanguage(document: TextDocument, languageId: string): Thenable<void>;
+	}
+
 	//#region Rob: search provider
 
 	/**
@@ -78,6 +86,28 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * Options to specify the size of the result text preview.
+	 * These options don't affect the size of the match itself, just the amount of preview text.
+	 */
+	export interface TextSearchPreviewOptions {
+		/**
+		 * The maximum number of lines in the preview.
+		 * Only search providers that support multiline search will ever return more than one line in the match.
+		 */
+		maxLines: number;
+
+		/**
+		 * The maximum number of characters included before the start of the match.
+		 */
+		leadingChars: number;
+
+		/**
+		 * The maximum number of characters included per line.
+		 */
+		totalChars: number;
+	}
+
+	/**
 	 * Options that apply to text search.
 	 */
 	export interface TextSearchOptions extends SearchOptions {
@@ -87,9 +117,9 @@ declare module 'vscode' {
 		maxResults: number;
 
 		/**
-		 *  TODO@roblou - total length? # of context lines? leading and trailing # of chars?
+		 * Options to specify the size of the result text preview.
 		 */
-		previewOptions?: any;
+		previewOptions?: TextSearchPreviewOptions;
 
 		/**
 		 * Exclude files larger than `maxFileSize` in bytes.
@@ -128,6 +158,9 @@ declare module 'vscode' {
 	 */
 	export interface FileIndexOptions extends SearchOptions { }
 
+	/**
+	 * A preview of the text result.
+	 */
 	export interface TextSearchResultPreview {
 		/**
 		 * The matching line of text, or a portion of the matching line that contains the match.
@@ -156,7 +189,7 @@ declare module 'vscode' {
 		range: Range;
 
 		/**
-		 * A preview of the matching line
+		 * A preview of the text result.
 		 */
 		preview: TextSearchResultPreview;
 	}
@@ -257,6 +290,11 @@ declare module 'vscode' {
 		 * See the vscode setting `"files.encoding"`
 		 */
 		encoding?: string;
+
+		/**
+		 * Options to specify the size of the result text preview.
+		 */
+		previewOptions?: TextSearchPreviewOptions;
 	}
 
 	export namespace workspace {
@@ -437,10 +475,13 @@ declare module 'vscode' {
 	export namespace env {
 		/**
 		 * Current logging level.
-		 *
-		 * @readonly
 		 */
 		export const logLevel: LogLevel;
+
+		/**
+		 * An [event](#Event) that fires when the log level has changed.
+		 */
+		export const onDidChangeLogLevel: Event<LogLevel>;
 	}
 
 	//#endregion

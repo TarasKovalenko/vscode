@@ -6,9 +6,20 @@
 'use strict';
 
 import { Model } from '../model';
-import { GitExtension } from './git';
-import { getAPI, deprecated } from './api';
-import { ApiRepository } from './api1';
+import { GitExtension, Repository, API } from './git';
+import { ApiRepository, ApiImpl } from './api1';
+
+export function deprecated(target: any, key: string, descriptor: any): void {
+	if (typeof descriptor.value !== 'function') {
+		throw new Error('not supported');
+	}
+
+	const fn = descriptor.value;
+	descriptor.value = function () {
+		console.warn(`Git extension API method '${key}' is deprecated.`);
+		return fn.apply(this, arguments);
+	};
+}
 
 class NoModelGitExtension implements GitExtension {
 
@@ -18,11 +29,11 @@ class NoModelGitExtension implements GitExtension {
 	}
 
 	@deprecated
-	async getRepositories(): Promise<GitExtension.Repository[]> {
+	async getRepositories(): Promise<Repository[]> {
 		throw new Error('Git model not found');
 	}
 
-	getAPI(): GitExtension.API {
+	getAPI(): API {
 		throw new Error('Git model not found');
 	}
 }
@@ -37,12 +48,16 @@ class GitExtensionImpl implements GitExtension {
 	}
 
 	@deprecated
-	async getRepositories(): Promise<GitExtension.Repository[]> {
+	async getRepositories(): Promise<Repository[]> {
 		return this._model.repositories.map(repository => new ApiRepository(repository));
 	}
 
-	getAPI(range: string): GitExtension.API {
-		return getAPI(this._model, range);
+	getAPI(version: number): API {
+		if (version !== 1) {
+			throw new Error(`No API version ${version} found.`);
+		}
+
+		return new ApiImpl(this._model);
 	}
 }
 
