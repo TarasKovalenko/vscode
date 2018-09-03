@@ -11,7 +11,9 @@ import * as objects from 'vs/base/common/objects';
 import { parseArgs } from 'vs/platform/environment/node/argv';
 import { IIssueService, IssueReporterData, IssueReporterFeatures, ProcessExplorerData } from 'vs/platform/issue/common/issue';
 import { BrowserWindow, ipcMain, screen, Event } from 'electron';
+// tslint:disable-next-line:import-patterns
 import { ILaunchService } from 'vs/code/electron-main/launch';
+// tslint:disable-next-line:import-patterns
 import { getPerformanceInfo, PerformanceInfo, getSystemInfo, SystemInfo } from 'vs/code/electron-main/diagnostics';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { isMacintosh, IProcessEnvironment } from 'vs/base/common/platform';
@@ -67,10 +69,7 @@ export class IssueService implements IIssueService {
 				x: position.x,
 				y: position.y,
 				title: localize('issueReporter', "Issue Reporter"),
-				backgroundColor: data.styles.backgroundColor || DEFAULT_BACKGROUND_COLOR,
-				webPreferences: {
-					disableBlinkFeatures: 'Auxclick'
-				}
+				backgroundColor: data.styles.backgroundColor || DEFAULT_BACKGROUND_COLOR
 			});
 
 			this._issueWindow.setMenuBarVisibility(false); // workaround for now, until a menu is implemented
@@ -117,10 +116,7 @@ export class IssueService implements IIssueService {
 				x: position.x,
 				y: position.y,
 				backgroundColor: data.styles.backgroundColor,
-				title: localize('processExplorer', "Process Explorer"),
-				webPreferences: {
-					disableBlinkFeatures: 'Auxclick'
-				}
+				title: localize('processExplorer', "Process Explorer")
 			});
 
 			this._processExplorerWindow.setMenuBarVisibility(false);

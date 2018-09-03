@@ -65,6 +65,7 @@ export class DebugService implements IDebugService {
 
 	private readonly _onDidChangeState: Emitter<State>;
 	private readonly _onDidNewSession: Emitter<ISession>;
+	private readonly _onWillNewSession: Emitter<ISession>;
 	private readonly _onDidEndSession: Emitter<ISession>;
 	private model: Model;
 	private viewModel: ViewModel;
@@ -105,6 +106,7 @@ export class DebugService implements IDebugService {
 		this.breakpointsToSendOnResourceSaved = new Set<string>();
 		this._onDidChangeState = new Emitter<State>();
 		this._onDidNewSession = new Emitter<ISession>();
+		this._onWillNewSession = new Emitter<ISession>();
 		this._onDidEndSession = new Emitter<ISession>();
 
 		this.configurationManager = this.instantiationService.createInstance(ConfigurationManager);
@@ -215,7 +217,7 @@ export class DebugService implements IDebugService {
 					let buf = '';
 
 					for (let j = 0, len = a.length; j < len; j++) {
-						if (a[j] === '%' && (a[j + 1] === 's' || a[j + 1] === 'i' || a[j + 1] === 'd')) {
+						if (a[j] === '%' && (a[j + 1] === 's' || a[j + 1] === 'i' || a[j + 1] === 'd' || a[j + 1] === 'O')) {
 							i++; // read over substitution
 							buf += !isUndefinedOrNull(args[i]) ? args[i] : ''; // replace
 							j++; // read over directive
@@ -327,6 +329,10 @@ export class DebugService implements IDebugService {
 
 	get onDidNewSession(): Event<ISession> {
 		return this._onDidNewSession.event;
+	}
+
+	get onWillNewSession(): Event<ISession> {
+		return this._onWillNewSession.event;
 	}
 
 	get onDidEndSession(): Event<ISession> {
@@ -635,6 +641,10 @@ export class DebugService implements IDebugService {
 		).then(() => {
 			this.initializing = false;
 			this.onStateChange();
+		}, err => {
+			this.initializing = false;
+			this.onStateChange();
+			return TPromise.wrapError(err);
 		});
 	}
 
@@ -645,6 +655,7 @@ export class DebugService implements IDebugService {
 
 		const dbgr = this.configurationManager.getDebugger(resolved.type);
 		const session = this.instantiationService.createInstance(Session, sessionId, configuration, root, this.model);
+		this._onWillNewSession.fire(session);
 		this.allSessions.set(sessionId, session);
 		return session.initialize(dbgr).then(() => {
 			this.registerSessionListeners(session);

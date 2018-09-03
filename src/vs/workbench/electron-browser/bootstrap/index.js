@@ -176,6 +176,7 @@ function registerListeners(enableDeveloperTools) {
 	}
 
 	process.on('uncaughtException', function (error) { onError(error, enableDeveloperTools); });
+	process.on('SIGPIPE', function () { onError(new Error('Unexpected SIGPIPE'), false); }); // workaround https://github.com/electron/electron/issues/13254
 
 	return function () {
 		if (listener) {
