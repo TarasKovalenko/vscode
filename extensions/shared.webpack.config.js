@@ -19,6 +19,9 @@ module.exports = function withDefaults(/**@type WebpackConfig*/extConfig) {
 	let defaultConfig = {
 		mode: 'none', // this leaves the source code as close as possible to the original (when packaging we set this to 'production')
 		target: 'node', // extensions run in a node context
+		node: {
+			__dirname: false // leave the __dirname-behaviour intact
+		},
 		resolve: {
 			mainFields: ['main'], // prefer the main-entry of package.json files
 			extensions: ['.ts', '.js'] // support ts-files and js-files
@@ -50,7 +53,6 @@ module.exports = function withDefaults(/**@type WebpackConfig*/extConfig) {
 			'vscode': 'commonjs vscode', // ignored because it doesn't exist
 
 			"vscode-extension-telemetry": 'commonjs vscode-extension-telemetry', // commonly used
-			"vscode-nls": 'commonjs vscode-nls',
 		},
 		output: {
 			// all output goes into `dist`.

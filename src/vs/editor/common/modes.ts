@@ -10,7 +10,7 @@ import { Event } from 'vs/base/common/event';
 import { IMarkdownString } from 'vs/base/common/htmlContent';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { isObject } from 'vs/base/common/types';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import { Position } from 'vs/editor/common/core/position';
 import { IRange, Range } from 'vs/editor/common/core/range';
 import { Selection } from 'vs/editor/common/core/selection';
@@ -361,7 +361,7 @@ export interface CodeAction {
 /**
  * @internal
  */
-export enum CodeActionTrigger {
+export const enum CodeActionTrigger {
 	Automatic = 1,
 	Manual = 2,
 }
@@ -388,7 +388,7 @@ export interface CodeActionProvider {
 	/**
 	 * Optional list of of CodeActionKinds that this provider returns.
 	 */
-	providedCodeActionKinds?: string[];
+	providedCodeActionKinds?: ReadonlyArray<string>;
 }
 
 /**
@@ -447,6 +447,18 @@ export interface SignatureHelp {
 	 */
 	activeParameter: number;
 }
+
+export enum SignatureHelpTriggerReason {
+	Invoke = 1,
+	TriggerCharacter = 2,
+	Retrigger = 3,
+}
+
+export interface SignatureHelpContext {
+	triggerReason: SignatureHelpTriggerReason;
+	triggerCharacter?: string;
+}
+
 /**
  * The signature help provider interface defines the contract between extensions and
  * the [parameter hints](https://code.visualstudio.com/docs/editor/intellisense)-feature.
@@ -458,7 +470,7 @@ export interface SignatureHelpProvider {
 	/**
 	 * Provide help for the signature at the given position and document.
 	 */
-	provideSignatureHelp(model: model.ITextModel, position: Position, token: CancellationToken): ProviderResult<SignatureHelp>;
+	provideSignatureHelp(model: model.ITextModel, position: Position, token: CancellationToken, context: SignatureHelpContext): ProviderResult<SignatureHelp>;
 }
 
 /**
@@ -926,17 +938,19 @@ export interface ResourceTextEdit {
 
 export interface WorkspaceEdit {
 	edits: Array<ResourceTextEdit | ResourceFileEdit>;
-	rejectReason?: string; // TODO@joh, move to rename
 }
 
+export interface Rejection {
+	rejectReason?: string;
+}
 export interface RenameLocation {
 	range: IRange;
 	text: string;
 }
 
 export interface RenameProvider {
-	provideRenameEdits(model: model.ITextModel, position: Position, newName: string, token: CancellationToken): ProviderResult<WorkspaceEdit>;
-	resolveRenameLocation?(model: model.ITextModel, position: Position, token: CancellationToken): ProviderResult<RenameLocation>;
+	provideRenameEdits(model: model.ITextModel, position: Position, newName: string, token: CancellationToken): ProviderResult<WorkspaceEdit & Rejection>;
+	resolveRenameLocation?(model: model.ITextModel, position: Position, token: CancellationToken): ProviderResult<RenameLocation & Rejection>;
 }
 
 

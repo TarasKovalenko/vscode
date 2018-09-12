@@ -5,7 +5,7 @@
 'use strict';
 
 import { TPromise } from 'vs/base/common/winjs.base';
-import URI, { UriComponents } from 'vs/base/common/uri';
+import { URI, UriComponents } from 'vs/base/common/uri';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { MainThreadLanguagesShape, MainContext, IExtHostContext } from '../node/extHost.protocol';
@@ -29,11 +29,11 @@ export class MainThreadLanguages implements MainThreadLanguagesShape {
 	public dispose(): void {
 	}
 
-	$getLanguages(): TPromise<string[]> {
+	$getLanguages(): Thenable<string[]> {
 		return TPromise.as(this._modeService.getRegisteredModes());
 	}
 
-	$changeLanguage(resource: UriComponents, languageId: string): TPromise<void> {
+	$changeLanguage(resource: UriComponents, languageId: string): Thenable<void> {
 		const uri = URI.revive(resource);
 		let model = this._modelService.getModel(uri);
 		if (!model) {

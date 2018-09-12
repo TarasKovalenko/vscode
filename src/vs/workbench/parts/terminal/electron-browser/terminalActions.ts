@@ -20,13 +20,15 @@ import { IQuickOpenService } from 'vs/platform/quickOpen/common/quickOpen';
 import { IQuickInputService, IPickOptions, IQuickPickItem } from 'vs/platform/quickinput/common/quickInput';
 import { ActionBarContributor } from 'vs/workbench/browser/actions';
 import { TerminalEntry } from 'vs/workbench/parts/terminal/browser/terminalQuickOpen';
-import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
+import { IInstantiationService, ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { PICK_WORKSPACE_FOLDER_COMMAND_ID } from 'vs/workbench/browser/actions/workspaceCommands';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { TERMINAL_COMMAND_ID } from 'vs/workbench/parts/terminal/common/terminalCommands';
+import { Command } from 'vs/editor/browser/editorExtensions';
+import { timeout } from 'vs/base/common/async';
 
 export const TERMINAL_PICKER_PREFIX = 'term ';
 
@@ -101,7 +103,7 @@ export class QuickKillTerminalAction extends Action {
 		if (instance) {
 			instance.dispose();
 		}
-		return TPromise.timeout(50).then(result => this.quickOpenService.show(TERMINAL_PICKER_PREFIX, null));
+		return TPromise.wrap(timeout(50)).then(result => this.quickOpenService.show(TERMINAL_PICKER_PREFIX, null));
 	}
 }
 
@@ -224,6 +226,19 @@ export class MoveToLineEndTerminalAction extends BaseSendTextTerminalAction {
 	) {
 		// Send ctrl+E
 		super(id, label, String.fromCharCode('E'.charCodeAt(0) - 64), terminalService);
+	}
+}
+
+export class SendSequenceTerminalCommand extends Command {
+	public static readonly ID = TERMINAL_COMMAND_ID.SEND_SEQUENCE;
+	public static readonly LABEL = nls.localize('workbench.action.terminal.sendSequence', "Send Custom Sequence To Terminal");
+
+	public runCommand(accessor: ServicesAccessor, args: any): void {
+		const terminalInstance = accessor.get(ITerminalService).getActiveInstance();
+		if (!terminalInstance) {
+			return;
+		}
+		terminalInstance.sendText(args.text, false);
 	}
 }
 
@@ -1010,7 +1025,7 @@ export class RenameTerminalQuickOpenAction extends RenameTerminalAction {
 	public run(): TPromise<any> {
 		super.run(this.terminal)
 			// This timeout is needed to make sure the previous quickOpen has time to close before we show the next one
-			.then(() => TPromise.timeout(50))
+			.then(() => timeout(50))
 			.then(result => this.quickOpenService.show(TERMINAL_PICKER_PREFIX, null));
 		return TPromise.as(null);
 	}

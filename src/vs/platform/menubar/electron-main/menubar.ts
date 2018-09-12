@@ -21,7 +21,7 @@ import { IWindowsMainService, IWindowsCountChangedEvent } from 'vs/platform/wind
 import { IHistoryMainService } from 'vs/platform/history/common/history';
 import { IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
 import { IMenubarData, IMenubarKeybinding, MenubarMenuItem, isMenubarMenuItemSeparator, isMenubarMenuItemSubmenu, isMenubarMenuItemAction } from 'vs/platform/menubar/common/menubar';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import { ILabelService } from 'vs/platform/label/common/label';
 
 const telemetryFrom = 'menu';
@@ -617,7 +617,7 @@ export class Menubar {
 
 			case StateType.Idle:
 				return [new MenuItem({
-					label: nls.localize('miCheckForUpdates', "Check for Updates..."), click: () => setTimeout(() => {
+					label: nls.localize('miCheckForUpdates', "Check for &&Updates..."), click: () => setTimeout(() => {
 						this.reportMenuActionTelemetry('CheckForUpdate');
 
 						const focusedWindow = this.windowsMainService.getFocusedWindow();
@@ -631,7 +631,7 @@ export class Menubar {
 
 			case StateType.AvailableForDownload:
 				return [new MenuItem({
-					label: nls.localize('miDownloadUpdate', "Download Available Update"), click: () => {
+					label: nls.localize('miDownloadUpdate', "D&&ownload Available Update"), click: () => {
 						this.updateService.downloadUpdate();
 					}
 				})];
@@ -641,7 +641,7 @@ export class Menubar {
 
 			case StateType.Downloaded:
 				return [new MenuItem({
-					label: nls.localize('miInstallUpdate', "Install Update..."), click: () => {
+					label: nls.localize('miInstallUpdate', "Install &&Update..."), click: () => {
 						this.reportMenuActionTelemetry('InstallUpdate');
 						this.updateService.applyUpdate();
 					}
@@ -652,7 +652,7 @@ export class Menubar {
 
 			case StateType.Ready:
 				return [new MenuItem({
-					label: nls.localize('miRestartToUpdate', "Restart to Update..."), click: () => {
+					label: nls.localize('miRestartToUpdate', "Restart to &&Update..."), click: () => {
 						this.reportMenuActionTelemetry('RestartToUpdate');
 						this.updateService.quitAndInstall();
 					}

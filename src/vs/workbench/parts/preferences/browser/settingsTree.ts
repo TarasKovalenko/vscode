@@ -22,7 +22,7 @@ import { Emitter, Event } from 'vs/base/common/event';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import { dispose, IDisposable } from 'vs/base/common/lifecycle';
 import { escapeRegExpCharacters, startsWith } from 'vs/base/common/strings';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { IAccessibilityProvider, IDataSource, IFilter, IRenderer as ITreeRenderer, ITree, ITreeConfiguration } from 'vs/base/parts/tree/browser/tree';
 import { DefaultTreestyler } from 'vs/base/parts/tree/browser/treeDefaults';
@@ -30,17 +30,19 @@ import { Tree } from 'vs/base/parts/tree/browser/treeImpl';
 import { localize } from 'vs/nls';
 import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
 import { ICommandService } from 'vs/platform/commands/common/commands';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
+import { IConfigurationService, ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
 import { IContextMenuService, IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
+import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { WorkbenchTreeController } from 'vs/platform/list/browser/listService';
 import { IOpenerService } from 'vs/platform/opener/common/opener';
-import { editorBackground, errorForeground, focusBorder, foreground, inputValidationErrorBackground, inputValidationErrorBorder } from 'vs/platform/theme/common/colorRegistry';
+import { editorBackground, errorForeground, focusBorder, foreground, inputValidationErrorBackground, inputValidationErrorForeground, inputValidationErrorBorder } from 'vs/platform/theme/common/colorRegistry';
 import { attachButtonStyler, attachInputBoxStyler, attachSelectBoxStyler, attachStyler } from 'vs/platform/theme/common/styler';
 import { ICssStyleCollector, ITheme, IThemeService, registerThemingParticipant } from 'vs/platform/theme/common/themeService';
 import { ITOCEntry } from 'vs/workbench/parts/preferences/browser/settingsLayout';
-import { ISettingsEditorViewState, isExcludeSetting, SettingsTreeElement, SettingsTreeGroupElement, SettingsTreeNewExtensionsElement, settingKeyToDisplayFormat, SettingsTreeSettingElement } from 'vs/workbench/parts/preferences/browser/settingsTreeModels';
-import { ExcludeSettingWidget, IExcludeDataItem, settingsHeaderForeground, settingsNumberInputBackground, settingsNumberInputBorder, settingsNumberInputForeground, settingsSelectBackground, settingsSelectBorder, settingsSelectListBorder, settingsSelectForeground, settingsTextInputBackground, settingsTextInputBorder, settingsTextInputForeground } from 'vs/workbench/parts/preferences/browser/settingsWidgets';
+import { ISettingsEditorViewState, isExcludeSetting, settingKeyToDisplayFormat, SettingsTreeElement, SettingsTreeGroupElement, SettingsTreeNewExtensionsElement, SettingsTreeSettingElement } from 'vs/workbench/parts/preferences/browser/settingsTreeModels';
+import { ExcludeSettingWidget, IExcludeDataItem, settingsHeaderForeground, settingsNumberInputBackground, settingsNumberInputBorder, settingsNumberInputForeground, settingsSelectBackground, settingsSelectBorder, settingsSelectForeground, settingsSelectListBorder, settingsTextInputBackground, settingsTextInputBorder, settingsTextInputForeground } from 'vs/workbench/parts/preferences/browser/settingsWidgets';
+import { SETTINGS_EDITOR_COMMAND_SHOW_CONTEXT_MENU } from 'vs/workbench/parts/preferences/common/preferences';
 import { ISetting, ISettingsGroup } from 'vs/workbench/services/preferences/common/preferences';
 
 const $ = DOM.$;
@@ -217,7 +219,7 @@ export class SimplePagedDataSource implements IDataSource {
 	}
 
 	reset(): void {
-		this.loadedToIndex = SimplePagedDataSource.SETTINGS_PER_PAGE * 2;
+		this.loadedToIndex = SimplePagedDataSource.SETTINGS_PER_PAGE;
 	}
 
 	pageTo(index: number, top = false): boolean {
@@ -331,6 +333,11 @@ export interface ISettingChangeEvent {
 	value: any; // undefined => reset/unconfigure
 }
 
+export interface ISettingLinkClickEvent {
+	source: SettingsTreeSettingElement;
+	targetKey: string;
+}
+
 export class SettingsRenderer implements ITreeRenderer {
 
 	public static readonly CONTROL_CLASS = 'setting-control-focus-target';
@@ -344,8 +351,8 @@ export class SettingsRenderer implements ITreeRenderer {
 	private readonly _onDidOpenSettings: Emitter<string> = new Emitter<string>();
 	public readonly onDidOpenSettings: Event<string> = this._onDidOpenSettings.event;
 
-	private readonly _onDidClickSettingLink: Emitter<string> = new Emitter<string>();
-	public readonly onDidClickSettingLink: Event<string> = this._onDidClickSettingLink.event;
+	private readonly _onDidClickSettingLink: Emitter<ISettingLinkClickEvent> = new Emitter<ISettingLinkClickEvent>();
+	public readonly onDidClickSettingLink: Event<ISettingLinkClickEvent> = this._onDidClickSettingLink.event;
 
 	private readonly _onDidFocusSetting: Emitter<SettingsTreeSettingElement> = new Emitter<SettingsTreeSettingElement>();
 	public readonly onDidFocusSetting: Event<SettingsTreeSettingElement> = this._onDidFocusSetting.event;
@@ -365,7 +372,8 @@ export class SettingsRenderer implements ITreeRenderer {
 		@IOpenerService private readonly openerService: IOpenerService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@ICommandService private readonly commandService: ICommandService,
-		@IContextMenuService private contextMenuService: IContextMenuService
+		@IContextMenuService private contextMenuService: IContextMenuService,
+		@IKeybindingService private keybindingService: IKeybindingService,
 	) {
 		this.descriptionMeasureContainer = $('.setting-item-description');
 		DOM.append(_measureContainer,
@@ -385,6 +393,7 @@ export class SettingsRenderer implements ITreeRenderer {
 			this.instantiationService.createInstance(CopySettingIdAction),
 			this.instantiationService.createInstance(CopySettingAsJSONAction),
 		];
+
 	}
 
 	showContextMenu(element: SettingsTreeSettingElement, settingDOMElement: HTMLElement): void {
@@ -604,7 +613,8 @@ export class SettingsRenderer implements ITreeRenderer {
 
 		const toDispose = [];
 
-		const toolbar = this.renderSettingToolbar(container);
+		const toolbarContainer = DOM.append(container, $('.setting-toolbar-container'));
+		const toolbar = this.renderSettingToolbar(toolbarContainer);
 
 		const template: ISettingItemTemplate = {
 			toDispose,
@@ -713,7 +723,15 @@ export class SettingsRenderer implements ITreeRenderer {
 	}
 
 	private renderSettingToolbar(container: HTMLElement): ToolBar {
-		const toolbar = new ToolBar(container, this.contextMenuService, {});
+		const toggleMenuKeybinding = this.keybindingService.lookupKeybinding(SETTINGS_EDITOR_COMMAND_SHOW_CONTEXT_MENU);
+		let toggleMenuTitle = localize('settingsContextMenuTitle', "More Actions... ");
+		if (toggleMenuKeybinding) {
+			toggleMenuTitle += ` (${toggleMenuKeybinding && toggleMenuKeybinding.getLabel()})`;
+		}
+
+		const toolbar = new ToolBar(container, this.contextMenuService, {
+			toggleMenuTitle
+		});
 		toolbar.setActions([], this.settingActions)();
 		const button = container.querySelector('.toolbar-toggle-more');
 		if (button) {
@@ -1019,7 +1037,7 @@ export class SettingsRenderer implements ITreeRenderer {
 		this.renderValue(element, templateId, <ISettingItemTemplate>template);
 		template.descriptionElement.innerHTML = '';
 		if (element.setting.descriptionIsMarkdown) {
-			const renderedDescription = this.renderDescriptionMarkdown(element.description, template.toDispose);
+			const renderedDescription = this.renderDescriptionMarkdown(element, element.description, template.toDispose);
 			template.descriptionElement.appendChild(renderedDescription);
 		} else {
 			template.descriptionElement.innerText = element.description;
@@ -1050,7 +1068,7 @@ export class SettingsRenderer implements ITreeRenderer {
 		template.containerElement.parentElement.removeAttribute('aria-setsize');
 	}
 
-	private renderDescriptionMarkdown(text: string, disposeables: IDisposable[]): HTMLElement {
+	private renderDescriptionMarkdown(element: SettingsTreeSettingElement, text: string, disposeables: IDisposable[]): HTMLElement {
 		// Rewrite `#editor.fontSize#` to link format
 		text = fixSettingLinks(text);
 
@@ -1058,7 +1076,11 @@ export class SettingsRenderer implements ITreeRenderer {
 			actionHandler: {
 				callback: (content: string) => {
 					if (startsWith(content, '#')) {
-						this._onDidClickSettingLink.fire(content.substr(1));
+						const e: ISettingLinkClickEvent = {
+							source: element,
+							targetKey: content.substr(1)
+						};
+						this._onDidClickSettingLink.fire(e);
 					} else {
 						this.openerService.open(URI.parse(content)).then(void 0, onUnexpectedError);
 					}
@@ -1131,7 +1153,8 @@ export class SettingsRenderer implements ITreeRenderer {
 			}));
 
 		const modifiedText = dataElement.isConfigured ? 'Modified' : '';
-		const label = dataElement.displayCategory + ' ' + dataElement.displayLabel + ' ' + modifiedText;
+		// Use ',.' as reader pause
+		const label = dataElement.displayCategory + ' ' + dataElement.displayLabel + ',. ' + modifiedText;
 		const baseId = (dataElement.displayCategory + '_' + dataElement.displayLabel).replace(/ /g, '_').toLowerCase();
 
 		template.selectBox.setAriaLabel(label);
@@ -1144,7 +1167,7 @@ export class SettingsRenderer implements ITreeRenderer {
 		if (template.controlElement.firstElementChild) {
 			// SelectBox needs to have treeitem changed to combobox to read correctly within tree
 			template.controlElement.firstElementChild.setAttribute('role', 'combobox');
-			template.controlElement.firstElementChild.setAttribute('aria-describedby', baseId + '_setting_description');
+			template.controlElement.firstElementChild.setAttribute('aria-describedby', baseId + '_setting_description settings_aria_more_actions_shortcut_label');
 		}
 
 		template.enumDescriptionElement.innerHTML = '';
@@ -1152,7 +1175,10 @@ export class SettingsRenderer implements ITreeRenderer {
 
 	private renderText(dataElement: SettingsTreeSettingElement, template: ISettingTextItemTemplate, onChange: (value: string) => void): void {
 		const modifiedText = dataElement.isConfigured ? 'Modified' : '';
-		const label = dataElement.displayCategory + ' ' + dataElement.displayLabel + ' ' + modifiedText; template.onChange = null;
+
+		// Use ',.' as reader pause
+		const label = dataElement.displayCategory + ' ' + dataElement.displayLabel + ',. ' + modifiedText;
+		template.onChange = null;
 		template.inputBox.value = dataElement.value;
 		template.onChange = value => { renderValidations(dataElement, template, false, label); onChange(value); };
 
@@ -1170,7 +1196,7 @@ export class SettingsRenderer implements ITreeRenderer {
 		template.inputBox.inputElement.id = baseId + '_setting_item';
 		template.inputBox.inputElement.setAttribute('role', 'textbox');
 		template.inputBox.inputElement.setAttribute('aria-labelledby', baseId + '_setting_label');
-		template.inputBox.inputElement.setAttribute('aria-describedby', baseId + '_setting_description');
+		template.inputBox.inputElement.setAttribute('aria-describedby', baseId + '_setting_description settings_aria_more_actions_shortcut_label');
 
 		renderValidations(dataElement, template, true, label);
 	}
@@ -1178,7 +1204,8 @@ export class SettingsRenderer implements ITreeRenderer {
 
 	private renderNumber(dataElement: SettingsTreeSettingElement, template: ISettingTextItemTemplate, onChange: (value: number) => void): void {
 		const modifiedText = dataElement.isConfigured ? 'Modified' : '';
-		const label = dataElement.displayCategory + ' ' + dataElement.displayLabel + ' number ' + modifiedText; const numParseFn = (dataElement.valueType === 'integer' || dataElement.valueType === 'nullable-integer')
+		// Use ',.' as reader pause
+		const label = dataElement.displayCategory + ' ' + dataElement.displayLabel + ' number,. ' + modifiedText; const numParseFn = (dataElement.valueType === 'integer' || dataElement.valueType === 'nullable-integer')
 			? parseInt : parseFloat;
 
 		const nullNumParseFn = (dataElement.valueType === 'nullable-integer' || dataElement.valueType === 'nullable-number')
@@ -1202,7 +1229,7 @@ export class SettingsRenderer implements ITreeRenderer {
 		template.inputBox.inputElement.id = baseId + '_setting_item';
 		template.inputBox.inputElement.setAttribute('role', 'textbox');
 		template.inputBox.inputElement.setAttribute('aria-labelledby', baseId + '_setting_label');
-		template.inputBox.inputElement.setAttribute('aria-describedby', baseId + '_setting_description');
+		template.inputBox.inputElement.setAttribute('aria-describedby', baseId + '_setting_description settings_aria_more_actions_shortcut_label');
 
 		renderValidations(dataElement, template, true, label);
 	}
@@ -1281,10 +1308,21 @@ export class SettingsTreeFilter implements IFilter {
 			}
 		}
 
-		if (element instanceof SettingsTreeSettingElement && this.viewState.tagFilters) {
-			return element.matchesAllTags(this.viewState.tagFilters);
+		// Non-user scope selected
+		if (element instanceof SettingsTreeSettingElement && this.viewState.settingsTarget !== ConfigurationTarget.USER) {
+			if (!element.matchesScope(this.viewState.settingsTarget)) {
+				return false;
+			}
 		}
 
+		// @modified or tag
+		if (element instanceof SettingsTreeSettingElement && this.viewState.tagFilters) {
+			if (!element.matchesAllTags(this.viewState.tagFilters)) {
+				return false;
+			}
+		}
+
+		// Group with no visible children
 		if (element instanceof SettingsTreeGroupElement) {
 			if (typeof element.count === 'number') {
 				return element.count > 0;
@@ -1293,6 +1331,7 @@ export class SettingsTreeFilter implements IFilter {
 			return element.children.some(child => this.isVisible(tree, child));
 		}
 
+		// Filtered "new extensions" button
 		if (element instanceof SettingsTreeNewExtensionsElement) {
 			if ((this.viewState.tagFilters && this.viewState.tagFilters.size) || this.viewState.filterToCategory) {
 				return false;
@@ -1481,6 +1520,11 @@ export class SettingsTree extends NonExpandableOrSelectableTree {
 			const invalidInputBackground = theme.getColor(inputValidationErrorBackground);
 			if (invalidInputBackground) {
 				collector.addRule(`.settings-editor > .settings-body > .settings-tree-container .setting-item .setting-item-validation-message { background-color: ${invalidInputBackground}; }`);
+			}
+
+			const invalidInputForeground = theme.getColor(inputValidationErrorForeground);
+			if (invalidInputForeground) {
+				collector.addRule(`.settings-editor > .settings-body > .settings-tree-container .setting-item .setting-item-validation-message { color: ${invalidInputForeground}; }`);
 			}
 
 			const invalidInputBorder = theme.getColor(inputValidationErrorBorder);

@@ -26,9 +26,33 @@ import { overviewRulerRangeHighlight } from 'vs/editor/common/view/editorColorRe
 import { GroupIdentifier, IEditorInput } from 'vs/workbench/common/editor';
 import { IEditorService, SIDE_GROUP } from 'vs/workbench/services/editor/common/editorService';
 import { IEditorGroup } from 'vs/workbench/services/group/common/editorGroupsService';
+import { asThenable } from 'vs/base/common/async';
+import { CancellationToken, CancellationTokenSource } from 'vs/base/common/cancellation';
 
 export const GOTO_SYMBOL_PREFIX = '@';
 export const SCOPE_PREFIX = ':';
+
+const NLS_SYMBOL_CACHE: { [type: string]: string } = {
+	'method': nls.localize('method', "methods ({0})"),
+	'function': nls.localize('function', "functions ({0})"),
+	'constructor': nls.localize('_constructor', "constructors ({0})"),
+	'variable': nls.localize('variable', "variables ({0})"),
+	'class': nls.localize('class', "classes ({0})"),
+	'interface': nls.localize('interface', "interfaces ({0})"),
+	'namespace': nls.localize('namespace', "namespaces ({0})"),
+	'package': nls.localize('package', "packages ({0})"),
+	'module': nls.localize('modules', "modules ({0})"),
+	'property': nls.localize('property', "properties ({0})"),
+	'enum': nls.localize('enum', "enumerations ({0})"),
+	'string': nls.localize('string', "strings ({0})"),
+	'rule': nls.localize('rule', "rules ({0})"),
+	'file': nls.localize('file', "files ({0})"),
+	'array': nls.localize('array', "arrays ({0})"),
+	'number': nls.localize('number', "numbers ({0})"),
+	'boolean': nls.localize('boolean', "booleans ({0})"),
+	'object': nls.localize('object', "objects ({0})"),
+	'key': nls.localize('key', "keys ({0})")
+};
 
 export class GotoSymbolAction extends QuickOpenAction {
 
@@ -197,37 +221,12 @@ class OutlineModel extends QuickOpenModel {
 	}
 
 	private renderGroupLabel(type: string, count: number): string {
-
-		const pattern = OutlineModel.getDefaultGroupLabelPatterns()[type];
+		const pattern = NLS_SYMBOL_CACHE[type];
 		if (pattern) {
 			return strings.format(pattern, count);
 		}
 
 		return type;
-	}
-
-	private static getDefaultGroupLabelPatterns(): { [type: string]: string } {
-		const result: { [type: string]: string } = Object.create(null);
-		result['method'] = nls.localize('method', "methods ({0})");
-		result['function'] = nls.localize('function', "functions ({0})");
-		result['constructor'] = <any>nls.localize('_constructor', "constructors ({0})");
-		result['variable'] = nls.localize('variable', "variables ({0})");
-		result['class'] = nls.localize('class', "classes ({0})");
-		result['interface'] = nls.localize('interface', "interfaces ({0})");
-		result['namespace'] = nls.localize('namespace', "namespaces ({0})");
-		result['package'] = nls.localize('package', "packages ({0})");
-		result['module'] = nls.localize('modules', "modules ({0})");
-		result['property'] = nls.localize('property', "properties ({0})");
-		result['enum'] = nls.localize('enum', "enumerations ({0})");
-		result['string'] = nls.localize('string', "strings ({0})");
-		result['rule'] = nls.localize('rule', "rules ({0})");
-		result['file'] = nls.localize('file', "files ({0})");
-		result['array'] = nls.localize('array', "arrays ({0})");
-		result['number'] = nls.localize('number', "numbers ({0})");
-		result['boolean'] = nls.localize('boolean', "booleans ({0})");
-		result['object'] = nls.localize('object', "objects ({0})");
-		result['key'] = nls.localize('key', "keys ({0})");
-		return result;
 	}
 }
 
@@ -362,21 +361,38 @@ export class GotoSymbolHandler extends QuickOpenHandler {
 
 	static readonly ID = 'workbench.picker.filesymbols';
 
-	private outlineToModelCache: { [modelId: string]: OutlineModel; };
 	private rangeHighlightDecorationId: IEditorLineDecoration;
 	private lastKnownEditorViewState: IEditorViewState;
-	private activeOutlineRequest: TPromise<OutlineModel>;
+
+	private cachedOutlineRequest: TPromise<OutlineModel>;
+	private pendingOutlineRequest: CancellationTokenSource;
 
 	constructor(
 		@IEditorService private editorService: IEditorService
 	) {
 		super();
 
-		this.outlineToModelCache = {};
+		this.registerListeners();
 	}
 
-	getResults(searchValue: string): TPromise<QuickOpenModel> {
+	private registerListeners(): void {
+		this.editorService.onDidActiveEditorChange(() => this.onDidActiveEditorChange());
+	}
+
+	private onDidActiveEditorChange(): void {
+		this.clearOutlineRequest();
+
+		this.lastKnownEditorViewState = void 0;
+		this.rangeHighlightDecorationId = void 0;
+	}
+
+	getResults(searchValue: string, token: CancellationToken): TPromise<QuickOpenModel> {
 		searchValue = searchValue.trim();
+
+		// Support to cancel pending outline requests
+		if (!this.pendingOutlineRequest) {
+			this.pendingOutlineRequest = new CancellationTokenSource();
+		}
 
 		// Remember view state to be able to restore on cancel
 		if (!this.lastKnownEditorViewState) {
@@ -385,7 +401,10 @@ export class GotoSymbolHandler extends QuickOpenHandler {
 		}
 
 		// Resolve Outline Model
-		return this.getActiveOutline().then(outline => {
+		return this.getOutline().then(outline => {
+			if (token.isCancellationRequested) {
+				return outline;
+			}
 
 			// Filter by search
 			outline.applyFilter(searchValue);
@@ -459,12 +478,12 @@ export class GotoSymbolHandler extends QuickOpenHandler {
 		return results;
 	}
 
-	private getActiveOutline(): TPromise<OutlineModel> {
-		if (!this.activeOutlineRequest) {
-			this.activeOutlineRequest = this.doGetActiveOutline();
+	private getOutline(): TPromise<OutlineModel> {
+		if (!this.cachedOutlineRequest) {
+			this.cachedOutlineRequest = this.doGetActiveOutline();
 		}
 
-		return this.activeOutlineRequest;
+		return this.cachedOutlineRequest;
 	}
 
 	private doGetActiveOutline(): TPromise<OutlineModel> {
@@ -476,22 +495,9 @@ export class GotoSymbolHandler extends QuickOpenHandler {
 			}
 
 			if (model && types.isFunction((<ITextModel>model).getLanguageIdentifier)) {
-
-				// Ask cache first
-				const modelId = (<ITextModel>model).id;
-				if (this.outlineToModelCache[modelId]) {
-					return TPromise.as(this.outlineToModelCache[modelId]);
-				}
-
-				return getDocumentSymbols(<ITextModel>model).then(entries => {
-
-					const model = new OutlineModel(this.toQuickOpenEntries(entries));
-
-					this.outlineToModelCache = {}; // Clear cache, only keep 1 outline
-					this.outlineToModelCache[modelId] = model;
-
-					return model;
-				});
+				return TPromise.wrap(asThenable(() => getDocumentSymbols(<ITextModel>model, true, this.pendingOutlineRequest.token)).then(entries => {
+					return new OutlineModel(this.toQuickOpenEntries(entries));
+				}));
 			}
 		}
 
@@ -545,7 +551,7 @@ export class GotoSymbolHandler extends QuickOpenHandler {
 		});
 	}
 
-	clearDecorations(): void {
+	private clearDecorations(): void {
 		if (this.rangeHighlightDecorationId) {
 			this.editorService.visibleControls.forEach(editor => {
 				if (editor.group.id === this.rangeHighlightDecorationId.groupId) {
@@ -565,8 +571,8 @@ export class GotoSymbolHandler extends QuickOpenHandler {
 
 	onClose(canceled: boolean): void {
 
-		// Clear Cache
-		this.outlineToModelCache = {};
+		// Cancel any pending/cached outline request now
+		this.clearOutlineRequest();
 
 		// Clear Highlight Decorations if present
 		this.clearDecorations();
@@ -577,9 +583,18 @@ export class GotoSymbolHandler extends QuickOpenHandler {
 			if (activeTextEditorWidget) {
 				activeTextEditorWidget.restoreViewState(this.lastKnownEditorViewState);
 			}
+
+			this.lastKnownEditorViewState = null;
+		}
+	}
+
+	private clearOutlineRequest(): void {
+		if (this.pendingOutlineRequest) {
+			this.pendingOutlineRequest.cancel();
+			this.pendingOutlineRequest.dispose();
+			this.pendingOutlineRequest = void 0;
 		}
 
-		this.lastKnownEditorViewState = null;
-		this.activeOutlineRequest = null;
+		this.cachedOutlineRequest = null;
 	}
 }

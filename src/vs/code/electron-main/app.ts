@@ -19,7 +19,7 @@ import { Server as ElectronIPCServer } from 'vs/base/parts/ipc/electron-main/ipc
 import { Server, connect, Client } from 'vs/base/parts/ipc/node/ipc.net';
 import { SharedProcess } from 'vs/code/electron-main/sharedProcess';
 import { Mutex } from 'windows-mutex';
-import { LaunchService, LaunchChannel, ILaunchService } from 'vs/code/electron-main/launch';
+import { LaunchService, LaunchChannel, ILaunchService } from 'vs/platform/launch/electron-main/launchService';
 import { IInstantiationService, ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { ServiceCollection } from 'vs/platform/instantiation/common/serviceCollection';
 import { SyncDescriptor } from 'vs/platform/instantiation/common/descriptors';
@@ -45,7 +45,7 @@ import { IWindowsMainService } from 'vs/platform/windows/electron-main/windows';
 import { IHistoryMainService } from 'vs/platform/history/common/history';
 import { isUndefinedOrNull } from 'vs/base/common/types';
 import { KeyboardLayoutMonitor } from 'vs/code/electron-main/keyboard';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import { WorkspacesChannel } from 'vs/platform/workspaces/node/workspacesIpc';
 import { IWorkspacesMainService } from 'vs/platform/workspaces/common/workspaces';
 import { getMachineId } from 'vs/base/node/id';
@@ -68,6 +68,7 @@ import { hasArgs } from 'vs/platform/environment/node/argv';
 import { RunOnceScheduler } from 'vs/base/common/async';
 import { registerContextMenuListener } from 'vs/base/parts/contextmenu/electron-main/contextmenu';
 import { THEME_STORAGE_KEY, THEME_BG_STORAGE_KEY } from 'vs/code/electron-main/theme';
+import { nativeSep } from 'vs/base/common/paths';
 
 export class CodeApplication {
 
@@ -104,7 +105,6 @@ export class CodeApplication {
 		errors.setUnexpectedErrorHandler(err => this.onUnexpectedError(err));
 		process.on('uncaughtException', err => this.onUnexpectedError(err));
 		process.on('unhandledRejection', (reason: any, promise: Promise<any>) => errors.onUnexpectedError(reason));
-		process.on('SIGPIPE', () => this.onUnexpectedError(new Error('Unexpected SIGPIPE'))); // workaround https://github.com/electron/electron/issues/13254
 
 		// Contextmenu via IPC support
 		registerContextMenuListener();
@@ -266,9 +266,9 @@ export class CodeApplication {
 			return true;
 		}
 
-		const srcUri: any = URI.parse(source.toLowerCase()).toString();
-
-		return srcUri.startsWith(URI.file(this.environmentService.appRoot.toLowerCase()).toString());
+		const srcUri: any = URI.parse(source).fsPath.toLowerCase();
+		const rootUri = URI.file(this.environmentService.appRoot).fsPath.toLowerCase();
+		return srcUri.startsWith(rootUri + nativeSep);
 	}
 
 	private onUnexpectedError(err: Error): void {
@@ -442,7 +442,7 @@ export class CodeApplication {
 		const windowsService = accessor.get(IWindowsService);
 		const windowsChannel = new WindowsChannel(windowsService);
 		this.electronIpcServer.registerChannel('windows', windowsChannel);
-		this.sharedProcessClient.done(client => client.registerChannel('windows', windowsChannel));
+		this.sharedProcessClient.then(client => client.registerChannel('windows', windowsChannel));
 
 		const menubarService = accessor.get(IMenubarService);
 		const menubarChannel = new MenubarChannel(menubarService);
@@ -455,7 +455,7 @@ export class CodeApplication {
 		// Log level management
 		const logLevelChannel = new LogLevelSetterChannel(accessor.get(ILogService));
 		this.electronIpcServer.registerChannel('loglevel', logLevelChannel);
-		this.sharedProcessClient.done(client => client.registerChannel('loglevel', logLevelChannel));
+		this.sharedProcessClient.then(client => client.registerChannel('loglevel', logLevelChannel));
 
 		// Lifecycle
 		this.lifecycleService.ready();
@@ -560,7 +560,15 @@ export class CodeApplication {
 		// Install Menu
 		const instantiationService = accessor.get(IInstantiationService);
 		const configurationService = accessor.get(IConfigurationService);
-		if (platform.isMacintosh || configurationService.getValue<string>('window.titleBarStyle') !== 'custom') {
+
+		let createNativeMenu = true;
+		if (platform.isLinux) {
+			createNativeMenu = configurationService.getValue<string>('window.titleBarStyle') !== 'custom';
+		} else if (platform.isWindows) {
+			createNativeMenu = configurationService.getValue<string>('window.titleBarStyle') === 'native';
+		}
+
+		if (createNativeMenu) {
 			instantiationService.createInstance(CodeMenu);
 		}
 

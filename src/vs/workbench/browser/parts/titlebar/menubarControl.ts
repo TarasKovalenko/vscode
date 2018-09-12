@@ -29,7 +29,7 @@ import { IRecentlyOpened } from 'vs/platform/history/common/history';
 import { IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
 import { RunOnceScheduler } from 'vs/base/common/async';
 import { MENUBAR_SELECTION_FOREGROUND, MENUBAR_SELECTION_BACKGROUND, MENUBAR_SELECTION_BORDER, TITLE_BAR_ACTIVE_FOREGROUND, TITLE_BAR_INACTIVE_FOREGROUND, MENU_BACKGROUND, MENU_FOREGROUND, MENU_SELECTION_BACKGROUND, MENU_SELECTION_FOREGROUND, MENU_SELECTION_BORDER } from 'vs/workbench/common/theme';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import { ILabelService } from 'vs/platform/label/common/label';
 import { foreground } from 'vs/platform/theme/common/colorRegistry';
 import { IUpdateService, StateType } from 'vs/platform/update/common/update';
@@ -112,11 +112,11 @@ export class MenubarControl extends Disposable {
 	private mnemonics: Map<KeyCode, number>;
 
 	private _onVisibilityChange: Emitter<boolean>;
+	private _onFocusStateChange: Emitter<boolean>;
 
 	private static MAX_MENU_RECENT_ENTRIES = 10;
 
 	constructor(
-		id: string,
 		@IThemeService themeService: IThemeService,
 		@IMenuService private menuService: IMenuService,
 		@IWindowService private windowService: IWindowService,
@@ -153,6 +153,7 @@ export class MenubarControl extends Disposable {
 		}));
 
 		this._onVisibilityChange = this._register(new Emitter<boolean>());
+		this._onFocusStateChange = this._register(new Emitter<boolean>());
 
 		if (isMacintosh || this.currentTitlebarStyleSetting !== 'custom') {
 			for (let topLevelMenuName of Object.keys(this.topLevelMenus)) {
@@ -306,6 +307,7 @@ export class MenubarControl extends Disposable {
 		}
 
 		this._focusState = value;
+		this._onFocusStateChange.fire(this.focusState >= MenubarState.FOCUSED);
 	}
 
 	private get mnemonicsInUse(): boolean {
@@ -416,14 +418,16 @@ export class MenubarControl extends Disposable {
 	}
 
 	private updateMnemonicVisibility(visible: boolean): void {
-		this.customMenus.forEach(customMenu => {
-			if (customMenu.titleElement.children.length) {
-				let child = customMenu.titleElement.children.item(0) as HTMLElement;
-				if (child) {
-					child.style.textDecoration = visible ? 'underline' : null;
+		if (this.customMenus) {
+			this.customMenus.forEach(customMenu => {
+				if (customMenu.titleElement.children.length) {
+					let child = customMenu.titleElement.children.item(0) as HTMLElement;
+					if (child) {
+						child.style.textDecoration = visible ? 'underline' : null;
+					}
 				}
-			}
-		});
+			});
+		}
 	}
 
 	private onRecentlyOpenedChange(): void {
@@ -455,7 +459,7 @@ export class MenubarControl extends Disposable {
 			this._register(browser.onDidChangeFullscreen(() => this.onDidChangeFullscreen()));
 
 			// Listen for alt key presses
-			this._register(ModifierKeyEmitter.getInstance().event(this.onModifierKeyToggled, this));
+			this._register(ModifierKeyEmitter.getInstance(this.windowService).event(this.onModifierKeyToggled, this));
 
 			// Listen for window focus changes
 			this._register(this.windowService.onDidChangeFocus(e => this.onDidChangeWindowFocus(e)));
@@ -593,28 +597,28 @@ export class MenubarControl extends Disposable {
 
 			case StateType.Idle:
 				const windowId = this.windowService.getCurrentWindowId();
-				return new Action('update.check', nls.localize('checkForUpdates', "Check for Updates..."), undefined, true, () =>
+				return new Action('update.check', nls.localize({ key: 'checkForUpdates', comment: ['&& denotes a mnemonic'] }, "Check for &&Updates..."), undefined, true, () =>
 					this.updateService.checkForUpdates({ windowId }));
 
 			case StateType.CheckingForUpdates:
 				return new Action('update.checking', nls.localize('checkingForUpdates', "Checking For Updates..."), undefined, false);
 
 			case StateType.AvailableForDownload:
-				return new Action('update.downloadNow', nls.localize('download now', "Download Now"), null, true, () =>
+				return new Action('update.downloadNow', nls.localize({ key: 'download now', comment: ['&& denotes a mnemonic'] }, "D&&ownload Now"), null, true, () =>
 					this.updateService.downloadUpdate());
 
 			case StateType.Downloading:
 				return new Action('update.downloading', nls.localize('DownloadingUpdate', "Downloading Update..."), undefined, false);
 
 			case StateType.Downloaded:
-				return new Action('update.install', nls.localize('installUpdate...', "Install Update..."), undefined, true, () =>
+				return new Action('update.install', nls.localize({ key: 'installUpdate...', comment: ['&& denotes a mnemonic'] }, "Install &&Update..."), undefined, true, () =>
 					this.updateService.applyUpdate());
 
 			case StateType.Updating:
 				return new Action('update.updating', nls.localize('installingUpdate', "Installing Update..."), undefined, false);
 
 			case StateType.Ready:
-				return new Action('update.restart', nls.localize('restartToUpdate', "Restart to Update..."), undefined, true, () =>
+				return new Action('update.restart', nls.localize({ key: 'restartToUpdate', comment: ['&& denotes a mnemonic'] }, "Restart to &&Update..."), undefined, true, () =>
 					this.updateService.quitAndInstall());
 		}
 	}
@@ -792,11 +796,6 @@ export class MenubarControl extends Disposable {
 					e.stopPropagation();
 				}));
 
-				this._register(DOM.addDisposableListener(this.customMenus[menuIndex].buttonElement, DOM.EventType.CLICK, (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-				}));
-
 				this._register(DOM.addDisposableListener(this.customMenus[menuIndex].buttonElement, DOM.EventType.MOUSE_ENTER, () => {
 					if (this.isOpen && !this.isCurrentMenu(menuIndex)) {
 						this.customMenus[menuIndex].buttonElement.focus();
@@ -835,8 +834,8 @@ export class MenubarControl extends Disposable {
 				}
 			}));
 
-			this._register(DOM.addDisposableListener(window, DOM.EventType.CLICK, () => {
-				// This click is outside the menubar so it counts as a focus out
+			this._register(DOM.addDisposableListener(window, DOM.EventType.MOUSE_DOWN, () => {
+				// This mouse event is outside the menubar so it counts as a focus out
 				if (this.isFocused) {
 					this.setUnfocusedState();
 				}
@@ -1104,6 +1103,10 @@ export class MenubarControl extends Disposable {
 		return this._onVisibilityChange.event;
 	}
 
+	public get onFocusStateChange(): Event<boolean> {
+		return this._onFocusStateChange.event;
+	}
+
 	public layout(dimension: DOM.Dimension) {
 		if (this.container) {
 			this.container.style.height = `${dimension.height}px`;
@@ -1167,7 +1170,7 @@ registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
 		collector.addRule(`
 			.monaco-workbench .menubar > .menubar-menu-button.open,
 			.monaco-workbench .menubar > .menubar-menu-button:focus,
-			.monaco-workbench .menubar > .menubar-menu-button:hover {
+			.monaco-workbench .menubar:not(:focus-within) > .menubar-menu-button:hover {
 				color: ${menubarSelectedFgColor};
 			}
 		`);
@@ -1178,7 +1181,7 @@ registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
 		collector.addRule(`
 			.monaco-workbench .menubar > .menubar-menu-button.open,
 			.monaco-workbench .menubar > .menubar-menu-button:focus,
-			.monaco-workbench .menubar > .menubar-menu-button:hover {
+			.monaco-workbench .menubar:not(:focus-within) > .menubar-menu-button:hover {
 				background-color: ${menubarSelectedBgColor};
 			}
 		`);
@@ -1236,7 +1239,8 @@ registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
 				color: ${menuFgColor};
 			}
 
-			.monaco-shell .monaco-menu .monaco-action-bar.vertical .action-item .action-menu-item .menu-item-check {
+			.monaco-shell .monaco-menu .monaco-action-bar.vertical .action-item .action-menu-item .menu-item-check,
+			.monaco-shell .monaco-menu .monaco-action-bar.vertical .action-item .action-menu-item .submenu-indicator {
 				background-color: ${menuFgColor};
 			}
 		`);
@@ -1258,7 +1262,8 @@ registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
 				color: ${selectedMenuItemFgColor};
 			}
 
-		.monaco-shell .monaco-menu .monaco-action-bar.vertical .action-item.focused .action-menu-item .menu-item-check {
+		.monaco-shell .monaco-menu .monaco-action-bar.vertical .action-item.focused .action-menu-item .menu-item-check,
+		.monaco-shell .monaco-menu .monaco-action-bar.vertical .action-item.focused .action-menu-item .submenu-indicator {
 			background-color: ${selectedMenuItemFgColor};
 		}
 		`);
@@ -1291,7 +1296,7 @@ class ModifierKeyEmitter extends Emitter<IModifierKeyStatus> {
 	private _keyStatus: IModifierKeyStatus;
 	private static instance: ModifierKeyEmitter;
 
-	private constructor() {
+	private constructor(windowService: IWindowService) {
 		super();
 
 		this._keyStatus = {
@@ -1350,20 +1355,22 @@ class ModifierKeyEmitter extends Emitter<IModifierKeyStatus> {
 			this._keyStatus.lastKeyPressed = undefined;
 		}));
 
-		this._subscriptions.push(domEvent(window, 'blur')(e => {
-			this._keyStatus.lastKeyPressed = undefined;
-			this._keyStatus.lastKeyReleased = undefined;
-			this._keyStatus.altKey = false;
-			this._keyStatus.shiftKey = false;
-			this._keyStatus.shiftKey = false;
+		this._subscriptions.push(windowService.onDidChangeFocus(focused => {
+			if (!focused) {
+				this._keyStatus.lastKeyPressed = undefined;
+				this._keyStatus.lastKeyReleased = undefined;
+				this._keyStatus.altKey = false;
+				this._keyStatus.shiftKey = false;
+				this._keyStatus.shiftKey = false;
 
-			this.fire(this._keyStatus);
+				this.fire(this._keyStatus);
+			}
 		}));
 	}
 
-	static getInstance() {
+	static getInstance(windowService: IWindowService) {
 		if (!ModifierKeyEmitter.instance) {
-			ModifierKeyEmitter.instance = new ModifierKeyEmitter();
+			ModifierKeyEmitter.instance = new ModifierKeyEmitter(windowService);
 		}
 
 		return ModifierKeyEmitter.instance;

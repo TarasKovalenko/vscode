@@ -5,7 +5,6 @@
 
 'use strict';
 
-import 'vs/css!./media/searchview';
 import * as dom from 'vs/base/browser/dom';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import * as aria from 'vs/base/browser/ui/aria/aria';
@@ -14,14 +13,16 @@ import { MessageType } from 'vs/base/browser/ui/inputbox/inputBox';
 import { IAction } from 'vs/base/common/actions';
 import { Delayer } from 'vs/base/common/async';
 import * as errors from 'vs/base/common/errors';
-import { debounceEvent, Emitter, anyEvent } from 'vs/base/common/event';
+import { anyEvent, debounceEvent, Emitter } from 'vs/base/common/event';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
+import { dispose, IDisposable } from 'vs/base/common/lifecycle';
 import * as paths from 'vs/base/common/paths';
 import * as env from 'vs/base/common/platform';
 import * as strings from 'vs/base/common/strings';
-import URI from 'vs/base/common/uri';
+import { URI } from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { ITree } from 'vs/base/parts/tree/browser/tree';
+import 'vs/css!./media/searchview';
 import { ICodeEditor, isCodeEditor, isDiffEditor } from 'vs/editor/browser/editorBrowser';
 import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 import * as nls from 'vs/nls';
@@ -46,7 +47,6 @@ import { Viewlet } from 'vs/workbench/browser/viewlet';
 import { Scope } from 'vs/workbench/common/memento';
 import { IPanel } from 'vs/workbench/common/panel';
 import { IViewlet } from 'vs/workbench/common/viewlet';
-import { PreferencesEditor } from 'vs/workbench/parts/preferences/browser/preferencesEditor';
 import { ExcludePatternInputWidget, PatternInputWidget } from 'vs/workbench/parts/search/browser/patternInputWidget';
 import { CancelSearchAction, ClearSearchResultsAction, CollapseDeepestExpandedLevelAction, RefreshAction } from 'vs/workbench/parts/search/browser/searchActions';
 import { SearchAccessibilityProvider, SearchDataSource, SearchFilter, SearchRenderer, SearchSorter, SearchTreeController } from 'vs/workbench/parts/search/browser/searchResultsView';
@@ -57,10 +57,10 @@ import { IReplaceService } from 'vs/workbench/parts/search/common/replace';
 import { getOutOfWorkspaceEditorResources } from 'vs/workbench/parts/search/common/search';
 import { FileMatch, FileMatchOrMatch, FolderMatch, IChangeEvent, ISearchWorkbenchService, Match, SearchModel } from 'vs/workbench/parts/search/common/searchModel';
 import { ACTIVE_GROUP, IEditorService, SIDE_GROUP } from 'vs/workbench/services/editor/common/editorService';
+import { IEditorGroupsService } from 'vs/workbench/services/group/common/editorGroupsService';
 import { IPartService } from 'vs/workbench/services/part/common/partService';
-import { IPreferencesService } from 'vs/workbench/services/preferences/common/preferences';
+import { IPreferencesService, ISettingsEditorOptions } from 'vs/workbench/services/preferences/common/preferences';
 import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
-import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 
 const $ = dom.$;
 
@@ -134,7 +134,8 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 		@IUntitledEditorService private untitledEditorService: IUntitledEditorService,
 		@IPreferencesService private preferencesService: IPreferencesService,
 		@IThemeService protected themeService: IThemeService,
-		@ISearchHistoryService private searchHistoryService: ISearchHistoryService
+		@ISearchHistoryService private searchHistoryService: ISearchHistoryService,
+		@IEditorGroupsService private editorGroupsService: IEditorGroupsService
 	) {
 		super(VIEW_ID, partService, telemetryService, themeService);
 
@@ -731,10 +732,15 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 	public focus(): void {
 		super.focus();
 
+		const updatedText = this.updateTextFromSelection();
+		this.searchWidget.focus(undefined, undefined, updatedText);
+	}
+
+	public updateTextFromSelection(allowUnselectedWord = true): boolean {
 		let updatedText = false;
 		const seedSearchStringFromSelection = this.configurationService.getValue<IEditorOptions>('editor').find.seedSearchStringFromSelection;
 		if (seedSearchStringFromSelection) {
-			let selectedText = this.getSearchTextFromEditor();
+			let selectedText = this.getSearchTextFromEditor(allowUnselectedWord);
 			if (selectedText) {
 				if (this.searchWidget.searchInput.getRegex()) {
 					selectedText = strings.escapeRegExpCharacters(selectedText);
@@ -745,7 +751,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 			}
 		}
 
-		this.searchWidget.focus(undefined, undefined, updatedText);
+		return updatedText;
 	}
 
 	public focusNextInputBox(): void {
@@ -898,7 +904,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 		}
 	}
 
-	private getSearchTextFromEditor(): string {
+	private getSearchTextFromEditor(allowUnselectedWord: boolean): string {
 		if (!this.editorService.activeEditor) {
 			return null;
 		}
@@ -921,7 +927,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 			return null;
 		}
 
-		if (range.isEmpty() && !this.searchWidget.searchInput.getValue()) {
+		if (range.isEmpty() && !this.searchWidget.searchInput.getValue() && allowUnselectedWord) {
 			const wordAtPosition = activeTextEditorWidget.getModel().getWordAtPosition(range.getStartPosition());
 			if (wordAtPosition) {
 				return wordAtPosition.word;
@@ -1078,6 +1084,13 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 		const excludePattern = this.inputPatternExcludes.getValue();
 		const includePattern = this.inputPatternIncludes.getValue();
 
+		// Need the full match line to correctly calculate replace text, if this is a search/replace with regex group references ($1, $2, ...).
+		// 10000 chars is enough to avoid sending huge amounts of text around, if you do a replace with a longer match, it may or may not resolve the group refs correctly.
+		// https://github.com/Microsoft/vscode/issues/58374
+		const totalChars = content.isRegExp ? 10000 :
+			this.isWide ? 250 :
+				75;
+
 		const options: IQueryOptions = {
 			extraFileResources: getOutOfWorkspaceEditorResources(this.editorService, this.contextService),
 			maxResults: SearchView.MAX_TEXT_RESULTS,
@@ -1088,7 +1101,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 			previewOptions: {
 				leadingChars: 20,
 				maxLines: 1,
-				totalChars: this.isWide ? 250 : 75
+				totalChars
 			}
 		};
 		const folderResources = this.contextService.getWorkspace().folders;
@@ -1182,7 +1195,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 				}
 
 				return null;
-			}).done(null, errors.onUnexpectedError);
+			});
 
 			this.viewModel.replaceString = this.searchWidget.getReplaceValue();
 
@@ -1245,12 +1258,10 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 					this.messageDisposables.push(dom.addDisposableListener(openSettingsLink, dom.EventType.CLICK, (e: MouseEvent) => {
 						dom.EventHelper.stop(e, false);
 
-						let editorPromise = this.contextService.getWorkbenchState() !== WorkbenchState.EMPTY ? this.preferencesService.openWorkspaceSettings() : this.preferencesService.openGlobalSettings();
-						editorPromise.done(editor => {
-							if (editor instanceof PreferencesEditor) {
-								editor.focusSearch('.exclude');
-							}
-						}, errors.onUnexpectedError);
+						const options: ISettingsEditorOptions = { query: '.exclude' };
+						this.contextService.getWorkbenchState() !== WorkbenchState.EMPTY ?
+							this.preferencesService.openWorkspaceSettings(undefined, options) :
+							this.preferencesService.openGlobalSettings(undefined, options);
 					}));
 				}
 
@@ -1336,7 +1347,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 			const fileCount = this.viewModel.searchResult.fileCount();
 			if (visibleMatches !== fileCount) {
 				visibleMatches = fileCount;
-				this.tree.refresh().done(null, errors.onUnexpectedError);
+				this.tree.refresh();
 
 				this.updateSearchResultCount();
 			}
@@ -1347,7 +1358,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 
 		this.searchWidget.setReplaceAllActionState(false);
 
-		this.viewModel.search(query, onProgress).done(onComplete, onError);
+		this.viewModel.search(query, onProgress).then(onComplete, onError);
 	}
 
 	private updateSearchResultCount(): void {
@@ -1392,7 +1403,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 
 			const actionClass = env.isMacintosh ? OpenFileFolderAction : OpenFolderAction;
 			const action = this.instantiationService.createInstance<string, string, IAction>(actionClass, actionClass.ID, actionClass.LABEL);
-			this.actionRunner.run(action).done(() => {
+			this.actionRunner.run(action).then(() => {
 				action.dispose();
 			}, err => {
 				action.dispose();
@@ -1427,8 +1438,8 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 	}
 
 	public open(element: FileMatchOrMatch, preserveFocus?: boolean, sideBySide?: boolean, pinned?: boolean): TPromise<any> {
-		let selection = this.getSelectionFrom(element);
-		let resource = element instanceof Match ? element.parent().resource() : (<FileMatch>element).resource();
+		const selection = this.getSelectionFrom(element);
+		const resource = element instanceof Match ? element.parent().resource() : (<FileMatch>element).resource();
 		return this.editorService.openEditor({
 			resource: resource,
 			options: {
@@ -1446,6 +1457,8 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 			} else {
 				this.viewModel.searchResult.rangeHighlightDecorations.removeHighlightRange();
 			}
+
+			return this.editorGroupsService.activateGroup(editor.group);
 		}, errors.onUnexpectedError);
 	}
 

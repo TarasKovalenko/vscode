@@ -115,21 +115,13 @@
 	display: none;
 }
 
-.settings-editor.search-mode > .settings-body .settings-tree-container .monaco-tree-wrapper {
-	width: calc(100% - 11px);
-	margin-left: 0px;
-}
-
-.settings-editor.search-mode > .settings-body > .settings-tree-container .setting-measure-container {
-	width: calc(100% - 33px);
-	margin-left: 0px;
-}
-
+.settings-editor.no-toc-search > .settings-body .settings-tree-container .monaco-tree-wrapper,
 .settings-editor.narrow > .settings-body .settings-tree-container .monaco-tree-wrapper {
 	width: calc(100% - 11px);
 	margin-left: 0px;
 }
 
+.settings-editor.no-toc-search > .settings-body > .settings-tree-container .setting-measure-container,
 .settings-editor.narrow > .settings-body > .settings-tree-container .setting-measure-container {
 	width: calc(100% - 33px);
 	margin-left: 0px;
@@ -159,22 +151,27 @@
 	display: none !important;
 }
 
-.settings-editor > .settings-body .settings-tree-container .monaco-toolbar {
-	display: none;
+.settings-editor > .settings-body .settings-tree-container .setting-toolbar-container {
 	position: absolute;
 	left: -23px;
 	top: 11px;
+	bottom: 0px;
+	width: 26px;
 }
 
-.settings-editor > .settings-body .settings-tree-container .monaco-tree-row:hover .monaco-toolbar {
+.settings-editor > .settings-body .settings-tree-container .setting-toolbar-container > .monaco-toolbar {
+	display: none;
+}
+
+.settings-editor > .settings-body .settings-tree-container .monaco-tree-row .setting-toolbar-container:hover > .monaco-toolbar {
 	display: flex;
 }
 
-.settings-editor > .settings-body .settings-tree-container .monaco-tree-row .setting-item.focused .monaco-toolbar {
+.settings-editor > .settings-body .settings-tree-container .monaco-tree-row .setting-item.focused .setting-toolbar-container > .monaco-toolbar {
 	display: flex;
 }
 
-.settings-editor > .settings-body .settings-tree-container .monaco-toolbar .toolbar-toggle-more {
+.settings-editor > .settings-body .settings-tree-container .setting-toolbar-container > .monaco-toolbar .toolbar-toggle-more {
 	display: block;
 	width: 22px;
 	height: 22px;
@@ -198,10 +195,7 @@
 	padding-left: 5px;
 }
 
-.settings-editor.search-mode .settings-toc-container {
-	display: none;
-}
-
+.settings-editor.no-toc-search > .settings-body .settings-toc-container,
 .settings-editor.narrow > .settings-body .settings-toc-container {
 	display: none;
 }
@@ -223,9 +217,14 @@
 }
 
 .settings-editor > .settings-body .settings-toc-container .monaco-tree-row .settings-toc-count {
+	display: none;
 	line-height: 22px;
 	opacity: 0.7;
 	margin-left: 3px;
+}
+
+.settings-editor.search-mode > .settings-body .settings-toc-container .monaco-tree-row .settings-toc-count {
+	display: block;
 }
 
 .settings-editor > .settings-body .settings-toc-container .monaco-tree-row.has-children > .content::before {
@@ -503,4 +502,8 @@
 	margin-bottom: 15px;
 	padding: 10px;
 	border-radius: 5px;
+}
+
+.settings-editor.search-mode > .settings-body .settings-toc-container .monaco-tree-row .settings-toc-count {
+	display: block;
 }

@@ -20,13 +20,13 @@ module.exports = withDefaults({
 		mainFields: ['module', 'main'],
 		extensions: ['.ts', '.js'] // support ts-files and js-files
 	},
-	node: {
-		__dirname: false // leave the __dirname-behaviour intact
-	},
 	output: {
 		filename: 'cssServerMain.js',
 		path: path.join(__dirname, 'dist'),
 		libraryTarget: "commonjs",
+	},
+	externals: {
+		"vscode-nls": 'commonjs vscode-nls',
 	},
 	plugins: [
 		new webpack.NormalModuleReplacementPlugin(
