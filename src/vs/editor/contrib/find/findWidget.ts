@@ -610,7 +610,7 @@ export class FindWidget extends Widget implements IOverlayWidget, IHorizontalSas
 		if (this._toggleSelectionFind.checked) {
 			let selection = this._codeEditor.getSelection();
 			if (selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber) {
-				selection = selection.setEndPosition(selection.endLineNumber - 1, 1);
+				selection = selection.setEndPosition(selection.endLineNumber - 1, this._codeEditor.getModel().getLineMaxColumn(selection.endLineNumber - 1));
 			}
 			let currentMatch = this._state.currentMatch;
 			if (selection.startLineNumber !== selection.endLineNumber) {
@@ -806,7 +806,7 @@ export class FindWidget extends Widget implements IOverlayWidget, IHorizontalSas
 				if (this._toggleSelectionFind.checked) {
 					let selection = this._codeEditor.getSelection();
 					if (selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber) {
-						selection = selection.setEndPosition(selection.endLineNumber - 1, 1);
+						selection = selection.setEndPosition(selection.endLineNumber - 1, this._codeEditor.getModel().getLineMaxColumn(selection.endLineNumber - 1));
 					}
 					if (!selection.isEmpty()) {
 						this._state.change({ searchScope: selection }, true);
@@ -1165,4 +1165,8 @@ registerThemingParticipant((theme, collector) => {
 		}
 	}
 
+	const inputActiveBorder = theme.getColor(inputActiveOptionBorder);
+	if (inputActiveBorder) {
+		collector.addRule(`.monaco-editor .find-widget .monaco-checkbox .checkbox:checked + .label { border: 1px solid ${inputActiveBorder.toString()}; }`);
+	}
 });

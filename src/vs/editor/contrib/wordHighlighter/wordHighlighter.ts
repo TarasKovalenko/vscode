@@ -433,7 +433,6 @@ class WordHighlighter {
 		className: 'wordHighlightStrong',
 		overviewRuler: {
 			color: themeColorFromId(overviewRulerWordHighlightStrongForeground),
-			darkColor: themeColorFromId(overviewRulerWordHighlightStrongForeground),
 			position: OverviewRulerLane.Center
 		}
 	});
@@ -443,7 +442,6 @@ class WordHighlighter {
 		className: 'selectionHighlight',
 		overviewRuler: {
 			color: themeColorFromId(overviewRulerSelectionHighlightForeground),
-			darkColor: themeColorFromId(overviewRulerSelectionHighlightForeground),
 			position: OverviewRulerLane.Center
 		}
 	});
@@ -453,7 +451,6 @@ class WordHighlighter {
 		className: 'wordHighlight',
 		overviewRuler: {
 			color: themeColorFromId(overviewRulerWordHighlightForeground),
-			darkColor: themeColorFromId(overviewRulerWordHighlightForeground),
 			position: OverviewRulerLane.Center
 		}
 	});
@@ -564,9 +561,35 @@ class PrevWordHighlightAction extends WordHighlightNavigationAction {
 	}
 }
 
+class TriggerWordHighlightAction extends EditorAction {
+	constructor() {
+		super({
+			id: 'editor.action.wordHighlight.trigger',
+			label: nls.localize('wordHighlight.trigger.label', "Trigger Symbol Highlight"),
+			alias: 'Trigger Symbol Highlight',
+			precondition: ctxHasWordHighlights.toNegated(),
+			kbOpts: {
+				kbExpr: EditorContextKeys.editorTextFocus,
+				primary: null,
+				weight: KeybindingWeight.EditorContrib
+			}
+		});
+	}
+
+	public run(accessor: ServicesAccessor, editor: ICodeEditor, args: any): void {
+		const controller = WordHighlighterContribution.get(editor);
+		if (!controller) {
+			return;
+		}
+
+		controller.restoreViewState(true);
+	}
+}
+
 registerEditorContribution(WordHighlighterContribution);
 registerEditorAction(NextWordHighlightAction);
 registerEditorAction(PrevWordHighlightAction);
+registerEditorAction(TriggerWordHighlightAction);
 
 registerThemingParticipant((theme, collector) => {
 	const selectionHighlight = theme.getColor(editorSelectionHighlight);

@@ -623,6 +623,19 @@ export function parseLsFiles(raw: string): LsFilesElement[] {
 		.map(([, mode, object, stage, file]) => ({ mode, object, stage, file }));
 }
 
+export interface CommitOptions {
+	all?: boolean;
+	amend?: boolean;
+	signoff?: boolean;
+	signCommit?: boolean;
+	empty?: boolean;
+}
+
+export enum ForcePushMode {
+	Force,
+	ForceWithLease
+}
+
 export class Repository {
 
 	constructor(
@@ -665,7 +678,7 @@ export class Repository {
 		}
 
 		const result = await this.run(args, options);
-		return result.stdout;
+		return result.stdout.trim();
 	}
 
 	async getConfigs(scope: string): Promise<{ key: string; value: string; }[]> {
@@ -913,8 +926,12 @@ export class Repository {
 		await this.run(['update-index', '--cacheinfo', mode, hash, path]);
 	}
 
-	async checkout(treeish: string, paths: string[]): Promise<void> {
+	async checkout(treeish: string, paths: string[], opts: { track?: boolean } = Object.create(null)): Promise<void> {
 		const args = ['checkout', '-q'];
+
+		if (opts.track) {
+			args.push('--track');
+		}
 
 		if (treeish) {
 			args.push(treeish);
@@ -936,7 +953,7 @@ export class Repository {
 		}
 	}
 
-	async commit(message: string, opts: { all?: boolean, amend?: boolean, signoff?: boolean, signCommit?: boolean } = Object.create(null)): Promise<void> {
+	async commit(message: string, opts: CommitOptions = Object.create(null)): Promise<void> {
 		const args = ['commit', '--quiet', '--allow-empty-message', '--file', '-'];
 
 		if (opts.all) {
@@ -953,6 +970,9 @@ export class Repository {
 
 		if (opts.signCommit) {
 			args.push('-S');
+		}
+		if (opts.empty) {
+			args.push('--allow-empty');
 		}
 
 		try {
@@ -1127,19 +1147,21 @@ export class Repository {
 		await this.run(args);
 	}
 
-	async fetch(remote?: string, ref?: string): Promise<void> {
+	async fetch(options: { remote?: string, ref?: string, all?: boolean } = {}): Promise<void> {
 		const args = ['fetch'];
 
-		if (remote) {
-			args.push(remote);
+		if (options.remote) {
+			args.push(options.remote);
 
-			if (ref) {
-				args.push(ref);
+			if (options.ref) {
+				args.push(options.ref);
 			}
+		} else if (options.all) {
+			args.push('--all');
 		}
 
 		try {
-			await this.run(['fetch']);
+			await this.run(args);
 		} catch (err) {
 			if (/No remote repository specified\./.test(err.stderr || '')) {
 				err.gitErrorCode = GitErrorCodes.NoRemoteRepositorySpecified;
@@ -1181,8 +1203,14 @@ export class Repository {
 		}
 	}
 
-	async push(remote?: string, name?: string, setUpstream: boolean = false, tags = false): Promise<void> {
+	async push(remote?: string, name?: string, setUpstream: boolean = false, tags = false, forcePushMode?: ForcePushMode): Promise<void> {
 		const args = ['push'];
+
+		if (forcePushMode === ForcePushMode.ForceWithLease) {
+			args.push('--force-with-lease');
+		} else if (forcePushMode === ForcePushMode.Force) {
+			args.push('--force');
+		}
 
 		if (setUpstream) {
 			args.push('-u');
@@ -1238,9 +1266,17 @@ export class Repository {
 	}
 
 	async popStash(index?: number): Promise<void> {
-		try {
-			const args = ['stash', 'pop'];
+		const args = ['stash', 'pop'];
+		this.popOrApplyStash(args, index);
+	}
 
+	async applyStash(index?: number): Promise<void> {
+		const args = ['stash', 'apply'];
+		this.popOrApplyStash(args, index);
+	}
+
+	private async popOrApplyStash(args: string[], index?: number): Promise<void> {
+		try {
 			if (typeof index === 'number') {
 				args.push(`stash@{${index}}`);
 			}
@@ -1256,6 +1292,7 @@ export class Repository {
 			throw err;
 		}
 	}
+
 
 	getStatus(limit = 5000): Promise<{ status: IFileStatus[]; didHitLimit: boolean; }> {
 		return new Promise<{ status: IFileStatus[]; didHitLimit: boolean; }>((c, e) => {
@@ -1392,6 +1429,10 @@ export class Repository {
 	async getBranch(name: string): Promise<Branch> {
 		if (name === 'HEAD') {
 			return this.getHEAD();
+		} else if (/^@/.test(name)) {
+			const symbolicFullNameResult = await this.run(['rev-parse', '--symbolic-full-name', name]);
+			const symbolicFullName = symbolicFullNameResult.stdout.trim();
+			name = symbolicFullName || name;
 		}
 
 		const result = await this.run(['rev-parse', name]);

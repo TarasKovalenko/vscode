@@ -1187,12 +1187,7 @@ declare namespace monaco.editor {
 		 * CSS color to render in the overview ruler.
 		 * e.g.: rgba(100, 100, 100, 0.5) or a color from the color registry
 		 */
-		darkColor: string | ThemeColor;
-		/**
-		 * CSS color to render in the overview ruler.
-		 * e.g.: rgba(100, 100, 100, 0.5) or a color from the color registry
-		 */
-		hcColor?: string | ThemeColor;
+		darkColor?: string | ThemeColor;
 		/**
 		 * The position in the overview ruler.
 		 */
@@ -3542,6 +3537,11 @@ declare namespace monaco.editor {
 		 * `preference` will also affect the placement.
 		 */
 		position: IPosition;
+		/**
+		 * Optionally, a range can be provided to further
+		 * define the position of the content widget.
+		 */
+		range?: IRange;
 		/**
 		 * Placement preference for position, in order of preference.
 		 */
