@@ -20,6 +20,19 @@ import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService
 import { optional } from 'vs/platform/instantiation/common/instantiation';
 import { Choice, Placeholder, SnippetParser, Text, TextmateSnippet } from './snippetParser';
 import { ClipboardBasedVariableResolver, CompositeSnippetVariableResolver, ModelBasedVariableResolver, SelectionBasedVariableResolver, TimeBasedVariableResolver } from './snippetVariables';
+import { registerThemingParticipant } from 'vs/platform/theme/common/themeService';
+import * as colors from 'vs/platform/theme/common/colorRegistry';
+
+registerThemingParticipant((theme, collector) => {
+
+	function getColorGraceful(name: string) {
+		let color = theme.getColor(name);
+		return color ? color.toString() : 'transparent';
+	}
+
+	collector.addRule(`.monaco-editor .snippet-placeholder { background-color: ${getColorGraceful(colors.snippetTabstopHighlightBackground)}; outline-color: ${getColorGraceful(colors.snippetTabstopHighlightBorder)}; }`);
+	collector.addRule(`.monaco-editor .finish-snippet-placeholder { background-color: ${getColorGraceful(colors.snippetFinalTabstopHighlightBackground)}; outline-color: ${getColorGraceful(colors.snippetFinalTabstopHighlightBorder)}; }`);
+});
 
 export class OneSnippet {
 

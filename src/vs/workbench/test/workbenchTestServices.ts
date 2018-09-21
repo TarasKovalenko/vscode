@@ -222,7 +222,7 @@ export class TestTextFileService extends TextFileService {
 		});
 	}
 
-	public promptForPath(defaultPath: string): TPromise<string> {
+	public promptForPath(resource: URI, defaultPath: string): TPromise<string> {
 		return TPromise.wrap(this.promptPath);
 	}
 
@@ -723,6 +723,10 @@ export class TestEditorService implements EditorServiceImpl {
 
 	isOpen(editor: IEditorInput | IResourceInput | IUntitledResourceInput): boolean {
 		return false;
+	}
+
+	getOpened(editor: IEditorInput | IResourceInput | IUntitledResourceInput): IEditorInput {
+		return void 0;
 	}
 
 	replaceEditors(editors: any, group: any) {

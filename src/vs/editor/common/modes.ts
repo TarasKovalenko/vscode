@@ -288,14 +288,10 @@ export type SuggestionType = 'method'
 /**
  * @internal
  */
-export type SnippetType = 'internal' | 'textmate';
-
-/**
- * @internal
- */
 export interface ISuggestion {
 	label: string;
 	insertText: string;
+	insertTextIsSnippet?: boolean;
 	type: SuggestionType;
 	detail?: string;
 	documentation?: string | IMarkdownString;
@@ -308,7 +304,6 @@ export interface ISuggestion {
 	overwriteAfter?: number;
 	additionalTextEdits?: model.ISingleEditOperation[];
 	command?: Command;
-	snippetType?: SnippetType;
 	noWhitespaceAdjust?: boolean;
 }
 
@@ -1013,6 +1008,8 @@ export interface Comment {
 	readonly body: IMarkdownString;
 	readonly userName: string;
 	readonly gravatar: string;
+	readonly canEdit?: boolean;
+	readonly canDelete?: boolean;
 	readonly command?: Command;
 }
 
@@ -1044,6 +1041,8 @@ export interface DocumentCommentProvider {
 	provideDocumentComments(resource: URI, token: CancellationToken): Promise<CommentInfo>;
 	createNewCommentThread(resource: URI, range: Range, text: string, token: CancellationToken): Promise<CommentThread>;
 	replyToCommentThread(resource: URI, range: Range, thread: CommentThread, text: string, token: CancellationToken): Promise<CommentThread>;
+	editComment(resource: URI, comment: Comment, text: string, token: CancellationToken): Promise<Comment>;
+	deleteComment(resource: URI, comment: Comment, token: CancellationToken): Promise<void>;
 	onDidChangeCommentThreads(): Event<CommentThreadChangedEvent>;
 }
 
@@ -1052,8 +1051,6 @@ export interface DocumentCommentProvider {
  */
 export interface WorkspaceCommentProvider {
 	provideWorkspaceComments(token: CancellationToken): Promise<CommentThread[]>;
-	createNewCommentThread(resource: URI, range: Range, text: string, token: CancellationToken): Promise<CommentThread>;
-	replyToCommentThread(resource: URI, range: Range, thread: CommentThread, text: string, token: CancellationToken): Promise<CommentThread>;
 	onDidChangeCommentThreads(): Event<CommentThreadChangedEvent>;
 }
 
@@ -1192,10 +1189,21 @@ export interface ITokenizationRegistry {
 	register(language: string, support: ITokenizationSupport): IDisposable;
 
 	/**
+	 * Register a promise for a tokenization support.
+	 */
+	registerPromise(language: string, promise: Thenable<ITokenizationSupport>): Thenable<IDisposable>;
+
+	/**
 	 * Get the tokenization support for a language.
 	 * Returns null if not found.
 	 */
 	get(language: string): ITokenizationSupport;
+
+	/**
+	 * Get the promise of a tokenization support for a language.
+	 * `null` is returned if no support is available and no promise for the support has been registered yet.
+	 */
+	getPromise(language: string): Thenable<ITokenizationSupport>;
 
 	/**
 	 * Set the new color map that all tokens will use in their ColorId binary encoded bits for foreground and background.
