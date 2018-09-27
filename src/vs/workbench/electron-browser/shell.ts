@@ -10,7 +10,7 @@ import 'vs/css!./media/shell';
 import * as platform from 'vs/base/common/platform';
 import * as perf from 'vs/base/common/performance';
 import * as aria from 'vs/base/browser/ui/aria/aria';
-import { Disposable, toDisposable } from 'vs/base/common/lifecycle';
+import { Disposable } from 'vs/base/common/lifecycle';
 import * as errors from 'vs/base/common/errors';
 import { toErrorMessage } from 'vs/base/common/errorMessage';
 import product from 'vs/platform/node/product';
@@ -95,10 +95,11 @@ import { OpenerService } from 'vs/editor/browser/services/openerService';
 import { SearchHistoryService } from 'vs/workbench/services/search/node/searchHistoryService';
 import { MulitExtensionManagementService } from 'vs/platform/extensionManagement/node/multiExtensionManagement';
 import { ExtensionManagementServerService } from 'vs/workbench/services/extensions/node/extensionManagementServerService';
-import { DownloadServiceChannel } from 'vs/platform/download/node/downloadIpc';
 import { DefaultURITransformer } from 'vs/base/common/uriIpc';
 import { ExtensionGalleryService } from 'vs/platform/extensionManagement/node/extensionGalleryService';
 import { ILabelService } from 'vs/platform/label/common/label';
+import { IDownloadService } from 'vs/platform/download/common/download';
+import { DownloadService } from 'vs/platform/download/node/downloadService';
 
 /**
  * Services that we require for the Shell
@@ -206,16 +207,12 @@ export class WorkbenchShell extends Disposable {
 				this.logStartupTelemetry(startupInfos);
 
 				// Set lifecycle phase to `Runnning For A Bit` after a short delay
-				let eventuallPhaseTimeoutHandle = setTimeout(() => {
+				let eventuallPhaseTimeoutHandle = browser.runWhenIdle(() => {
 					eventuallPhaseTimeoutHandle = void 0;
 					this.lifecycleService.phase = LifecyclePhase.Eventually;
-				}, 3000);
+				}, 5000);
 
-				this._register(toDisposable(() => {
-					if (eventuallPhaseTimeoutHandle) {
-						clearTimeout(eventuallPhaseTimeoutHandle);
-					}
-				}));
+				this._register(eventuallPhaseTimeoutHandle);
 
 				// localStorage metrics (TODO@Ben remove me later)
 				if (!this.environmentService.extensionTestsPath && this.contextService.getWorkbenchState() === WorkbenchState.FOLDER) {
@@ -348,7 +345,6 @@ export class WorkbenchShell extends Disposable {
 			.then(() => connectNet(this.environmentService.sharedIPCHandle, `window:${this.configuration.windowId}`));
 
 		sharedProcess.then(client => {
-			client.registerChannel('download', new DownloadServiceChannel());
 			client.registerChannel('dialog', instantiationService.createInstance(DialogChannel));
 		});
 
@@ -392,6 +388,7 @@ export class WorkbenchShell extends Disposable {
 		this.lifecycleService = lifecycleService;
 
 		serviceCollection.set(IRequestService, new SyncDescriptor(RequestService));
+		serviceCollection.set(IDownloadService, new SyncDescriptor(DownloadService));
 		serviceCollection.set(IExtensionGalleryService, new SyncDescriptor(ExtensionGalleryService));
 
 		const extensionManagementChannel = getDelayedChannel<IExtensionManagementChannel>(sharedProcess.then(c => c.getChannel('extensions')));

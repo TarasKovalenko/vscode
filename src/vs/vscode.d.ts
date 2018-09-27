@@ -1575,11 +1575,6 @@ declare module 'vscode' {
 		detail?: string;
 
 		/**
-		 * Show this item always
-		 */
-		shouldAlwaysShow?: boolean;
-
-		/**
 		 * Optional flag indicating if this item is picked initially.
 		 * (Only honored when the picker allows multiple selections.)
 		 *
@@ -6229,7 +6224,7 @@ declare module 'vscode' {
 		export function createInputBox(): InputBox;
 
 		/**
-		 * Create a new [output channel](#OutputChannel) with the given name.
+		 * Creates a new [output channel](#OutputChannel) with the given name.
 		 *
 		 * @param name Human-readable string which will be used to represent the channel in the UI.
 		 */

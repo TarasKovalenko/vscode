@@ -14,7 +14,7 @@ import { compare, endsWith, isFalsyOrWhitespace } from 'vs/base/common/strings';
 import { URI } from 'vs/base/common/uri';
 import { Position } from 'vs/editor/common/core/position';
 import { ITextModel } from 'vs/editor/common/model';
-import { ISuggestion, ISuggestResult, ISuggestSupport, LanguageId, SuggestContext, SuggestionType } from 'vs/editor/common/modes';
+import { ISuggestion, ISuggestResult, ISuggestSupport, LanguageId, SuggestContext, SuggestionKind } from 'vs/editor/common/modes';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { SnippetParser } from 'vs/editor/contrib/snippet/snippetParser';
 import { setSnippetSuggestSupport } from 'vs/editor/contrib/suggest/suggest';
@@ -25,10 +25,11 @@ import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
 import { ILifecycleService, LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 import { ILogService } from 'vs/platform/log/common/log';
 import { ISnippetsService } from 'vs/workbench/parts/snippets/electron-browser/snippets.contribution';
-import { Snippet, SnippetFile } from 'vs/workbench/parts/snippets/electron-browser/snippetsFile';
+import { Snippet, SnippetFile, SnippetSource } from 'vs/workbench/parts/snippets/electron-browser/snippetsFile';
 import { ExtensionsRegistry, IExtensionPointUser } from 'vs/workbench/services/extensions/common/extensionsRegistry';
 import { languagesExtPoint } from 'vs/workbench/services/mode/common/workbenchModeService';
 import { IWorkspaceContextService, IWorkspace } from 'vs/platform/workspace/common/workspace';
+import { isFalsyOrEmpty } from 'vs/base/common/arrays';
 
 namespace schema {
 
@@ -208,7 +209,7 @@ class SnippetsService implements ISnippetsService {
 						this._files.get(validContribution.location.toString()).defaultScopes.push(validContribution.language);
 
 					} else {
-						const file = new SnippetFile(validContribution.location, validContribution.language ? [validContribution.language] : undefined, extension.description, this._fileService);
+						const file = new SnippetFile(SnippetSource.Extension, validContribution.location, validContribution.language ? [validContribution.language] : undefined, extension.description, this._fileService);
 						this._files.set(file.location.toString(), file);
 
 						if (this._environmentService.isExtensionDevelopment) {
@@ -257,12 +258,12 @@ class SnippetsService implements ISnippetsService {
 			const snippetFolder = folder.toResource('.vscode');
 			return this._fileService.existsFile(snippetFolder).then(value => {
 				if (value) {
-					this._initFolderSnippets(snippetFolder, true, bucket);
+					this._initFolderSnippets(SnippetSource.Workspace, snippetFolder, bucket);
 				} else {
 					// watch
 					bucket.push(watch(this._fileService, snippetFolder, (type) => {
 						if (type === FileChangeType.ADDED) {
-							this._initFolderSnippets(snippetFolder, true, bucket);
+							this._initFolderSnippets(SnippetSource.Workspace, snippetFolder, bucket);
 						}
 					}));
 				}
@@ -273,24 +274,26 @@ class SnippetsService implements ISnippetsService {
 
 	private _initUserSnippets(): Thenable<any> {
 		const userSnippetsFolder = URI.file(join(this._environmentService.appSettingsHome, 'snippets'));
-		return this._fileService.createFolder(userSnippetsFolder).then(() => this._initFolderSnippets(userSnippetsFolder, false, this._disposables));
+		return this._fileService.createFolder(userSnippetsFolder).then(() => this._initFolderSnippets(SnippetSource.User, userSnippetsFolder, this._disposables));
 	}
 
-	private _initFolderSnippets(folder: URI, onlyCodeSnippets: boolean, bucket: IDisposable[]): Thenable<any> {
+	private _initFolderSnippets(source: SnippetSource, folder: URI, bucket: IDisposable[]): Thenable<any> {
 		const addUserSnippet = (filepath: URI) => {
 			const ext = extname(filepath.path);
-			if (!onlyCodeSnippets && ext === '.json') {
+			if (source === SnippetSource.User && ext === '.json') {
 				const langName = basename(filepath.path, '.json');
-				this._files.set(filepath.toString(), new SnippetFile(filepath, [langName], undefined, this._fileService));
+				this._files.set(filepath.toString(), new SnippetFile(source, filepath, [langName], undefined, this._fileService));
 
 			} else if (ext === '.code-snippets') {
-				this._files.set(filepath.toString(), new SnippetFile(filepath, undefined, undefined, this._fileService));
+				this._files.set(filepath.toString(), new SnippetFile(source, filepath, undefined, undefined, this._fileService));
 			}
 		};
 
 		return this._fileService.resolveFile(folder).then(stat => {
-			for (const entry of stat.children) {
-				addUserSnippet(entry.resource);
+			if (!isFalsyOrEmpty(stat.children)) {
+				for (const entry of stat.children) {
+					addUserSnippet(entry.resource);
+				}
 			}
 		}).then(() => {
 			// watch
@@ -345,7 +348,7 @@ export class SnippetSuggestion implements ISuggestion {
 	overwriteBefore: number;
 	sortText: string;
 	noAutoAccept: boolean;
-	type: SuggestionType;
+	kind: SuggestionKind;
 	insertTextIsSnippet: true;
 
 	constructor(
@@ -356,9 +359,9 @@ export class SnippetSuggestion implements ISuggestion {
 		this.detail = localize('detail.snippet', "{0} ({1})", snippet.description || snippet.name, snippet.source);
 		this.insertText = snippet.body;
 		this.overwriteBefore = overwriteBefore;
-		this.sortText = `${snippet.isFromExtension ? 'z' : 'a'}-${snippet.prefix}`;
+		this.sortText = `${snippet.snippetSource === SnippetSource.Extension ? 'z' : 'a'}-${snippet.prefix}`;
 		this.noAutoAccept = true;
-		this.type = 'snippet';
+		this.kind = SuggestionKind.Snippet;
 		this.insertTextIsSnippet = true;
 	}
 

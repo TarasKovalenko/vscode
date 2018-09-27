@@ -585,16 +585,6 @@ suite('window namespace tests', () => {
 	});
 
 	suite('Terminal', () => {
-		test('createTerminal, Terminal.name', () => {
-			const terminal = window.createTerminal('foo');
-			assert.equal(terminal.name, 'foo');
-
-			assert.throws(() => {
-				(<any>terminal).name = 'bar';
-			}, 'Terminal.name should be readonly');
-			terminal.dispose();
-		});
-
 		test('sendText immediately after createTerminal should not throw', () => {
 			const terminal = window.createTerminal();
 			assert.doesNotThrow(terminal.sendText.bind(terminal, 'echo "foo"'));

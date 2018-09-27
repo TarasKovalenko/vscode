@@ -10,7 +10,7 @@ import * as platform from 'vs/base/common/platform';
 import severity from 'vs/base/common/severity';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Event, Emitter } from 'vs/base/common/event';
-import { ISuggestion } from 'vs/editor/common/modes';
+import { ISuggestion, suggestionKindFromLegacyString } from 'vs/editor/common/modes';
 import { Position } from 'vs/editor/common/core/position';
 import * as aria from 'vs/base/browser/ui/aria/aria';
 import { IDebugSession, IConfig, IThread, IRawModelUpdate, IDebugService, IRawStoppedDetails, State, LoadedSourceEvent, IFunctionBreakpoint, IExceptionBreakpoint, ActualBreakpoints, IBreakpoint, IExceptionInfo, AdapterEndEvent, IDebugger } from 'vs/workbench/parts/debug/common/debug';
@@ -67,6 +67,10 @@ export class DebugSession implements IDebugSession {
 
 	get unresolvedConfiguration(): IConfig {
 		return this._configuration.unresolved;
+	}
+
+	setConfiguration(configuration: { resolved: IConfig, unresolved: IConfig }) {
+		this._configuration = configuration;
 	}
 
 	getName(includeRoot: boolean): string {
@@ -272,7 +276,7 @@ export class DebugSession implements IDebugSession {
 
 	sendExceptionBreakpoints(exbpts: IExceptionBreakpoint[]): TPromise<any> {
 		if (this.raw) {
-			if (this.raw.readyForBreakpoints && exbpts.length > 0) {
+			if (this.raw.readyForBreakpoints) {
 				return this.raw.setExceptionBreakpoints({ filters: exbpts.map(exb => exb.filter) });
 			}
 			return TPromise.as(null);
@@ -457,7 +461,7 @@ export class DebugSession implements IDebugSession {
 							result.push({
 								label: item.label,
 								insertText: item.text || item.label,
-								type: item.type,
+								kind: suggestionKindFromLegacyString(item.type),
 								filterText: item.start && item.length && text.substr(item.start, item.length).concat(item.label),
 								overwriteBefore: item.length || overwriteBefore
 							});

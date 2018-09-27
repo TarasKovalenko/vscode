@@ -304,7 +304,8 @@ export interface MainThreadMessageServiceShape extends IDisposable {
 export interface MainThreadOutputServiceShape extends IDisposable {
 	$register(label: string, log: boolean, file?: UriComponents): Thenable<string>;
 	$append(channelId: string, value: string): Thenable<void>;
-	$clear(channelId: string): Thenable<void>;
+	$update(channelId: string): Thenable<void>;
+	$clear(channelId: string, till: number): Thenable<void>;
 	$reveal(channelId: string, preserveFocus: boolean): Thenable<void>;
 	$close(channelId: string): Thenable<void>;
 	$dispose(channelId: string): Thenable<void>;
@@ -879,6 +880,7 @@ export interface ExtHostTerminalServiceShape {
 	$acceptTerminalProcessId(id: number, processId: number): void;
 	$acceptTerminalProcessData(id: number, data: string): void;
 	$acceptTerminalRendererInput(id: number, data: string): void;
+	$acceptTerminalTitleChange(id: number, name: string): void;
 	$acceptTerminalRendererDimensions(id: number, cols: number, rows: number): void;
 	$createProcess(id: number, shellLaunchConfig: ShellLaunchConfigDto, cols: number, rows: number): void;
 	$acceptProcessInput(id: number, data: string): void;
@@ -988,6 +990,10 @@ export interface ExtHostLogServiceShape {
 	$setLevel(level: LogLevel): void;
 }
 
+export interface ExtHostOutputServiceShape {
+	$setVisibleChannel(channelId: string | null): void;
+}
+
 export interface ExtHostProgressShape {
 	$acceptProgressCanceled(handle: number): void;
 }
@@ -996,7 +1002,7 @@ export interface ExtHostCommentsShape {
 	$provideDocumentComments(handle: number, document: UriComponents): Thenable<modes.CommentInfo>;
 	$createNewCommentThread(handle: number, document: UriComponents, range: IRange, text: string): Thenable<modes.CommentThread>;
 	$replyToCommentThread(handle: number, document: UriComponents, range: IRange, commentThread: modes.CommentThread, text: string): Thenable<modes.CommentThread>;
-	$editComment(handle: number, document: UriComponents, comment: modes.Comment, text: string): Thenable<modes.Comment>;
+	$editComment(handle: number, document: UriComponents, comment: modes.Comment, text: string): Thenable<void>;
 	$deleteComment(handle: number, document: UriComponents, comment: modes.Comment): Thenable<void>;
 	$provideWorkspaceComments(handle: number): Thenable<modes.CommentThread[]>;
 }
@@ -1065,5 +1071,6 @@ export const ExtHostContext = {
 	ExtHostWebviews: createExtId<ExtHostWebviewsShape>('ExtHostWebviews'),
 	ExtHostProgress: createMainId<ExtHostProgressShape>('ExtHostProgress'),
 	ExtHostComments: createMainId<ExtHostCommentsShape>('ExtHostComments'),
-	ExtHostUrls: createExtId<ExtHostUrlsShape>('ExtHostUrls')
+	ExtHostUrls: createExtId<ExtHostUrlsShape>('ExtHostUrls'),
+	ExtHostOutputService: createMainId<ExtHostOutputServiceShape>('ExtHostOutputService'),
 };

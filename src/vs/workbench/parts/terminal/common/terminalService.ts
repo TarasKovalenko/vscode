@@ -44,8 +44,8 @@ export abstract class TerminalService implements ITerminalService {
 	public get onInstanceDimensionsChanged(): Event<ITerminalInstance> { return this._onInstanceDimensionsChanged.event; }
 	protected readonly _onInstancesChanged: Emitter<void> = new Emitter<void>();
 	public get onInstancesChanged(): Event<void> { return this._onInstancesChanged.event; }
-	protected readonly _onInstanceTitleChanged: Emitter<string> = new Emitter<string>();
-	public get onInstanceTitleChanged(): Event<string> { return this._onInstanceTitleChanged.event; }
+	protected readonly _onInstanceTitleChanged: Emitter<ITerminalInstance> = new Emitter<ITerminalInstance>();
+	public get onInstanceTitleChanged(): Event<ITerminalInstance> { return this._onInstanceTitleChanged.event; }
 	protected readonly _onActiveInstanceChanged: Emitter<ITerminalInstance> = new Emitter<ITerminalInstance>();
 	public get onActiveInstanceChanged(): Event<ITerminalInstance> { return this._onActiveInstanceChanged.event; }
 	protected readonly _onTabDisposed: Emitter<ITerminalTab> = new Emitter<ITerminalTab>();
@@ -83,6 +83,7 @@ export abstract class TerminalService implements ITerminalService {
 	}
 
 	protected abstract _showTerminalCloseConfirmation(): TPromise<boolean>;
+	protected abstract _showNotEnoughSpaceToast(): void;
 	public abstract createTerminal(shell?: IShellLaunchConfig, wasNewTerminalAction?: boolean): ITerminalInstance;
 	public abstract createTerminalRenderer(name: string): ITerminalInstance;
 	public abstract createInstance(terminalFocusContextKey: IContextKey<boolean>, configHelper: ITerminalConfigHelper, container: HTMLElement, shellLaunchConfig: IShellLaunchConfig, doCreateProcess: boolean): ITerminalInstance;
@@ -263,10 +264,14 @@ export abstract class TerminalService implements ITerminalService {
 		}
 
 		const instance = tab.split(this._terminalFocusContextKey, this.configHelper, shellLaunchConfig);
-		this._initInstanceListeners(instance);
-		this._onInstancesChanged.fire();
+		if (instance) {
+			this._initInstanceListeners(instance);
+			this._onInstancesChanged.fire();
 
-		this._terminalTabs.forEach((t, i) => t.setVisible(i === this._activeTabIndex));
+			this._terminalTabs.forEach((t, i) => t.setVisible(i === this._activeTabIndex));
+		} else {
+			this._showNotEnoughSpaceToast();
+		}
 	}
 
 	protected _initInstanceListeners(instance: ITerminalInstance): void {

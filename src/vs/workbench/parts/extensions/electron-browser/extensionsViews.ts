@@ -32,7 +32,7 @@ import { IModeService } from 'vs/editor/common/services/modeService';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { CountBadge } from 'vs/base/browser/ui/countBadge/countBadge';
 import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
-import { InstallWorkspaceRecommendedExtensionsAction, ConfigureWorkspaceFolderRecommendedExtensionsAction } from 'vs/workbench/parts/extensions/electron-browser/extensionsActions';
+import { InstallWorkspaceRecommendedExtensionsAction, ConfigureWorkspaceFolderRecommendedExtensionsAction, ManageExtensionAction } from 'vs/workbench/parts/extensions/electron-browser/extensionsActions';
 import { WorkbenchPagedList } from 'vs/platform/list/browser/listService';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { INotificationService } from 'vs/platform/notification/common/notification';
@@ -40,6 +40,8 @@ import { ViewletPanel, IViewletPanelOptions } from 'vs/workbench/browser/parts/v
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { distinct } from 'vs/base/common/arrays';
 import { IExperimentService, IExperiment, ExperimentActionType } from 'vs/workbench/parts/experiments/node/experimentService';
+import { alert } from 'vs/base/browser/ui/aria/aria';
+import { IListContextMenuEvent } from 'vs/base/browser/ui/list/list';
 
 export class ExtensionsListView extends ViewletPanel {
 
@@ -92,6 +94,7 @@ export class ExtensionsListView extends ViewletPanel {
 			ariaLabel: localize('extensions', "Extensions"),
 			multipleSelectionSupport: false
 		}) as WorkbenchPagedList<IExtension>;
+		this.list.onContextMenu(e => this.onContextMenu(e), this, this.disposables);
 		this.disposables.push(this.list);
 
 		chain(this.list.onOpen)
@@ -176,6 +179,19 @@ export class ExtensionsListView extends ViewletPanel {
 		const emptyModel = new PagedModel([]);
 		this.setModel(emptyModel);
 		return TPromise.as(emptyModel);
+	}
+
+	private onContextMenu(e: IListContextMenuEvent<IExtension>): void {
+		if (e.element) {
+			const manageExtensionAction = this.instantiationService.createInstance(ManageExtensionAction);
+			manageExtensionAction.extension = e.element;
+			if (manageExtensionAction.enabled) {
+				this.contextMenuService.showContextMenu({
+					getAnchor: () => e.anchor,
+					getActions: () => TPromise.as(manageExtensionAction.actionItem.getActions())
+				});
+			}
+		}
 	}
 
 	private async queryLocal(query: Query, options: IQueryOptions): Promise<IPagedModel<IExtension>> {
@@ -599,6 +615,9 @@ export class ExtensionsListView extends ViewletPanel {
 
 			if (count === 0 && this.isVisible()) {
 				this.messageBox.textContent = isGalleryError ? localize('galleryError', "We cannot connect to the Extensions Marketplace at this time, please try again later.") : localize('no extensions found', "No extensions found.");
+				if (isGalleryError) {
+					alert(this.messageBox.textContent);
+				}
 			} else {
 				this.messageBox.textContent = '';
 			}

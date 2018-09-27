@@ -15,7 +15,7 @@ import { EditOperation } from 'vs/editor/common/core/editOperation';
 import { Range } from 'vs/editor/common/core/range';
 import { IEditorContribution, ScrollType, Handler } from 'vs/editor/common/editorCommon';
 import { EditorContextKeys } from 'vs/editor/common/editorContextKeys';
-import { ISuggestion } from 'vs/editor/common/modes';
+import { ISuggestion, ISuggestSupport } from 'vs/editor/common/modes';
 import { SnippetController2 } from 'vs/editor/contrib/snippet/snippetController2';
 import { SnippetParser } from 'vs/editor/contrib/snippet/snippetParser';
 import { SuggestMemories } from 'vs/editor/contrib/suggest/suggestMemory';
@@ -32,6 +32,7 @@ import { State, SuggestModel } from './suggestModel';
 import { ISelectedSuggestion, SuggestWidget } from './suggestWidget';
 import { WordContextKey } from 'vs/editor/contrib/suggest/wordContextKey';
 import { once, anyEvent } from 'vs/base/common/event';
+import { IEditorWorkerService } from 'vs/editor/common/services/editorWorkerService';
 
 class AcceptOnCharacterOracle {
 
@@ -97,12 +98,13 @@ export class SuggestController implements IEditorContribution {
 
 	constructor(
 		private _editor: ICodeEditor,
+		@IEditorWorkerService editorWorker: IEditorWorkerService,
 		@ICommandService private readonly _commandService: ICommandService,
 		@IContextKeyService private readonly _contextKeyService: IContextKeyService,
 		@ITelemetryService private readonly _telemetryService: ITelemetryService,
 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
 	) {
-		this._model = new SuggestModel(this._editor);
+		this._model = new SuggestModel(this._editor, editorWorker);
 		this._memory = _instantiationService.createInstance(SuggestMemories, this._editor.getConfiguration().contribInfo.suggestSelection);
 
 		this._alternatives = new SuggestAlternatives(this._editor, item => this._onDidSelectItem(item, false, false), this._contextKeyService);
@@ -276,7 +278,7 @@ export class SuggestController implements IEditorContribution {
 			}
 		*/
 		service.publicLog('acceptSuggestion', {
-			type: item.type,
+			type: item.kind,
 			multiline: item.insertText.match(/\r|\n/)
 		});
 	}
@@ -286,8 +288,8 @@ export class SuggestController implements IEditorContribution {
 		alert(msg);
 	}
 
-	triggerSuggest(): void {
-		this._model.trigger({ auto: false }, false);
+	triggerSuggest(onlyFrom?: ISuggestSupport[]): void {
+		this._model.trigger({ auto: false }, false, onlyFrom);
 		this._editor.revealLine(this._editor.getPosition().lineNumber, ScrollType.Smooth);
 		this._editor.focus();
 	}

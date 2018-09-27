@@ -198,7 +198,7 @@ exports.configurePortable = function () {
 	}
 
 	const portableDataPath = getPortableDataPath();
-	const isPortable = fs.existsSync(portableDataPath);
+	const isPortable = !('target' in product) && fs.existsSync(portableDataPath);
 	const portableTempPath = path.join(portableDataPath, 'tmp');
 	const isTempPortable = isPortable && fs.existsSync(portableTempPath);
 
@@ -216,5 +216,16 @@ exports.configurePortable = function () {
 		portableDataPath,
 		isPortable
 	};
+};
+//#endregion
+
+//#region ApplicationInsights
+/**
+ * Prevents appinsights from monkey patching modules.
+ * This should be called before importing the applicationinsights module
+ */
+exports.avoidMonkeyPatchFromAppInsights = function () {
+	process.env['APPLICATION_INSIGHTS_NO_DIAGNOSTIC_CHANNEL'] = true; // Skip monkey patching of 3rd party modules by appinsights
+	global['diagnosticsSource'] = {}; // Prevents diagnostic channel (which patches "require") from initializing entirely
 };
 //#endregion

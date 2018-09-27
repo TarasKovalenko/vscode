@@ -4,12 +4,14 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { RunOnceScheduler } from 'vs/base/common/async';
+import { CancellationTokenSource } from 'vs/base/common/cancellation';
 import * as errors from 'vs/base/common/errors';
 import { anyEvent, Emitter, Event, fromPromise, stopwatch } from 'vs/base/common/event';
 import { getBaseLabel } from 'vs/base/common/labels';
 import { Disposable, IDisposable } from 'vs/base/common/lifecycle';
 import { ResourceMap, TernarySearchTree, values } from 'vs/base/common/map';
 import * as objects from 'vs/base/common/objects';
+import { lcut } from 'vs/base/common/strings';
 import { URI } from 'vs/base/common/uri';
 import { TPromise } from 'vs/base/common/winjs.base';
 import { Range } from 'vs/editor/common/core/range';
@@ -24,7 +26,6 @@ import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { overviewRulerFindMatchForeground } from 'vs/platform/theme/common/colorRegistry';
 import { themeColorFromId } from 'vs/platform/theme/common/themeService';
 import { IReplaceService } from 'vs/workbench/parts/search/common/replace';
-import { CancellationTokenSource } from 'vs/base/common/cancellation';
 
 export class Match {
 
@@ -72,6 +73,8 @@ export class Match {
 		let before = this._previewText.substring(0, this._rangeInPreviewText.startColumn - 1),
 			inside = this.getMatchString(),
 			after = this._previewText.substring(this._rangeInPreviewText.endColumn - 1);
+
+		before = lcut(before, 26);
 
 		let charsRemaining = Match.MAX_PREVIEW_CHARS - before.length;
 		inside = inside.substr(0, charsRemaining);
@@ -558,7 +561,7 @@ export class SearchResult extends Disposable {
 		this._folderMatches = (query.folderQueries || [])
 			.map(fq => fq.folder)
 			.map((resource, index) => this.createFolderMatch(resource, resource.toString(), index, query));
-		this._folderMatches.forEach(fm => this._folderMatchesMap.set(fm.resource().fsPath, fm));
+		this._folderMatches.forEach(fm => this._folderMatchesMap.set(fm.resource().toString(), fm));
 
 		this._otherFilesMatch = this.createFolderMatch(null, 'otherFiles', this._folderMatches.length + 1, query);
 	}
@@ -696,7 +699,7 @@ export class SearchResult extends Disposable {
 	}
 
 	private getFolderMatch(resource: URI): FolderMatch {
-		const folderMatch = this._folderMatchesMap.findSubstr(resource.fsPath);
+		const folderMatch = this._folderMatchesMap.findSubstr(resource.toString());
 		return folderMatch ? folderMatch : this.otherFiles;
 	}
 

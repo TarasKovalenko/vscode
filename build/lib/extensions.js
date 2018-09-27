@@ -24,9 +24,7 @@ var File = require("vinyl");
 var vsce = require("vsce");
 var stats_1 = require("./stats");
 var util2 = require("./util");
-var assign = require("object-assign");
 var remote = require("gulp-remote-src");
-var flatmap = require('gulp-flatmap');
 var vzip = require('gulp-vinyl-zip');
 var filter = require('gulp-filter');
 var rename = require('gulp-rename');
@@ -45,7 +43,6 @@ function fromLocal(extensionPath, sourceMappingURLBase) {
         return fromLocalNormal(extensionPath);
     }
 }
-exports.fromLocal = fromLocal;
 function fromLocalWebpack(extensionPath, sourceMappingURLBase) {
     var result = es.through();
     var packagedDependencies = [];
@@ -163,75 +160,26 @@ var baseHeaders = {
     'User-Agent': 'VSCode Build',
     'X-Market-User-Id': '291C1CD0-051A-4123-9B4B-30D60EF52EE2',
 };
-function fromMarketplace(extensionName, version) {
-    var filterType = 7;
-    var value = extensionName;
-    var criterium = { filterType: filterType, value: value };
-    var criteria = [criterium];
-    var pageNumber = 1;
-    var pageSize = 1;
-    var sortBy = 0;
-    var sortOrder = 0;
-    var flags = 0x1 | 0x2 | 0x80;
-    var assetTypes = ['Microsoft.VisualStudio.Services.VSIXPackage'];
-    var filters = [{ criteria: criteria, pageNumber: pageNumber, pageSize: pageSize, sortBy: sortBy, sortOrder: sortOrder }];
-    var body = JSON.stringify({ filters: filters, assetTypes: assetTypes, flags: flags });
-    var headers = assign({}, baseHeaders, {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json;api-version=3.0-preview.1',
-        'Content-Length': body.length
-    });
+function fromMarketplace(extensionName, version, metadata) {
+    var _a = extensionName.split('.'), publisher = _a[0], name = _a[1];
+    var url = "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/" + publisher + "/vsextensions/" + name + "/" + version + "/vspackage";
+    util.log('Downloading extension:', util.colors.yellow(extensionName + "@" + version), '...');
     var options = {
-        base: 'https://marketplace.visualstudio.com/_apis/public/gallery',
+        base: url,
         requestOptions: {
-            method: 'POST',
             gzip: true,
-            headers: headers,
-            body: body
+            headers: baseHeaders
         }
     };
-    return remote('/extensionquery', options)
-        .pipe(flatmap(function (stream, f) {
-        var rawResult = f.contents.toString('utf8');
-        var result = JSON.parse(rawResult);
-        var extension = result.results[0].extensions[0];
-        if (!extension) {
-            return error("No such extension: " + extension);
-        }
-        var metadata = {
-            id: extension.extensionId,
-            publisherId: extension.publisher,
-            publisherDisplayName: extension.publisher.displayName
-        };
-        var extensionVersion = extension.versions.filter(function (v) { return v.version === version; })[0];
-        if (!extensionVersion) {
-            return error("No such extension version: " + extensionName + " @ " + version);
-        }
-        var asset = extensionVersion.files.filter(function (f) { return f.assetType === 'Microsoft.VisualStudio.Services.VSIXPackage'; })[0];
-        if (!asset) {
-            return error("No VSIX found for extension version: " + extensionName + " @ " + version);
-        }
-        util.log('Downloading extension:', util.colors.yellow(extensionName + "@" + version), '...');
-        var options = {
-            base: asset.source,
-            requestOptions: {
-                gzip: true,
-                headers: baseHeaders
-            }
-        };
-        return remote('', options)
-            .pipe(flatmap(function (stream) {
-            var packageJsonFilter = filter('package.json', { restore: true });
-            return stream
-                .pipe(vzip.src())
-                .pipe(filter('extension/**'))
-                .pipe(rename(function (p) { return p.dirname = p.dirname.replace(/^extension\/?/, ''); }))
-                .pipe(packageJsonFilter)
-                .pipe(buffer())
-                .pipe(json({ __metadata: metadata }))
-                .pipe(packageJsonFilter.restore);
-        }));
-    }));
+    var packageJsonFilter = filter('package.json', { restore: true });
+    return remote('', options)
+        .pipe(vzip.src())
+        .pipe(filter('extension/**'))
+        .pipe(rename(function (p) { return p.dirname = p.dirname.replace(/^extension\/?/, ''); }))
+        .pipe(packageJsonFilter)
+        .pipe(buffer())
+        .pipe(json({ __metadata: metadata }))
+        .pipe(packageJsonFilter.restore);
 }
 exports.fromMarketplace = fromMarketplace;
 var excludedExtensions = [
@@ -241,6 +189,28 @@ var excludedExtensions = [
     'ms-vscode.node-debug2',
 ];
 var builtInExtensions = require('../builtInExtensions.json');
+/**
+ * We're doing way too much stuff at once, with webpack et al. So much stuff
+ * that while downloading extensions from the marketplace, node js doesn't get enough
+ * stack frames to complete the download in under 2 minutes, at which point the
+ * marketplace server cuts off the http request. So, we sequentialize the extensino tasks.
+ */
+function sequence(streamProviders) {
+    var result = es.through();
+    function pop() {
+        if (streamProviders.length === 0) {
+            result.emit('end');
+        }
+        else {
+            var fn = streamProviders.shift();
+            fn()
+                .on('end', function () { setTimeout(pop, 0); })
+                .pipe(result, { end: false });
+        }
+    }
+    pop();
+    return result;
+}
 function packageExtensionsStream(opts) {
     opts = opts || {};
     var localExtensionDescriptions = glob.sync('extensions/*/package.json')
@@ -261,21 +231,21 @@ function packageExtensionsStream(opts) {
         var name = _a.name;
         return builtInExtensions.every(function (b) { return b.name !== name; });
     });
-    var localExtensions = es.merge.apply(es, localExtensionDescriptions.map(function (extension) {
+    var localExtensions = function () { return es.merge.apply(es, localExtensionDescriptions.map(function (extension) {
         return fromLocal(extension.path, opts.sourceMappingURLBase)
             .pipe(rename(function (p) { return p.dirname = "extensions/" + extension.name + "/" + p.dirname; }));
-    }));
-    var localExtensionDependencies = gulp.src('extensions/node_modules/**', { base: '.' });
-    var marketplaceExtensions = es.merge.apply(es, builtInExtensions
+    })); };
+    var localExtensionDependencies = function () { return gulp.src('extensions/node_modules/**', { base: '.' }); };
+    var marketplaceExtensions = function () { return es.merge.apply(es, builtInExtensions
         .filter(function (_a) {
         var name = _a.name;
         return opts.desiredExtensions ? opts.desiredExtensions.indexOf(name) >= 0 : true;
     })
         .map(function (extension) {
-        return fromMarketplace(extension.name, extension.version)
+        return fromMarketplace(extension.name, extension.version, extension.metadata)
             .pipe(rename(function (p) { return p.dirname = "extensions/" + extension.name + "/" + p.dirname; }));
-    }));
-    return es.merge(localExtensions, localExtensionDependencies, marketplaceExtensions)
+    })); };
+    return sequence([localExtensions, localExtensionDependencies, marketplaceExtensions])
         .pipe(util2.setExecutableBit(['**/*.sh']))
         .pipe(filter(['**', '!**/*.js.map']));
 }

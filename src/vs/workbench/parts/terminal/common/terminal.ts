@@ -189,7 +189,7 @@ export interface ITerminalService {
 	onInstanceDimensionsChanged: Event<ITerminalInstance>;
 	onInstanceRequestExtHostProcess: Event<ITerminalProcessExtHostRequest>;
 	onInstancesChanged: Event<void>;
-	onInstanceTitleChanged: Event<string>;
+	onInstanceTitleChanged: Event<ITerminalInstance>;
 	onActiveInstanceChanged: Event<ITerminalInstance>;
 	terminalInstances: ITerminalInstance[];
 	terminalTabs: ITerminalTab[];
@@ -311,7 +311,7 @@ export interface ITerminalInstance {
 	/**
 	 * An event that fires when the terminal instance's title changes.
 	 */
-	onTitleChanged: Event<string>;
+	onTitleChanged: Event<ITerminalInstance>;
 
 	/**
 	 * An event that fires when the terminal instance is disposed.
@@ -501,6 +501,15 @@ export interface ITerminalInstance {
 	sendText(text: string, addNewLine: boolean): void;
 
 	/**
+	 * Takes a path and returns the properly escaped path to send to the terminal.
+	 * On Windows, this included trying to prepare the path for WSL if needed.
+	 *
+	 * @param path The path to be escaped and formatted.
+	 * @returns An escaped version of the path to be execuded in the terminal.
+	 */
+	preparePathForTerminalAsync(path: string): Promise<string>;
+
+	/**
 	 * Write text directly to the terminal, skipping the process if it exists.
 	 * @param text The text to write.
 	 */
@@ -568,6 +577,8 @@ export interface ITerminalInstance {
 	 * Sets the title of the terminal instance.
 	 */
 	setTitle(title: string, eventFromProcess: boolean): void;
+
+	waitForTitle(): Promise<string>;
 
 	setDimensions(dimensions: ITerminalDimensions): void;
 
