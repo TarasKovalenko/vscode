@@ -3,8 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import { URI as uri } from 'vs/base/common/uri';
 import * as resources from 'vs/base/common/resources';
 import { IconLabel, IIconLabelValueOptions, IIconLabelCreationOptions } from 'vs/base/browser/ui/iconLabel/iconLabel';
@@ -316,13 +314,16 @@ export function getIconClasses(modelService: IModelService, modeService: IModeSe
 
 	if (resource) {
 
-		// Get the name of the resource. For data-URIs, we need to parse specially
+		// Get the path and name of the resource. For data-URIs, we need to parse specially
 		let name: string;
+		let path: string;
 		if (resource.scheme === Schemas.data) {
 			const metadata = DataUri.parseMetaData(resource);
 			name = metadata.get(DataUri.META_DATA_LABEL);
+			path = name;
 		} else {
 			name = cssEscape(resources.basenameOrAuthority(resource).toLowerCase());
+			path = resource.path.toLowerCase();
 		}
 
 		// Folders
@@ -347,7 +348,7 @@ export function getIconClasses(modelService: IModelService, modeService: IModeSe
 
 			// Configured Language
 			let configuredLangId = getConfiguredLangId(modelService, resource);
-			configuredLangId = configuredLangId || modeService.getModeIdByFilenameOrFirstLine(name);
+			configuredLangId = configuredLangId || modeService.getModeIdByFilepathOrFirstLine(path);
 			if (configuredLangId) {
 				classes.push(`${cssEscape(configuredLangId)}-lang-file-icon`);
 			}
