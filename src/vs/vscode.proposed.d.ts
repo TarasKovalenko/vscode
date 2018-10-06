@@ -86,6 +86,13 @@ declare module 'vscode' {
 		 * See the vscode setting `"search.followSymlinks"`.
 		 */
 		followSymlinks: boolean;
+
+		/**
+		 * Whether global files that exclude files, like .gitignore, should be respected.
+		 * See the vscode setting `"search.useGlobalIgnoreFiles"`.
+		 */
+		useGlobalIgnoreFiles: boolean;
+
 	}
 
 	/**
@@ -290,6 +297,12 @@ declare module 'vscode' {
 		 * See the vscode setting `"search.useIgnoreFiles"`.
 		 */
 		useIgnoreFiles?: boolean;
+
+		/**
+		 * Whether global files that exclude files, like .gitignore, should be respected.
+		 * See the vscode setting `"search.useGlobalIgnoreFiles"`.
+		 */
+		useGlobalIgnoreFiles?: boolean;
 
 		/**
 		 * Whether symlinks should be followed while searching.
@@ -1064,6 +1077,18 @@ declare module 'vscode' {
 		provideSignatureHelp(document: TextDocument, position: Position, token: CancellationToken, context: SignatureHelpContext): ProviderResult<SignatureHelp>;
 	}
 
+	export interface SignatureHelpProviderMetadata {
+		readonly triggerCharacters: ReadonlyArray<string>;
+		readonly retriggerCharacters: ReadonlyArray<string>;
+	}
+
+	namespace languages {
+		export function registerSignatureHelpProvider(
+			selector: DocumentSelector,
+			provider: SignatureHelpProvider,
+			metadata: SignatureHelpProviderMetadata
+		): Disposable;
+	}
 	//#endregion
 
 	//#region Alex - OnEnter enhancement

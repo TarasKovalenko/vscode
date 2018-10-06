@@ -159,7 +159,7 @@ class Snapper {
 		return result;
 	}
 
-	private _getThemesResult(grammar: IGrammar, lines: string[]): Thenable<IThemesResult> {
+	private async _getThemesResult(grammar: IGrammar, lines: string[]): Promise<IThemesResult> {
 		let currentTheme = this.themeService.getColorTheme();
 
 		let getThemeName = (id: string) => {
@@ -173,25 +173,21 @@ class Snapper {
 
 		let result: IThemesResult = {};
 
-		return this.themeService.getColorThemes().then(themeDatas => {
-			let defaultThemes = themeDatas.filter(themeData => !!getThemeName(themeData.id));
-			return Promise.all(defaultThemes.map(defaultTheme => {
-				let themeId = defaultTheme.id;
-				return this.themeService.setColorTheme(themeId, null).then(success => {
-					if (success) {
-						let themeName = getThemeName(themeId);
-						result[themeName] = {
-							document: new ThemeDocument(this.themeService.getColorTheme()),
-							tokens: this._themedTokenize(grammar, lines)
-						};
-					}
-				});
-			}));
-		}).then(_ => {
-			return this.themeService.setColorTheme(currentTheme.id, null).then(_ => {
-				return result;
-			});
-		});
+		let themeDatas = await this.themeService.getColorThemes();
+		let defaultThemes = themeDatas.filter(themeData => !!getThemeName(themeData.id));
+		for (let defaultTheme of defaultThemes) {
+			let themeId = defaultTheme.id;
+			let success = await this.themeService.setColorTheme(themeId, null);
+			if (success) {
+				let themeName = getThemeName(themeId);
+				result[themeName] = {
+					document: new ThemeDocument(this.themeService.getColorTheme()),
+					tokens: this._themedTokenize(grammar, lines)
+				};
+			}
+		}
+		await this.themeService.setColorTheme(currentTheme.id, null);
+		return result;
 	}
 
 	private _enrichResult(result: IToken[], themesResult: IThemesResult): void {

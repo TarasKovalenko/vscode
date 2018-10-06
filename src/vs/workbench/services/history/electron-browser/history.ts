@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { TPromise } from 'vs/base/common/winjs.base';
 import * as errors from 'vs/base/common/errors';
 import { URI } from 'vs/base/common/uri';
 import { IEditor } from 'vs/editor/common/editorCommon';
@@ -159,6 +158,13 @@ export class HistoryService extends Disposable implements IHistoryService {
 		));
 
 		this.registerListeners();
+
+		// if the service is created late enough that an editor is already opened
+		// make sure to trigger the onActiveEditorChanged() to track the editor
+		// properly (fixes https://github.com/Microsoft/vscode/issues/59908)
+		if (editorService.activeControl) {
+			this.onActiveEditorChanged();
+		}
 	}
 
 	private getExcludes(root?: URI): IExpression {
@@ -398,7 +404,7 @@ export class HistoryService extends Disposable implements IHistoryService {
 		});
 	}
 
-	private doNavigate(location: IStackEntry, withSelection: boolean): TPromise<IBaseEditor> {
+	private doNavigate(location: IStackEntry, withSelection: boolean): Thenable<IBaseEditor> {
 		const options: ITextEditorOptions = {
 			revealIfOpened: true // support to navigate across editor groups
 		};
