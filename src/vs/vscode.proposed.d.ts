@@ -11,6 +11,19 @@ declare module 'vscode' {
 		export function sampleFunction(): Thenable<any>;
 	}
 
+	//#region Joh - clipboard https://github.com/Microsoft/vscode/issues/217
+
+	export interface Clipboard {
+		readText(): Thenable<string>;
+		writeText(value: string): Thenable<void>;
+	}
+
+	export namespace env {
+		export const clipboard: Clipboard;
+	}
+
+	//#endregion
+
 	//#region Joh - read/write in chunks
 
 	export interface FileSystemProvider {
@@ -32,6 +45,11 @@ declare module 'vscode' {
 		 * The text pattern to search for.
 		 */
 		pattern: string;
+
+		/**
+		 * Whether or not `pattern` should match multiple lines of text.
+		 */
+		isMultiline?: boolean;
 
 		/**
 		 * Whether or not `pattern` should be interpreted as a regular expression.
@@ -982,19 +1000,6 @@ declare module 'vscode' {
 	}
 
 	export namespace window {
-		/**
-		 * The currently active terminal or `undefined`. The active terminal is the one that
-		 * currently has focus or most recently had focus.
-		 */
-		export const activeTerminal: Terminal | undefined;
-
-		/**
-		 * An [event](#Event) which fires when the [active terminal](#window.activeTerminal)
-		 * has changed. *Note* that the event also fires when the active terminal changes
-		 * to `undefined`.
-		 */
-		export const onDidChangeActiveTerminal: Event<Terminal | undefined>;
-
 		/**
 		 * Create a [TerminalRenderer](#TerminalRenderer).
 		 *

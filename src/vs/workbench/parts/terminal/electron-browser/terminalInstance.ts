@@ -302,7 +302,8 @@ export class TerminalInstance implements ITerminalInstance {
 			// TODO: Guess whether to use canvas or dom better
 			rendererType: config.rendererType === 'auto' ? 'canvas' : config.rendererType,
 			// TODO: Remove this once the setting is removed upstream
-			experimentalCharAtlas: 'dynamic'
+			experimentalCharAtlas: 'dynamic',
+			experimentalBufferLineImpl: config.experimentalBufferImpl
 		});
 		if (this._shellLaunchConfig.initialText) {
 			this._xterm.writeln(this._shellLaunchConfig.initialText);
@@ -504,7 +505,7 @@ export class TerminalInstance implements ITerminalInstance {
 					{
 						label: nls.localize('dontShowAgain', "Don't Show Again"),
 						isSecondary: true,
-						run: () => this._storageService.store(NEVER_MEASURE_RENDER_TIME_STORAGE_KEY, true)
+						run: () => this._storageService.store(NEVER_MEASURE_RENDER_TIME_STORAGE_KEY, true, StorageScope.GLOBAL)
 					} as IPromptChoice
 				];
 				this._notificationService.prompt(
@@ -672,12 +673,15 @@ export class TerminalInstance implements ITerminalInstance {
 					execFile('bash.exe', ['-c', 'echo $(wslpath ' + this._escapeNonWindowsPath(path) + ')'], {}, (error, stdout, stderr) => {
 						c(this._escapeNonWindowsPath(stdout.trim()));
 					});
+					return;
 				} else if (hasSpace) {
 					c('"' + path + '"');
+				} else {
+					c(path);
 				}
-			} else if (!platform.isWindows) {
-				c(this._escapeNonWindowsPath(path));
+				return;
 			}
+			c(this._escapeNonWindowsPath(path));
 		});
 	}
 
