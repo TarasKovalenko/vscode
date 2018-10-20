@@ -34,7 +34,7 @@ import { ILogService } from 'vs/platform/log/common/log';
 import { TerminalCommandTracker } from 'vs/workbench/parts/terminal/node/terminalCommandTracker';
 import { TerminalProcessManager } from './terminalProcessManager';
 import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
-import { execFile } from 'child_process';
+import { execFile, exec } from 'child_process';
 
 // How long in milliseconds should an average frame take to render for a notification to appear
 // which suggests the fallback DOM-based renderer
@@ -513,6 +513,7 @@ export class TerminalInstance implements ITerminalInstance {
 					nls.localize('terminal.slowRendering', 'The standard renderer for the integrated terminal appears to be slow on your computer. Would you like to switch to the alternative DOM-based renderer which may improve performance? [Read more about terminal settings](https://code.visualstudio.com/docs/editor/integrated-terminal#_changing-how-the-terminal-is-rendered).'),
 					promptChoices
 				);
+				console.warn('The standard renderer for the integrated terminal appears to be slow, frame times follow:', frameTimes);
 			}
 		};
 
@@ -575,7 +576,7 @@ export class TerminalInstance implements ITerminalInstance {
 		this._terminalFocusContextKey.set(terminalFocused);
 	}
 
-	public dispose(isShuttingDown?: boolean): void {
+	public dispose(immediate?: boolean): void {
 		this._logService.trace(`terminalInstance#dispose (id: ${this.id})`);
 
 		this._windowsShellHelper = lifecycle.dispose(this._windowsShellHelper);
@@ -601,7 +602,7 @@ export class TerminalInstance implements ITerminalInstance {
 			this._xterm = null;
 		}
 		if (this._processManager) {
-			this._processManager.dispose(isShuttingDown);
+			this._processManager.dispose(immediate);
 		}
 		if (!this._isDisposed) {
 			this._isDisposed = true;
@@ -833,12 +834,12 @@ export class TerminalInstance implements ITerminalInstance {
 			if (exitCode) {
 				this._xterm.writeln(exitCodeMessage);
 			}
-			let message = typeof this._shellLaunchConfig.waitOnExit === 'string'
-				? this._shellLaunchConfig.waitOnExit
-				: nls.localize('terminal.integrated.waitOnExit', 'Press any key to close the terminal');
-			// Bold the message and add an extra new line to make it stand out from the rest of the output
-			message = `\n\x1b[1m${message}\x1b[0m`;
-			this._xterm.writeln(message);
+			if (typeof this._shellLaunchConfig.waitOnExit === 'string') {
+				let message = this._shellLaunchConfig.waitOnExit;
+				// Bold the message and add an extra new line to make it stand out from the rest of the output
+				message = `\n\x1b[1m${message}\x1b[0m`;
+				this._xterm.writeln(message);
+			}
 			// Disable all input if the terminal is exiting and listen for next keypress
 			this._xterm.setOption('disableStdin', true);
 			if (this._xterm.textarea) {
@@ -1147,6 +1148,27 @@ export class TerminalInstance implements ITerminalInstance {
 	public toggleEscapeSequenceLogging(): void {
 		this._xterm._core.debug = !this._xterm._core.debug;
 		this._xterm.setOption('debug', this._xterm._core.debug);
+	}
+
+	public get initialCwd(): string {
+		return this._processManager.initialCwd;
+	}
+
+	public getCwd(): Promise<string> {
+		if (!platform.isWindows) {
+			let pid = this.processId;
+			return new Promise<string>(resolve => {
+				exec('lsof -p ' + pid + ' | grep cwd', (error, stdout, stderr) => {
+					if (stdout !== '') {
+						resolve(stdout.substring(stdout.indexOf('/'), stdout.length - 1));
+					}
+				});
+			});
+		} else {
+			return new Promise<string>(resolve => {
+				resolve(this.initialCwd);
+			});
+		}
 	}
 }
 
