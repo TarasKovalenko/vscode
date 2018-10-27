@@ -55,7 +55,7 @@ export class Storage extends Disposable {
 
 		this.storage = new SQLiteStorageImpl(options);
 
-		this.pendingScheduler = new RunOnceScheduler(() => this.flushPending(), Storage.FLUSH_DELAY);
+		this.pendingScheduler = this._register(new RunOnceScheduler(() => this.flushPending(), Storage.FLUSH_DELAY));
 	}
 
 	get size(): number {
@@ -74,7 +74,9 @@ export class Storage extends Disposable {
 		});
 	}
 
-	get(key: string, fallbackValue?: any): string {
+	get(key: string, fallbackValue: string): string;
+	get(key: string, fallbackValue?: string): string | undefined;
+	get(key: string, fallbackValue?: string): string | undefined {
 		const value = this.cache.get(key);
 
 		if (isUndefinedOrNull(value)) {
@@ -84,7 +86,9 @@ export class Storage extends Disposable {
 		return value;
 	}
 
-	getBoolean(key: string, fallbackValue: boolean = false): boolean {
+	getBoolean(key: string, fallbackValue: boolean): boolean;
+	getBoolean(key: string, fallbackValue?: boolean): boolean | undefined;
+	getBoolean(key: string, fallbackValue?: boolean): boolean | undefined {
 		const value = this.get(key);
 
 		if (isUndefinedOrNull(value)) {
@@ -94,7 +98,9 @@ export class Storage extends Disposable {
 		return value === 'true';
 	}
 
-	getInteger(key: string, fallbackValue: number = 0): number {
+	getInteger(key: string, fallbackValue: number): number;
+	getInteger(key: string, fallbackValue?: number): number | undefined;
+	getInteger(key: string, fallbackValue?: number): number | undefined {
 		const value = this.get(key);
 
 		if (isUndefinedOrNull(value)) {

@@ -18,17 +18,15 @@ import { TPromise } from 'vs/base/common/winjs.base';
 import * as pfs from 'vs/base/node/pfs';
 import { getNextTickChannel } from 'vs/base/parts/ipc/node/ipc';
 import { Client, IIPCOptions } from 'vs/base/parts/ipc/node/ipc.cp';
-import { Range } from 'vs/editor/common/core/range';
-import { FindMatch, ITextModel } from 'vs/editor/common/model';
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IDebugParams, IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { ILogService } from 'vs/platform/log/common/log';
-import { FileMatch, ICachedSearchStats, IFileMatch, IFileQuery, IFileSearchStats, IFolderQuery, IProgress, ISearchComplete, ISearchConfiguration, ISearchEngineStats, ISearchProgressItem, ISearchQuery, ISearchResultProvider, ISearchService, ITextQuery, ITextSearchPreviewOptions, pathIncludedInQuery, QueryType, SearchProviderType, TextSearchResult } from 'vs/platform/search/common/search';
+import { FileMatch, ICachedSearchStats, IFileMatch, IFileQuery, IFileSearchStats, IFolderQuery, IProgress, ISearchComplete, ISearchConfiguration, ISearchEngineStats, ISearchProgressItem, ISearchQuery, ISearchResultProvider, ISearchService, ITextQuery, pathIncludedInQuery, QueryType, SearchProviderType } from 'vs/platform/search/common/search';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
-import { IRawSearch } from 'vs/workbench/services/search/node/legacy/search';
+import { addContextToEditorMatches, editorMatchesToTextSearchResults } from 'vs/workbench/services/search/common/searchHelpers';
 import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
 import { IRawSearchService, ISerializedFileMatch, ISerializedSearchComplete, ISerializedSearchProgressItem, isSerializedSearchComplete, isSerializedSearchSuccess } from './search';
 import { ISearchChannel, SearchChannelClient } from './searchIpc';
@@ -136,7 +134,17 @@ export class SearchService extends Disposable implements ISearchService {
 					return TPromise.wrapError(canceled());
 				}
 
-				return this.searchWithProviders(query, onProgress, token);
+				const progressCallback = (item: ISearchProgressItem) => {
+					if (token && token.isCancellationRequested) {
+						return;
+					}
+
+					if (onProgress) {
+						onProgress(item);
+					}
+				};
+
+				return this.searchWithProviders(query, progressCallback, token);
 			})
 			.then(completes => {
 				completes = completes.filter(c => !!c);
@@ -213,7 +221,7 @@ export class SearchService extends Disposable implements ISearchService {
 			}
 		});
 
-		const diskSearchExtraFileResources = query.extraFileResources && query.extraFileResources.filter(res => res.scheme === 'file');
+		const diskSearchExtraFileResources = query.extraFileResources && query.extraFileResources.filter(res => res.scheme === Schemas.file);
 
 		if (diskSearchQueries.length || diskSearchExtraFileResources) {
 			const diskSearchQuery: ISearchQuery = {
@@ -369,7 +377,7 @@ export class SearchService extends Disposable implements ISearchService {
 				scheme,
 				error: errorType,
 				useRipgrep: query.useRipgrep,
-				usePCRE2: query.usePCRE2
+				usePCRE2: !!query.usePCRE2
 			});
 		}
 	}
@@ -414,9 +422,8 @@ export class SearchService extends Disposable implements ISearchService {
 					let fileMatch = new FileMatch(resource);
 					localResults.set(resource, fileMatch);
 
-					matches.forEach((match) => {
-						fileMatch.matches.push(editorMatchToTextSearchResult(match, model, query.previewOptions));
-					});
+					const textSearchResults = editorMatchesToTextSearchResults(matches, model, query.previewOptions);
+					fileMatch.results = addContextToEditorMatches(textSearchResults, model, query);
 				} else {
 					localResults.set(resource, null);
 				}
@@ -507,50 +514,12 @@ export class DiskSearch implements ISearchResultProvider {
 					throw canceled();
 				}
 
-				const existingFolders = folderQueries.filter((q, index) => exists[index]);
-				const rawSearch = this.rawSearchQuery(query, existingFolders);
-
+				query.folderQueries = folderQueries.filter((q, index) => exists[index]);
 				let event: Event<ISerializedSearchProgressItem | ISerializedSearchComplete>;
-				event = this.raw.fileSearch(rawSearch);
+				event = this.raw.fileSearch(query);
 
 				return DiskSearch.collectResultsFromEvent(event, null, token);
 			});
-	}
-
-	private rawSearchQuery(query: IFileQuery, existingFolders: IFolderQuery[]) {
-		let rawSearch: IRawSearch = {
-			folderQueries: [],
-			extraFiles: [],
-			filePattern: query.filePattern,
-			excludePattern: query.excludePattern,
-			includePattern: query.includePattern,
-			maxResults: query.maxResults,
-			exists: query.exists,
-			sortByScore: query.sortByScore,
-			cacheKey: query.cacheKey,
-			useRipgrep: query.useRipgrep
-		};
-
-		for (const q of existingFolders) {
-			rawSearch.folderQueries.push({
-				excludePattern: q.excludePattern,
-				includePattern: q.includePattern,
-				fileEncoding: q.fileEncoding,
-				disregardIgnoreFiles: q.disregardIgnoreFiles,
-				disregardGlobalIgnoreFiles: q.disregardGlobalIgnoreFiles,
-				folder: q.folder.fsPath
-			});
-		}
-
-		if (query.extraFileResources) {
-			for (const r of query.extraFileResources) {
-				if (r.scheme === Schemas.file) {
-					rawSearch.extraFiles.push(r.fsPath);
-				}
-			}
-		}
-
-		return rawSearch;
 	}
 
 	public static collectResultsFromEvent(event: Event<ISerializedSearchProgressItem | ISerializedSearchComplete>, onProgress?: (p: ISearchProgressItem) => void, token?: CancellationToken): TPromise<ISearchComplete> {
@@ -611,9 +580,10 @@ export class DiskSearch implements ISearchResultProvider {
 	}
 
 	private static createFileMatch(data: ISerializedFileMatch): FileMatch {
-		let fileMatch = new FileMatch(uri.file(data.path));
-		if (data.matches) {
-			fileMatch.matches.push(...data.matches); // TODO why
+		const fileMatch = new FileMatch(uri.file(data.path));
+		if (data.results) {
+			// const matches = data.results.filter(resultIsMatch);
+			fileMatch.results.push(...data.results);
 		}
 		return fileMatch;
 	}
@@ -621,11 +591,4 @@ export class DiskSearch implements ISearchResultProvider {
 	public clearCache(cacheKey: string): TPromise<void> {
 		return this.raw.clearCache(cacheKey);
 	}
-}
-
-function editorMatchToTextSearchResult(match: FindMatch, model: ITextModel, previewOptions: ITextSearchPreviewOptions): TextSearchResult {
-	return new TextSearchResult(
-		model.getLineContent(match.range.startLineNumber),
-		new Range(match.range.startLineNumber - 1, match.range.startColumn - 1, match.range.endLineNumber - 1, match.range.endColumn - 1),
-		previewOptions);
 }

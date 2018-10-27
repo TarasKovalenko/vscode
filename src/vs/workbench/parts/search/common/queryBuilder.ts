@@ -36,6 +36,7 @@ export interface ICommonQueryBuilderOptions {
 	extraFileResources?: uri[];
 
 	maxResults?: number;
+	maxFileSize?: number;
 	useRipgrep?: boolean;
 	disregardIgnoreFiles?: boolean;
 	disregardGlobalIgnoreFiles?: boolean;
@@ -53,7 +54,8 @@ export interface IFileQueryBuilderOptions extends ICommonQueryBuilderOptions {
 export interface ITextQueryBuilderOptions extends ICommonQueryBuilderOptions {
 	previewOptions?: ITextSearchPreviewOptions;
 	fileEncoding?: string;
-	maxFileSize?: number;
+	beforeContext?: number;
+	afterContext?: number;
 }
 
 export class QueryBuilder {
@@ -64,7 +66,7 @@ export class QueryBuilder {
 		@IEnvironmentService private environmentService: IEnvironmentService
 	) { }
 
-	text(contentPattern: IPatternInfo, folderResources?: uri[], options?: ITextQueryBuilderOptions): ITextQuery {
+	text(contentPattern: IPatternInfo, folderResources?: uri[], options: ITextQueryBuilderOptions = {}): ITextQuery {
 		contentPattern.isCaseSensitive = this.isCaseSensitive(contentPattern);
 		contentPattern.isMultiline = this.isMultiline(contentPattern);
 		const searchConfig = this.configurationService.getValue<ISearchConfiguration>();
@@ -80,13 +82,15 @@ export class QueryBuilder {
 			...commonQuery,
 			type: QueryType.Text,
 			contentPattern,
-			previewOptions: options && options.previewOptions,
-			maxFileSize: options && options.maxFileSize,
-			usePCRE2: searchConfig.search.usePCRE2 || fallbackToPCRE || false
+			previewOptions: options.previewOptions,
+			maxFileSize: options.maxFileSize,
+			usePCRE2: searchConfig.search.usePCRE2 || fallbackToPCRE || false,
+			beforeContext: options.beforeContext,
+			afterContext: options.afterContext
 		};
 	}
 
-	file(folderResources?: uri[], options?: IFileQueryBuilderOptions): IFileQuery {
+	file(folderResources: uri[] | undefined, options: IFileQueryBuilderOptions = {}): IFileQuery {
 		const commonQuery = this.commonQuery(folderResources, options);
 		return <IFileQuery>{
 			...commonQuery,
@@ -101,8 +105,8 @@ export class QueryBuilder {
 	}
 
 	private commonQuery(folderResources?: uri[], options: ICommonQueryBuilderOptions = {}): ICommonQueryProps<uri> {
-		let { searchPaths, pattern: includePattern } = this.parseSearchPaths(options.includePattern);
-		let excludePattern = this.parseExcludePattern(options.excludePattern);
+		let { searchPaths, pattern: includePattern } = this.parseSearchPaths(options.includePattern || '');
+		let excludePattern = this.parseExcludePattern(options.excludePattern || '');
 
 		// Build folderQueries from searchPaths, if given, otherwise folderResources
 		let folderQueries = folderResources && folderResources.map(uri => this.getFolderQueryForRoot(uri, options));
@@ -153,7 +157,7 @@ export class QueryBuilder {
 			}
 		}
 
-		return contentPattern.isCaseSensitive;
+		return !!contentPattern.isCaseSensitive;
 	}
 
 	private isMultiline(contentPattern: IPatternInfo): boolean {
@@ -364,7 +368,7 @@ function splitGlobFromPath(searchPath: string): { pathPortion: string, globPorti
 
 			return {
 				pathPortion,
-				globPortion: searchPath.substr(lastSlashMatch.index + 1)
+				globPortion: searchPath.substr((lastSlashMatch.index || 0) + 1)
 			};
 		}
 	}
