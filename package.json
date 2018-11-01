@@ -1,7 +1,7 @@
 {
   "name": "code-oss-dev",
   "version": "1.29.0",
-  "distro": "eceef408e99ace55c0a17a2a90b88e46a8c9090a",
+  "distro": "d871b2652a778915492c7838ee975754e2a19f66",
   "author": {
     "name": "Microsoft Corporation"
   },
@@ -28,7 +28,6 @@
   },
   "dependencies": {
     "applicationinsights": "1.0.6",
-    "electron-proxy-agent": "^1.0.2",
     "fast-plist": "0.1.2",
     "gc-signals": "^0.0.1",
     "getmac": "1.4.1",
@@ -50,10 +49,11 @@
     "vscode-chokidar": "1.6.5",
     "vscode-debugprotocol": "1.32.0",
     "vscode-nsfw": "1.1.1",
+    "vscode-proxy-agent": "0.1.0",
     "vscode-ripgrep": "^1.2.4",
     "vscode-sqlite3": "4.0.2",
     "vscode-textmate": "^4.0.1",
-    "vscode-xterm": "3.9.0-beta12",
+    "vscode-xterm": "3.9.0-beta13",
     "winreg": "^1.2.4",
     "yauzl": "^2.9.1",
     "yazl": "^2.4.3"
