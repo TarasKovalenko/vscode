@@ -151,7 +151,7 @@ declare namespace monaco {
 		 *
 		 * @param value A string which represents an Uri (see `Uri#toString`).
 		 */
-		static parse(value: string): Uri;
+		static parse(value: string, _strict?: boolean): Uri;
 		/**
 		 * Creates a new Uri from a file system path, e.g. `c:\my\files`,
 		 * `/usr/home`, or `\\server\share\some\path`.
@@ -392,9 +392,13 @@ declare namespace monaco {
 		static readonly WinCtrl: number;
 		static chord(firstPart: number, secondPart: number): number;
 	}
+
 	export interface IMarkdownString {
 		value: string;
 		isTrusted?: boolean;
+		uris?: {
+			[href: string]: UriComponents;
+		};
 	}
 
 	export interface IKeyboardEvent {
@@ -2676,6 +2680,11 @@ declare namespace monaco.editor {
 		 */
 		mouseWheelZoom?: boolean;
 		/**
+		 * Enable smooth caret animation.
+		 * Defaults to false.
+		 */
+		cursorSmoothCaretAnimation?: boolean;
+		/**
 		 * Control the cursor style, either 'block' or 'line'.
 		 * Defaults to 'line'.
 		 */
@@ -3228,6 +3237,7 @@ declare namespace monaco.editor {
 		readonly overviewRulerBorder: boolean;
 		readonly cursorBlinking: TextEditorCursorBlinkingStyle;
 		readonly mouseWheelZoom: boolean;
+		readonly cursorSmoothCaretAnimation: boolean;
 		readonly cursorStyle: TextEditorCursorStyle;
 		readonly cursorWidth: number;
 		readonly hideCursorInOverviewRuler: boolean;

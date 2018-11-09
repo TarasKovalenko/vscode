@@ -128,8 +128,8 @@ export class ApiRepository implements Repository {
 		return this._repository.branch(name, checkout, ref);
 	}
 
-	deleteBranch(name: string): Promise<void> {
-		return this._repository.deleteBranch(name);
+	deleteBranch(name: string, force?: boolean): Promise<void> {
+		return this._repository.deleteBranch(name, force);
 	}
 
 	getBranch(name: string): Promise<Branch> {
@@ -166,6 +166,10 @@ export class ApiRepository implements Repository {
 
 	pull(): Promise<void> {
 		return this._repository.pull();
+	}
+
+	push(remoteName?: string, branchName?: string, setUpstream: boolean = false): Promise<void> {
+		return this._repository.pushTo(remoteName, branchName, setUpstream);
 	}
 }
 

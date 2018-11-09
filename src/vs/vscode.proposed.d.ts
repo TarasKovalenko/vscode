@@ -233,7 +233,7 @@ declare module 'vscode' {
 		/**
 		 * The maximum number of results to be returned.
 		 */
-		maxResults: number;
+		maxResults?: number;
 	}
 
 	/**
@@ -784,8 +784,8 @@ declare module 'vscode' {
 	export interface SourceControlInputBox {
 
 		/**
-		* Whether the input box is visible.
-		*/
+			* Controls whether the input box is visible (default is `true`).
+			*/
 		visible: boolean;
 	}
 
@@ -1240,7 +1240,7 @@ declare module 'vscode' {
 		label: string;
 
 		/**
-		 * Ranges in the label to highlight. A range is Defined as a tuple of two number where the
+		 * Ranges in the label to highlight. A range is defined as a tuple of two number where the
 		 * first is the inclusive start index and the second the exclusive end index
 		 */
 		highlights?: [number, number][];

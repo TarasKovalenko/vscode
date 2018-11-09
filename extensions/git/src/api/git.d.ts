@@ -138,7 +138,7 @@ export interface Repository {
 	hashObject(data: string): Promise<string>;
 
 	createBranch(name: string, checkout: boolean, ref?: string): Promise<void>;
-	deleteBranch(name: string): Promise<void>;
+	deleteBranch(name: string, force?: boolean): Promise<void>;
 	getBranch(name: string): Promise<Branch>;
 	setBranchUpstream(name: string, upstream: string): Promise<void>;
 
@@ -152,6 +152,7 @@ export interface Repository {
 
 	fetch(remote?: string, ref?: string): Promise<void>;
 	pull(): Promise<void>;
+	push(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void>;
 }
 
 export interface API {
@@ -163,8 +164,15 @@ export interface API {
 
 export interface GitExtension {
 
+	readonly enabled: boolean;
+	readonly onDidChangeEnablement: Event<boolean>;
+
 	/**
 	 * Returns a specific API version.
+	 *
+	 * Throws error if git extension is disabled. You can listed to the
+	 * [GitExtension.onDidChangeEnablement](#GitExtension.onDidChangeEnablement) event
+	 * to know when the extension becomes enabled/disabled.
 	 *
 	 * @param version Version number.
 	 * @returns API instance
