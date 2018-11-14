@@ -5,12 +5,11 @@
 
 import { localize } from 'vs/nls';
 import { Disposable } from 'vs/base/common/lifecycle';
-import { TPromise } from 'vs/base/common/winjs.base';
-import { IChannel, getDelayedChannel } from 'vs/base/parts/ipc/node/ipc';
+import { IChannel, getDelayedChannel, IServerChannel } from 'vs/base/parts/ipc/node/ipc';
 import { Client } from 'vs/base/parts/ipc/node/ipc.net';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
 import { INotificationService } from 'vs/platform/notification/common/notification';
-import { connectRemoteAgentManagement } from 'vs/platform/remote/node/remoteAgentConnection';
+import { connectRemoteAgentManagement, RemoteAgentConnectionContext } from 'vs/platform/remote/node/remoteAgentConnection';
 import { IWindowConfiguration } from 'vs/platform/windows/common/windows';
 import { RemoteExtensionEnvironmentChannelClient } from 'vs/workbench/services/remote/node/remoteAgentEnvironmentChannel';
 import { IRemoteAgentConnection, IRemoteAgentEnvironment, IRemoteAgentService } from 'vs/workbench/services/remote/node/remoteAgentService';
@@ -41,8 +40,8 @@ export class RemoteAgentService implements IRemoteAgentService {
 class RemoteAgentConnection extends Disposable implements IRemoteAgentConnection {
 
 	readonly remoteAuthority: string;
-	private _connection: TPromise<Client> | null;
-	private _environment: TPromise<IRemoteAgentEnvironment | null> | null;
+	private _connection: Thenable<Client<RemoteAgentConnectionContext>> | null;
+	private _environment: Thenable<IRemoteAgentEnvironment | null> | null;
 
 	constructor(
 		remoteAuthority: string,
@@ -56,13 +55,13 @@ class RemoteAgentConnection extends Disposable implements IRemoteAgentConnection
 		this._environment = null;
 	}
 
-	getEnvironment(): TPromise<IRemoteAgentEnvironment | null> {
+	getEnvironment(): Thenable<IRemoteAgentEnvironment | null> {
 		if (!this._environment) {
 			const client = new RemoteExtensionEnvironmentChannelClient(this.getChannel('remoteextensionsenvironment'));
 
 			// Let's cover the case where connecting to fetch the remote extension info fails
 			this._environment = client.getEnvironmentData(this.remoteAuthority, this._environmentService.extensionDevelopmentLocationURI)
-				.then(null, err => { this._notificationService.error(localize('connectionError', "Failed to connect to the remote extension host agent (Error: {0})", err ? err.message : '')); return null; });
+				.then(undefined, err => { this._notificationService.error(localize('connectionError', "Failed to connect to the remote extension host agent (Error: {0})", err ? err.message : '')); return null; });
 		}
 		return this._environment;
 	}
@@ -71,14 +70,14 @@ class RemoteAgentConnection extends Disposable implements IRemoteAgentConnection
 		return <T>getDelayedChannel(this._getOrCreateConnection().then(c => c.getChannel(channelName)));
 	}
 
-	registerChannel<T extends IChannel>(channelName: string, channel: T): void {
+	registerChannel<T extends IServerChannel<RemoteAgentConnectionContext>>(channelName: string, channel: T): void {
 		this._getOrCreateConnection().then(client => client.registerChannel(channelName, channel));
 	}
 
-	private _getOrCreateConnection(): TPromise<Client> {
+	private _getOrCreateConnection(): Thenable<Client<RemoteAgentConnectionContext>> {
 		if (!this._connection) {
 			this._connection = this._remoteAuthorityResolverService.resolveAuthority(this.remoteAuthority).then((resolvedAuthority) => {
-				return connectRemoteAgentManagement(resolvedAuthority.host, resolvedAuthority.port, `renderer`);
+				return connectRemoteAgentManagement(this.remoteAuthority, resolvedAuthority.host, resolvedAuthority.port, `renderer`);
 			});
 		}
 		return this._connection;

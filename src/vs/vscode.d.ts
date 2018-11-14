@@ -2208,34 +2208,7 @@ declare module 'vscode' {
 	 * Provides additional metadata over normal [location](#Location) definitions, including the range of
 	 * the defining symbol
 	 */
-	export interface DefinitionLink {
-		/**
-		 * Span of the symbol being defined in the source file.
-		 *
-		 * Used as the underlined span for mouse definition hover. Defaults to the word range at
-		 * the definition position.
-		 */
-		originSelectionRange?: Range;
-
-		/**
-		 * The resource identifier of the definition.
-		 */
-		targetUri: Uri;
-
-		/**
-		 * The full range of the definition.
-		 *
-		 * For a class definition for example, this would be the entire body of the class definition.
-		 */
-		targetRange: Range;
-
-		/**
-		 * The span of the symbol definition.
-		 *
-		 * For a class definition, this would be the class name itself in the class definition.
-		 */
-		targetSelectionRange?: Range;
-	}
+	export type DefinitionLink = LocationLink;
 
 	/**
 	 * The definition of a symbol represented as one or many [locations](#Location).
@@ -3994,6 +3967,35 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * Represents the connection of two locations. Provides additional metadata over normal [locations](#Location),
+	 * including an origin range.
+	 */
+	export interface LocationLink {
+		/**
+		 * Span of the origin of this link.
+		 *
+		 * Used as the underlined span for mouse definition hover. Defaults to the word range at
+		 * the definition position.
+		 */
+		originSelectionRange?: Range;
+
+		/**
+		 * The target resource identifier of this link.
+		 */
+		targetUri: Uri;
+
+		/**
+		 * The full target range of this link.
+		 */
+		targetRange: Range;
+
+		/**
+		 * The span of this link.
+		 */
+		targetSelectionRange?: Range;
+	}
+
+	/**
 	 * The event that is fired when diagnostics change.
 	 */
 	export interface DiagnosticChangeEvent {
@@ -5716,6 +5718,24 @@ declare module 'vscode' {
 	}
 
 	/**
+	 * The clipboard provides read and write access to the system's clipboard.
+	 */
+	export interface Clipboard {
+
+		/**
+		 * Read the current clipboard contents as text.
+		 * @returns A thenable that resolves to a string.
+		 */
+		readText(): Thenable<string>;
+
+		/**
+		 * Writes text into the clipboard.
+		 * @returns A thenable that resolves when writing happened.
+		 */
+		writeText(value: string): Thenable<void>;
+	}
+
+	/**
 	 * Namespace describing the environment the editor runs in.
 	 */
 	export namespace env {
@@ -5740,6 +5760,11 @@ declare module 'vscode' {
 		 * @readonly
 		 */
 		export let language: string;
+
+		/**
+		 * The system clipboard.
+		 */
+		export const clipboard: Clipboard;
 
 		/**
 		 * A unique identifier for the computer.
@@ -5840,6 +5865,7 @@ declare module 'vscode' {
 		 * the command handler function doesn't return anything.
 		 */
 		export function executeCommand<T>(command: string, ...rest: any[]): Thenable<T | undefined>;
+		export function executeCommand<T>(command: 'vscode.previewHtml', error: { '⚠️ The vscode.previewHtml command is deprecated and will be removed. Please switch to using the Webview Api': never }, ...rest: any[]): Thenable<T | undefined>;
 
 		/**
 		 * Retrieve the list of all available commands. Commands starting an underscore are
@@ -6379,10 +6405,10 @@ declare module 'vscode' {
 		/**
 		 * Create a [TreeView](#TreeView) for the view contributed using the extension point `views`.
 		 * @param viewId Id of the view contributed using the extension point `views`.
-		 * @param options Options object to provide [TreeDataProvider](#TreeDataProvider) for the view.
+		 * @param options Options for creating the [TreeView](#TreeView)
 		 * @returns a [TreeView](#TreeView).
 		 */
-		export function createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>;
+		export function createTreeView<T>(viewId: string, options: TreeViewOptions<T>): TreeView<T>;
 
 		/**
 		 * Registers a [uri handler](#UriHandler) capable of handling system-wide [uris](#Uri).
@@ -6419,6 +6445,22 @@ declare module 'vscode' {
 		 * @param serializer Webview serializer.
 		 */
 		export function registerWebviewPanelSerializer(viewType: string, serializer: WebviewPanelSerializer): Disposable;
+	}
+
+	/**
+	 * Options for creating a [TreeView](#TreeView]
+	 */
+	export interface TreeViewOptions<T> {
+
+		/**
+		 * A data provider that provides tree data.
+		 */
+		treeDataProvider: TreeDataProvider<T>;
+
+		/**
+		 * Whether to show collapse all action or not.
+		 */
+		showCollapseAll?: boolean;
 	}
 
 	/**

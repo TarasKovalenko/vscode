@@ -166,6 +166,20 @@ class DefinitionAdapter {
 	}
 }
 
+class DeclarationAdapter {
+
+	constructor(
+		private readonly _documents: ExtHostDocuments,
+		private readonly _provider: vscode.DeclarationProvider
+	) { }
+
+	provideDeclaration(resource: URI, position: IPosition, token: CancellationToken): Thenable<modes.DefinitionLink[]> {
+		let doc = this._documents.getDocumentData(resource).document;
+		let pos = typeConvert.Position.to(position);
+		return asThenable(() => this._provider.provideDeclaration(doc, pos, token)).then(convertToDefinitionLinks);
+	}
+}
+
 class ImplementationAdapter {
 
 	constructor(
@@ -664,7 +678,7 @@ class SuggestAdapter {
 			label: item.label,
 			kind: typeConvert.CompletionItemKind.from(item.kind),
 			detail: item.detail,
-			documentation: typeConvert.MarkdownString.from(item.documentation),
+			documentation: typeConvert.MarkdownString.fromStrict(item.documentation),
 			filterText: item.filterText,
 			sortText: item.sortText,
 			preselect: item.preselect,
@@ -840,7 +854,7 @@ type Adapter = OutlineAdapter | CodeLensAdapter | DefinitionAdapter | HoverAdapt
 	| DocumentHighlightAdapter | ReferenceAdapter | CodeActionAdapter | DocumentFormattingAdapter
 	| RangeFormattingAdapter | OnTypeFormattingAdapter | NavigateTypeAdapter | RenameAdapter
 	| SuggestAdapter | SignatureHelpAdapter | LinkProviderAdapter | ImplementationAdapter | TypeDefinitionAdapter
-	| ColorProviderAdapter | FoldingProviderAdapter;
+	| ColorProviderAdapter | FoldingProviderAdapter | DeclarationAdapter;
 
 class AdapterData {
 	constructor(
@@ -999,12 +1013,22 @@ export class ExtHostLanguageFeatures implements ExtHostLanguageFeaturesShape {
 
 	registerDefinitionProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DefinitionProvider): vscode.Disposable {
 		const handle = this._addNewAdapter(new DefinitionAdapter(this._documents, provider), extension);
-		this._proxy.$registerDeclaractionSupport(handle, this._transformDocumentSelector(selector));
+		this._proxy.$registerDefinitionSupport(handle, this._transformDocumentSelector(selector));
 		return this._createDisposable(handle);
 	}
 
 	$provideDefinition(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Thenable<modes.DefinitionLink[]> {
 		return this._withAdapter(handle, DefinitionAdapter, adapter => adapter.provideDefinition(URI.revive(resource), position, token));
+	}
+
+	registerDeclarationProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.DeclarationProvider): vscode.Disposable {
+		const handle = this._addNewAdapter(new DeclarationAdapter(this._documents, provider), extension);
+		this._proxy.$registerDeclarationSupport(handle, this._transformDocumentSelector(selector));
+		return this._createDisposable(handle);
+	}
+
+	$provideDeclaration(handle: number, resource: UriComponents, position: IPosition, token: CancellationToken): Thenable<modes.DefinitionLink[]> {
+		return this._withAdapter(handle, DeclarationAdapter, adapter => adapter.provideDeclaration(URI.revive(resource), position, token));
 	}
 
 	registerImplementationProvider(extension: IExtensionDescription, selector: vscode.DocumentSelector, provider: vscode.ImplementationProvider): vscode.Disposable {

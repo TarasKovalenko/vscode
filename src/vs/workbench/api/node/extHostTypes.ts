@@ -14,6 +14,7 @@ import { relative } from 'path';
 import { startsWith } from 'vs/base/common/strings';
 import { values } from 'vs/base/common/map';
 import { coalesce, equals } from 'vs/base/common/arrays';
+import { generateUuid } from 'vs/base/common/uuid';
 
 export class Disposable {
 
@@ -1882,6 +1883,8 @@ export class RelativePattern implements IRelativePattern {
 
 export class Breakpoint {
 
+	private _id: string | undefined;
+
 	readonly enabled: boolean;
 	readonly condition?: string;
 	readonly hitCondition?: string;
@@ -1898,6 +1901,13 @@ export class Breakpoint {
 		if (typeof logMessage === 'string') {
 			this.logMessage = logMessage;
 		}
+	}
+
+	get id(): string {
+		if (!this._id) {
+			this._id = generateUuid();
+		}
+		return this._id;
 	}
 }
 
@@ -1926,7 +1936,6 @@ export class FunctionBreakpoint extends Breakpoint {
 }
 
 export class DebugAdapterExecutable implements vscode.DebugAdapterExecutable {
-	readonly type = 'executable';
 	readonly command: string;
 	readonly args: string[];
 	readonly env?: { [key: string]: string };
@@ -1941,7 +1950,6 @@ export class DebugAdapterExecutable implements vscode.DebugAdapterExecutable {
 }
 
 export class DebugAdapterServer implements vscode.DebugAdapterServer {
-	readonly type = 'server';
 	readonly port: number;
 	readonly host: string;
 
@@ -1952,7 +1960,6 @@ export class DebugAdapterServer implements vscode.DebugAdapterServer {
 }
 
 export class DebugAdapterImplementation implements vscode.DebugAdapterImplementation {
-	readonly type = 'implementation';
 	readonly implementation: any;
 
 	constructor(transport: any) {

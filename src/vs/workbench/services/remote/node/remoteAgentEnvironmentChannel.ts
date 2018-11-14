@@ -5,7 +5,6 @@
 
 import { OperatingSystem } from 'vs/base/common/platform';
 import { URI, UriComponents } from 'vs/base/common/uri';
-import { TPromise } from 'vs/base/common/winjs.base';
 import { IChannel } from 'vs/base/parts/ipc/node/ipc';
 import { IExtensionDescription } from 'vs/workbench/services/extensions/common/extensions';
 import { IRemoteAgentEnvironment } from 'vs/workbench/services/remote/node/remoteAgentService';
@@ -21,17 +20,12 @@ export interface IRemoteAgentEnvironmentDTO {
 	os: OperatingSystem;
 }
 
-export interface IRemoteAgentEnvironmentChannel extends IChannel {
-	call(command: 'getEnvironmentData', args: [string, string]): TPromise<IRemoteAgentEnvironmentDTO>;
-	call(command: string, arg?: any): TPromise<any>;
-}
-
 export class RemoteExtensionEnvironmentChannelClient {
 
-	constructor(private channel: IRemoteAgentEnvironmentChannel) { }
+	constructor(private channel: IChannel) { }
 
-	getEnvironmentData(remoteAuthority: string, extensionDevelopmentPath?: URI): TPromise<IRemoteAgentEnvironment> {
-		return this.channel.call('getEnvironmentData', [remoteAuthority, extensionDevelopmentPath])
+	getEnvironmentData(remoteAuthority: string, extensionDevelopmentPath?: URI): Thenable<IRemoteAgentEnvironment> {
+		return this.channel.call<IRemoteAgentEnvironmentDTO>('getEnvironmentData', [remoteAuthority, extensionDevelopmentPath])
 			.then((data: IRemoteAgentEnvironmentDTO): IRemoteAgentEnvironment => {
 				return {
 					pid: data.pid,

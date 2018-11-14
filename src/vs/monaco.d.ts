@@ -2392,16 +2392,14 @@ declare namespace monaco.editor {
 		arrowSize?: number;
 		/**
 		 * Render vertical scrollbar.
-		 * Accepted values: 'auto', 'visible', 'hidden'.
 		 * Defaults to 'auto'.
 		 */
-		vertical?: string;
+		vertical?: 'auto' | 'visible' | 'hidden';
 		/**
 		 * Render horizontal scrollbar.
-		 * Accepted values: 'auto', 'visible', 'hidden'.
 		 * Defaults to 'auto'.
 		 */
-		horizontal?: string;
+		horizontal?: 'auto' | 'visible' | 'hidden';
 		/**
 		 * Cast horizontal and vertical shadows when the content is scrolled.
 		 * Defaults to true.
@@ -4619,10 +4617,6 @@ declare namespace monaco.languages {
 		 */
 		indentAction: IndentAction;
 		/**
-		 * Describe whether to outdent current line.
-		 */
-		outdentCurrentLine?: boolean;
-		/**
 		 * Describes text to be appended after the new line and after the indentation.
 		 */
 		appendText?: string;
@@ -4766,7 +4760,7 @@ declare namespace monaco.languages {
 		preselect?: boolean;
 		/**
 		 * A string or snippet that should be inserted in a document when selecting
-		 * this completion. When `falsy` the [label](#CompletionItem.label)
+		 * this completion.
 		 * is used.
 		 */
 		insertText: string;
@@ -4945,8 +4939,8 @@ declare namespace monaco.languages {
 	 * the [parameter hints](https://code.visualstudio.com/docs/editor/intellisense)-feature.
 	 */
 	export interface SignatureHelpProvider {
-		readonly signatureHelpTriggerCharacters: ReadonlyArray<string>;
-		readonly signatureHelpRetriggerCharacters: ReadonlyArray<string>;
+		readonly signatureHelpTriggerCharacters?: ReadonlyArray<string>;
+		readonly signatureHelpRetriggerCharacters?: ReadonlyArray<string>;
 		/**
 		 * Provide help for the signature at the given position and document.
 		 */
@@ -5060,6 +5054,18 @@ declare namespace monaco.languages {
 		 * Provide the definition of the symbol at the given position and document.
 		 */
 		provideDefinition(model: editor.ITextModel, position: Position, token: CancellationToken): ProviderResult<Definition | DefinitionLink[]>;
+	}
+
+	/**
+	 * The definition provider interface defines the contract between extensions and
+	 * the [go to definition](https://code.visualstudio.com/docs/editor/editingevolved#_go-to-definition)
+	 * and peek definition features.
+	 */
+	export interface DeclarationProvider {
+		/**
+		 * Provide the declaration of the symbol at the given position and document.
+		 */
+		provideDeclaration(model: editor.ITextModel, position: Position, token: CancellationToken): ProviderResult<Definition | DefinitionLink[]>;
 	}
 
 	/**

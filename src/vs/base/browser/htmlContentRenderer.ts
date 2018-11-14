@@ -122,6 +122,12 @@ export function renderMarkdown(markdown: IMarkdownString, options: RenderOptions
 			return text;
 
 		} else {
+			// HTML Encode href
+			href.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#39;');
 			return `<a href="#" data-href="${href}" title="${title || href}">${text}</a>`;
 		}
 	};
@@ -180,7 +186,7 @@ export function renderMarkdown(markdown: IMarkdownString, options: RenderOptions
 		renderer
 	};
 
-	element.innerHTML = marked(markdown.value, markedOptions);
+	element.innerHTML = marked.parse(markdown.value, markedOptions);
 	signalInnerHTML!();
 
 	return element;

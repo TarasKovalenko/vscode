@@ -94,7 +94,7 @@ export class ExtensionHostProcessWorker implements IExtensionHostStarter {
 	private _messageProtocol: TPromise<IMessagePassingProtocol>;
 
 	constructor(
-		private readonly _extensions: TPromise<IExtensionDescription[]>,
+		private readonly _extensions: Promise<IExtensionDescription[]>,
 		private readonly _extensionHostLogsLocation: URI,
 		@IWorkspaceContextService private readonly _contextService: IWorkspaceContextService,
 		@INotificationService private readonly _notificationService: INotificationService,
@@ -314,8 +314,6 @@ export class ExtensionHostProcessWorker implements IExtensionHostStarter {
 		let startPort = 9333;
 		if (typeof this._environmentService.debugExtensionHost.port === 'number') {
 			startPort = expected = this._environmentService.debugExtensionHost.port;
-		} else {
-			return Promise.resolve({ expected: undefined, actual: 0 });
 		}
 		return new Promise(resolve => {
 			return findFreePort(startPort, 10 /* try 10 ports */, 5000 /* try up to 5 seconds */).then(port => {

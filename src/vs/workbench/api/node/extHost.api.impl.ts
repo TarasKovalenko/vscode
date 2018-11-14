@@ -252,7 +252,6 @@ export function createApiFactory(
 				return extHostLogService.onDidChangeLogLevel;
 			},
 			get clipboard(): vscode.Clipboard {
-				checkProposedApiEnabled(extension);
 				return extHostClipboard;
 			}
 		});
@@ -299,6 +298,9 @@ export function createApiFactory(
 			},
 			registerDefinitionProvider(selector: vscode.DocumentSelector, provider: vscode.DefinitionProvider): vscode.Disposable {
 				return extHostLanguageFeatures.registerDefinitionProvider(extension, checkSelector(selector), provider);
+			},
+			registerDeclarationProvider(selector: vscode.DocumentSelector, provider: vscode.DeclarationProvider): vscode.Disposable {
+				return extHostLanguageFeatures.registerDeclarationProvider(extension, checkSelector(selector), provider);
 			},
 			registerImplementationProvider(selector: vscode.DocumentSelector, provider: vscode.ImplementationProvider): vscode.Disposable {
 				return extHostLanguageFeatures.registerImplementationProvider(extension, checkSelector(selector), provider);
@@ -675,6 +677,9 @@ export function createApiFactory(
 			},
 			registerDebugConfigurationProvider(debugType: string, provider: vscode.DebugConfigurationProvider) {
 				return extHostDebugService.registerDebugConfigurationProvider(extension, debugType, provider);
+			},
+			registerDebugAdapterProvider(debugType: string, provider: vscode.DebugAdapterProvider) {
+				return extHostDebugService.registerDebugAdapterProvider(extension, debugType, provider);
 			},
 			startDebugging(folder: vscode.WorkspaceFolder | undefined, nameOrConfig: string | vscode.DebugConfiguration) {
 				return extHostDebugService.startDebugging(folder, nameOrConfig);
