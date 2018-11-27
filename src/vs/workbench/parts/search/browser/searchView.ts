@@ -377,10 +377,9 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 	}
 
 	private refreshAndUpdateCount(event?: IChangeEvent): Thenable<void> {
-		return this.refreshTree(event).then(() => {
-			this.searchWidget.setReplaceAllActionState(!this.viewModel.searchResult.isEmpty());
-			this.updateSearchResultCount(this.viewModel.searchResult.query.userDisabledExcludesAndIgnoreFiles);
-		});
+		this.searchWidget.setReplaceAllActionState(!this.viewModel.searchResult.isEmpty());
+		this.updateSearchResultCount(this.viewModel.searchResult.query.userDisabledExcludesAndIgnoreFiles);
+		return this.refreshTree(event);
 	}
 
 	private refreshTree(event?: IChangeEvent): Thenable<any> {
@@ -1053,8 +1052,8 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 			_reason: 'searchView',
 			extraFileResources: getOutOfWorkspaceEditorResources(this.editorService, this.contextService),
 			maxResults: SearchView.MAX_TEXT_RESULTS,
-			disregardIgnoreFiles: !useExcludesAndIgnoreFiles,
-			disregardExcludeSettings: !useExcludesAndIgnoreFiles,
+			disregardIgnoreFiles: !useExcludesAndIgnoreFiles || undefined,
+			disregardExcludeSettings: !useExcludesAndIgnoreFiles || undefined,
 			excludePattern,
 			includePattern,
 			previewOptions: {

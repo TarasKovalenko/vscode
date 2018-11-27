@@ -24,31 +24,83 @@ export function connectProxyResolver(
 	extHostLogService: ExtHostLogService,
 	mainThreadTelemetry: MainThreadTelemetryShape
 ) {
-	const agent = createProxyAgent(extHostWorkspace, extHostLogService, mainThreadTelemetry);
+	const agent = createProxyAgent(extHostWorkspace, extHostConfiguration, extHostLogService, mainThreadTelemetry);
 	const lookup = createPatchedModules(extHostConfiguration, agent);
 	return configureModuleLoading(extensionService, lookup);
 }
 
+const maxCacheEntries = 5000; // Cache can grow twice that much due to 'oldCache'.
+
 function createProxyAgent(
 	extHostWorkspace: ExtHostWorkspace,
+	extHostConfiguration: ExtHostConfiguration,
 	extHostLogService: ExtHostLogService,
 	mainThreadTelemetry: MainThreadTelemetryShape
 ) {
+	let settingsProxy = proxyFromConfigURL(extHostConfiguration.getConfiguration('http')
+		.get<string>('proxy'));
+	extHostConfiguration.onDidChangeConfiguration(e => {
+		settingsProxy = proxyFromConfigURL(extHostConfiguration.getConfiguration('http')
+			.get<string>('proxy'));
+	});
+	const env = process.env;
+	let envProxy = proxyFromConfigURL(env.https_proxy || env.HTTPS_PROXY || env.http_proxy || env.HTTP_PROXY); // Not standardized.
+
+	let cacheRolls = 0;
+	let oldCache = new Map<string, string>();
+	let cache = new Map<string, string>();
+	function getCacheKey(url: string) {
+		// Expecting proxies to usually be the same per scheme://host:port. Assuming that for performance.
+		const parsed = nodeurl.parse(url); // Coming from Node's URL, sticking with that.
+		delete parsed.pathname;
+		delete parsed.search;
+		return nodeurl.format(parsed);
+	}
+	function getCachedProxy(key: string) {
+		let proxy = cache.get(key);
+		if (proxy) {
+			return proxy;
+		}
+		proxy = oldCache.get(key);
+		if (proxy) {
+			oldCache.delete(key);
+			cacheProxy(key, proxy);
+		}
+		return proxy;
+	}
+	function cacheProxy(key: string, proxy: string) {
+		cache.set(key, proxy);
+		if (cache.size >= maxCacheEntries) {
+			oldCache = cache;
+			cache = new Map();
+			cacheRolls++;
+			extHostLogService.trace('ProxyResolver#cacheProxy cacheRolls', cacheRolls);
+		}
+	}
+
 	let timeout: NodeJS.Timer | undefined;
 	let count = 0;
 	let duration = 0;
 	let errorCount = 0;
+	let cacheCount = 0;
+	let envCount = 0;
+	let settingsCount = 0;
 	function logEvent() {
 		timeout = undefined;
 		/* __GDPR__
 			"resolveProxy" : {
 				"count": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true },
 				"duration": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true },
-				"errorCount": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true }
+				"errorCount": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true },
+				"cacheCount": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true },
+				"cacheSize": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true },
+				"cacheRolls": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true },
+				"envCount": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true },
+				"settingsCount": { "classification": "SystemMetaData", "purpose": "PerformanceAndHealth", "isMeasurement": true }
 			}
 		*/
-		mainThreadTelemetry.$publicLog('resolveProxy', { count, duration, errorCount });
-		count = duration = errorCount = 0;
+		mainThreadTelemetry.$publicLog('resolveProxy', { count, duration, errorCount, cacheCount, cacheSize: cache.size, cacheRolls, envCount, settingsCount });
+		count = duration = errorCount = cacheCount = envCount = settingsCount = 0;
 	}
 
 	function resolveProxy(url: string, callback: (proxy?: string) => void) {
@@ -56,21 +108,64 @@ function createProxyAgent(
 			timeout = setTimeout(logEvent, 10 * 60 * 1000);
 		}
 
+		if (settingsProxy) {
+			settingsCount++;
+			callback(settingsProxy);
+			extHostLogService.trace('ProxyResolver#resolveProxy settings', url, settingsProxy);
+			return;
+		}
+
+		if (envProxy) {
+			envCount++;
+			callback(envProxy);
+			extHostLogService.trace('ProxyResolver#resolveProxy env', url, envProxy);
+			return;
+		}
+
+		const key = getCacheKey(url);
+		const proxy = getCachedProxy(key);
+		if (proxy) {
+			cacheCount++;
+			callback(proxy);
+			extHostLogService.trace('ProxyResolver#resolveProxy cached', url, proxy);
+			return;
+		}
+
 		const start = Date.now();
-		extHostWorkspace.resolveProxy(url)
+		extHostWorkspace.resolveProxy(url) // Use full URL to ensure it is an actually used one.
 			.then(proxy => {
+				cacheProxy(key, proxy);
 				callback(proxy);
+				extHostLogService.debug('ProxyResolver#resolveProxy', url, proxy);
 			}).then(() => {
 				count++;
 				duration = Date.now() - start + duration;
 			}, err => {
 				errorCount++;
-				extHostLogService.error('resolveProxy', toErrorMessage(err));
 				callback();
+				extHostLogService.error('ProxyResolver#resolveProxy', toErrorMessage(err));
 			});
 	}
 
 	return new ProxyAgent({ resolveProxy });
+}
+
+function proxyFromConfigURL(configURL: string) {
+	const url = (configURL || '').trim();
+	const i = url.indexOf('://');
+	if (i === -1) {
+		return undefined;
+	}
+	const scheme = url.substr(0, i).toLowerCase();
+	const proxy = url.substr(i + 3);
+	if (scheme === 'http') {
+		return 'PROXY ' + proxy;
+	} else if (scheme === 'https') {
+		return 'HTTPS ' + proxy;
+	} else if (scheme === 'socks') {
+		return 'SOCKS ' + proxy;
+	}
+	return undefined;
 }
 
 function createPatchedModules(extHostConfiguration: ExtHostConfiguration, agent: http.Agent) {
