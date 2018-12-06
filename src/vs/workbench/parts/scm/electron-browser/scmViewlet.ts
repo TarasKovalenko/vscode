@@ -262,10 +262,9 @@ class MainPanel extends ViewletPanel {
 	protected renderBody(container: HTMLElement): void {
 		const delegate = new ProvidersListDelegate();
 		const renderer = this.instantiationService.createInstance(ProviderRenderer);
+		const identityProvider = { getId: r => r.provider.id };
 
-		this.list = this.instantiationService.createInstance(WorkbenchList, container, delegate, [renderer], {
-			identityProvider: repository => repository.provider.id
-		}) as WorkbenchList<ISCMRepository>;
+		this.list = this.instantiationService.createInstance(WorkbenchList, container, delegate, [renderer], { identityProvider }) as WorkbenchList<ISCMRepository>;
 
 		this.list.onSelectionChange(this.onListSelectionChange, this, this.disposables);
 		this.list.onContextMenu(this.onListContextMenu, this, this.disposables);
@@ -316,8 +315,11 @@ class MainPanel extends ViewletPanel {
 	}
 
 	private onListContextMenu(e: IListContextMenuEvent<ISCMRepository>): void {
-		const repository = e.element;
+		if (!e.element) {
+			return;
+		}
 
+		const repository = e.element;
 		const contextKeyService = this.contextKeyService.createScoped();
 		const scmProviderKey = contextKeyService.createKey<string | undefined>('scmProvider', void 0);
 		scmProviderKey.set(repository.provider.contextValue);
@@ -577,16 +579,18 @@ class ProviderListDelegate implements IListVirtualDelegate<ISCMResourceGroup | I
 	}
 }
 
-function scmResourceIdentityProvider(r: ISCMResourceGroup | ISCMResource): string {
-	if (isSCMResource(r)) {
-		const group = r.resourceGroup;
-		const provider = group.provider;
-		return `${provider.contextValue}/${group.id}/${r.sourceUri.toString()}`;
-	} else {
-		const provider = r.provider;
-		return `${provider.contextValue}/${r.id}`;
+const scmResourceIdentityProvider = {
+	getId(r: ISCMResourceGroup | ISCMResource): string {
+		if (isSCMResource(r)) {
+			const group = r.resourceGroup;
+			const provider = group.provider;
+			return `${provider.contextValue}/${group.id}/${r.sourceUri.toString()}`;
+		} else {
+			const provider = r.provider;
+			return `${provider.contextValue}/${r.id}`;
+		}
 	}
-}
+};
 
 function isGroupVisible(group: ISCMResourceGroup) {
 	return group.elements.length > 0 || !group.hideWhenEmpty;
@@ -840,6 +844,7 @@ export class RepositoryPanel extends ViewletPanel {
 		const triggerValidation = () => validationDelayer.trigger(validate);
 
 		this.inputBox = new InputBox(this.inputBoxContainer, this.contextViewService, { flexibleHeight: true });
+		this.inputBox.setEnabled(this.isVisible() && this.isExpanded());
 		this.disposables.push(attachInputBoxStyler(this.inputBox, this.themeService));
 		this.disposables.push(this.inputBox);
 
@@ -870,7 +875,6 @@ export class RepositoryPanel extends ViewletPanel {
 		this.updateInputBoxVisibility();
 
 		// List
-
 		this.listContainer = append(container, $('.scm-status.show-file-icons'));
 
 		const updateActionsVisibility = () => toggleClass(this.listContainer, 'show-actions', this.configurationService.getValue<boolean>('scm.alwaysShowActions'));
@@ -914,6 +918,13 @@ export class RepositoryPanel extends ViewletPanel {
 		} else {
 			this.visibilityDisposables = dispose(this.visibilityDisposables);
 		}
+
+		this.inputBox.setEnabled(this.isVisible() && this.isExpanded());
+	}
+
+	setExpanded(expanded: boolean): void {
+		super.setExpanded(expanded);
+		this.inputBox.setEnabled(this.isVisible() && this.isExpanded());
 	}
 
 	layoutBody(height: number = this.cachedHeight): void {
@@ -986,6 +997,10 @@ export class RepositoryPanel extends ViewletPanel {
 	}
 
 	private onListContextMenu(e: IListContextMenuEvent<ISCMResourceGroup | ISCMResource>): void {
+		if (!e.element) {
+			return;
+		}
+
 		const element = e.element;
 		let actions: IAction[];
 

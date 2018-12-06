@@ -73,6 +73,9 @@ import { REMOTE_HOST_SCHEME } from 'vs/platform/remote/common/remoteHosts';
 import { REMOTE_FILE_SYSTEM_CHANNEL_NAME } from 'vs/platform/remote/node/remoteAgentFileSystemChannel';
 import { ResolvedAuthority } from 'vs/platform/remote/common/remoteAuthorityResolver';
 import { SnapUpdateService } from 'vs/platform/update/electron-main/updateService.snap';
+import { IStorageMainService, StorageMainService } from 'vs/platform/storage/node/storageMainService';
+import { GlobalStorageDatabaseChannel } from 'vs/platform/storage/node/storageIpc';
+import { generateUuid } from 'vs/base/common/uuid';
 
 export class CodeApplication extends Disposable {
 
@@ -208,7 +211,7 @@ export class CodeApplication extends Disposable {
 			} else {
 				const [host, strPort] = authority.split(':');
 				const port = parseInt(strPort, 10);
-				return { authority, host, port };
+				return { authority, host, port, syncExtensions: false };
 			}
 		};
 
@@ -425,30 +428,31 @@ export class CodeApplication extends Disposable {
 			this.sharedProcessClient = this.sharedProcess.whenReady().then(() => connect(this.environmentService.sharedIPCHandle, 'main'));
 
 			// Services
-			const appInstantiationService = this.initServices(machineId);
+			return this.initServices(machineId).then(appInstantiationService => {
 
-			// Create driver
-			if (this.environmentService.driverHandle) {
-				serveDriver(this.electronIpcServer, this.environmentService.driverHandle, this.environmentService, appInstantiationService).then(server => {
-					this.logService.info('Driver started at:', this.environmentService.driverHandle);
-					this._register(server);
-				});
-			}
+				// Create driver
+				if (this.environmentService.driverHandle) {
+					serveDriver(this.electronIpcServer, this.environmentService.driverHandle, this.environmentService, appInstantiationService).then(server => {
+						this.logService.info('Driver started at:', this.environmentService.driverHandle);
+						this._register(server);
+					});
+				}
 
-			// Setup Auth Handler
-			const authHandler = appInstantiationService.createInstance(ProxyAuthHandler);
-			this._register(authHandler);
+				// Setup Auth Handler
+				const authHandler = appInstantiationService.createInstance(ProxyAuthHandler);
+				this._register(authHandler);
 
-			// Open Windows
-			const windows = appInstantiationService.invokeFunction(accessor => this.openFirstWindow(accessor));
+				// Open Windows
+				const windows = appInstantiationService.invokeFunction(accessor => this.openFirstWindow(accessor));
 
-			// Post Open Windows Tasks
-			appInstantiationService.invokeFunction(accessor => this.afterWindowOpen(accessor));
+				// Post Open Windows Tasks
+				appInstantiationService.invokeFunction(accessor => this.afterWindowOpen(accessor));
 
-			// Tracing: Stop tracing after windows are ready if enabled
-			if (this.environmentService.args.trace) {
-				this.stopTracingEventually(windows);
-			}
+				// Tracing: Stop tracing after windows are ready if enabled
+				if (this.environmentService.args.trace) {
+					this.stopTracingEventually(windows);
+				}
+			});
 		});
 	}
 
@@ -502,7 +506,7 @@ export class CodeApplication extends Disposable {
 		});
 	}
 
-	private initServices(machineId: string): IInstantiationService {
+	private initServices(machineId: string): Thenable<IInstantiationService> {
 		const services = new ServiceCollection();
 
 		if (process.platform === 'win32') {
@@ -522,6 +526,7 @@ export class CodeApplication extends Disposable {
 		services.set(ILaunchService, new SyncDescriptor(LaunchService));
 		services.set(IIssueService, new SyncDescriptor(IssueService, [machineId, this.userEnv]));
 		services.set(IMenubarService, new SyncDescriptor(MenubarService));
+		services.set(IStorageMainService, new SyncDescriptor(StorageMainService));
 
 		// Telemetry
 		if (!this.environmentService.isExtensionDevelopment && !this.environmentService.args['disable-telemetry'] && !!product.enableTelemetry) {
@@ -536,7 +541,46 @@ export class CodeApplication extends Disposable {
 			services.set(ITelemetryService, NullTelemetryService);
 		}
 
-		return this.instantiationService.createChild(services);
+		const appInstantiationService = this.instantiationService.createChild(services);
+
+		return appInstantiationService.invokeFunction(accessor => this.initStorageService(accessor)).then(() => appInstantiationService);
+	}
+
+	private initStorageService(accessor: ServicesAccessor): Thenable<void> {
+		const storageMainService = accessor.get(IStorageMainService) as StorageMainService;
+
+		// Ensure to close storage on shutdown
+		this.lifecycleService.onWillShutdown(e => e.join(storageMainService.close()));
+
+		// Initialize storage service
+		return storageMainService.initialize().then(void 0, error => {
+			errors.onUnexpectedError(error);
+			this.logService.error(error);
+		}).then(() => {
+
+			// Apply global telemetry values as part of the initialization
+			// These are global across all windows and thereby should be
+			// written from the main process once.
+
+			const telemetryInstanceId = 'telemetry.instanceId';
+			const instanceId = storageMainService.get(telemetryInstanceId, null);
+			if (instanceId === null) {
+				storageMainService.store(telemetryInstanceId, generateUuid());
+			}
+
+			const telemetryFirstSessionDate = 'telemetry.firstSessionDate';
+			const firstSessionDate = storageMainService.get(telemetryFirstSessionDate, null);
+			if (firstSessionDate === null) {
+				storageMainService.store(telemetryFirstSessionDate, new Date().toUTCString());
+			}
+
+			const telemetryCurrentSessionDate = 'telemetry.currentSessionDate';
+			const telemetryLastSessionDate = 'telemetry.lastSessionDate';
+			const lastSessionDate = storageMainService.get(telemetryCurrentSessionDate, null); // previous session date was the "current" one at that time
+			const currentSessionDate = new Date().toUTCString(); // current session date is "now"
+			storageMainService.store(telemetryLastSessionDate, lastSessionDate);
+			storageMainService.store(telemetryCurrentSessionDate, currentSessionDate);
+		});
 	}
 
 	private openFirstWindow(accessor: ServicesAccessor): ICodeWindow[] {
@@ -572,6 +616,10 @@ export class CodeApplication extends Disposable {
 		const urlService = accessor.get(IURLService);
 		const urlChannel = new URLServiceChannel(urlService);
 		this.electronIpcServer.registerChannel('url', urlChannel);
+
+		const storageMainService = accessor.get(IStorageMainService);
+		const storageChannel = this._register(new GlobalStorageDatabaseChannel(storageMainService as StorageMainService));
+		this.electronIpcServer.registerChannel('storage', storageChannel);
 
 		// Log level management
 		const logLevelChannel = new LogLevelSetterChannel(accessor.get(ILogService));
@@ -684,8 +732,7 @@ export class CodeApplication extends Disposable {
 		this.historyMainService.onRecentlyOpenedChange(() => this.historyMainService.updateWindowsJumpList());
 
 		// Start shared process after a while
-		const sharedProcess = new RunOnceScheduler(() => getShellEnvironment().then(userEnv => this.sharedProcess.spawn(userEnv)), 3000);
-		sharedProcess.schedule();
-		this._register(sharedProcess);
+		const sharedProcessSpawn = this._register(new RunOnceScheduler(() => getShellEnvironment().then(userEnv => this.sharedProcess.spawn(userEnv)), 3000));
+		sharedProcessSpawn.schedule();
 	}
 }
