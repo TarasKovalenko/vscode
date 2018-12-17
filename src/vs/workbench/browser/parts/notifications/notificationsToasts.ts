@@ -9,7 +9,7 @@ import { IDisposable, dispose, toDisposable } from 'vs/base/common/lifecycle';
 import { addClass, removeClass, isAncestor, addDisposableListener, EventType, Dimension } from 'vs/base/browser/dom';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { NotificationsList } from 'vs/workbench/browser/parts/notifications/notificationsList';
-import { once } from 'vs/base/common/event';
+import { Event } from 'vs/base/common/event';
 import { IPartService, Parts } from 'vs/workbench/services/part/common/partService';
 import { Themable, NOTIFICATIONS_TOAST_BORDER } from 'vs/workbench/common/theme';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
@@ -54,7 +54,6 @@ export class NotificationsToasts extends Themable {
 
 	private notificationsToastsContainer: HTMLElement;
 	private workbenchDimensions: Dimension;
-	private windowHasFocus: boolean;
 	private isNotificationsCenterVisible: boolean;
 	private mapNotificationToToast: Map<INotificationViewItem, INotificationToast>;
 	private notificationsToastsVisibleContextKey: IContextKey<boolean>;
@@ -75,8 +74,6 @@ export class NotificationsToasts extends Themable {
 		this.mapNotificationToToast = new Map<INotificationViewItem, INotificationToast>();
 		this.notificationsToastsVisibleContextKey = NotificationsToastsVisibleContext.bindTo(contextKeyService);
 
-		this.windowService.isFocused().then(isFocused => this.windowHasFocus = isFocused);
-
 		this.registerListeners();
 	}
 
@@ -91,12 +88,9 @@ export class NotificationsToasts extends Themable {
 			// Update toasts on notification changes
 			this._register(this.model.onDidNotificationChange(e => this.onDidNotificationChange(e)));
 		});
-
-		// Track window focus
-		this.windowService.onDidChangeFocus(hasFocus => this.windowHasFocus = hasFocus);
 	}
 
-	private onCanShowNotifications(): Thenable<void> {
+	private onCanShowNotifications(): Promise<void> {
 
 		// Wait for the running phase to ensure we can draw notifications properly
 		return this.lifecycleService.when(LifecyclePhase.Ready).then(() => {
@@ -200,7 +194,7 @@ export class NotificationsToasts extends Themable {
 		}));
 
 		// Remove when item gets closed
-		once(item.onDidClose)(() => {
+		Event.once(item.onDidClose)(() => {
 			this.removeToast(item);
 		});
 
@@ -241,7 +235,7 @@ export class NotificationsToasts extends Themable {
 				// the timeout again. This prevents an issue where focussing the window
 				// could immediately hide the notification because the timeout was triggered
 				// again.
-				if ((item.sticky || item.hasPrompt()) && !this.windowHasFocus) {
+				if ((item.sticky || item.hasPrompt()) && !this.windowService.hasFocus) {
 					if (!listener) {
 						listener = this.windowService.onDidChangeFocus(focus => {
 							if (focus) {
