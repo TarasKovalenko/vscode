@@ -203,7 +203,7 @@ export class SearchService extends Disposable implements ISearchService {
 			if (!provider && scheme === 'file') {
 				diskSearchQueries.push(...schemeFQs);
 			} else if (!provider) {
-				throw new Error('No search provider registered for scheme: ' + scheme);
+				console.warn('No search provider registered for scheme: ' + scheme);
 			} else {
 				const oneSchemeQuery: ISearchQuery = {
 					...query,
@@ -521,7 +521,7 @@ export class DiskSearch implements ISearchResultProvider {
 				let event: Event<ISerializedSearchProgressItem | ISerializedSearchComplete>;
 				event = this.raw.fileSearch(query);
 
-				const onProgress = (p: ISearchProgressItem) => {
+				const onProgress = (p: IProgress) => {
 					if (p.message) {
 						// Should only be for logs
 						this.logService.debug('SearchService#search', p.message);
