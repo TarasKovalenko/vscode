@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { app, ipcMain as ipc, systemPreferences, shell, Event, contentTracing, protocol } from 'electron';
+import { app, ipcMain as ipc, systemPreferences, shell, Event, contentTracing, protocol, powerMonitor } from 'electron';
 import { IProcessEnvironment, isWindows, isMacintosh } from 'vs/base/common/platform';
 import { WindowsManager } from 'vs/code/electron-main/windows';
 import { IWindowsService, OpenContext, ActiveWindowManager } from 'vs/platform/windows/common/windows';
@@ -95,12 +95,12 @@ export class CodeApplication extends Disposable {
 	constructor(
 		private mainIpcServer: Server,
 		private userEnv: IProcessEnvironment,
-		@IInstantiationService private instantiationService: IInstantiationService,
-		@ILogService private logService: ILogService,
-		@IEnvironmentService private environmentService: IEnvironmentService,
-		@ILifecycleService private lifecycleService: ILifecycleService,
-		@IConfigurationService private configurationService: ConfigurationService,
-		@IStateService private stateService: IStateService
+		@IInstantiationService private readonly instantiationService: IInstantiationService,
+		@ILogService private readonly logService: ILogService,
+		@IEnvironmentService private readonly environmentService: IEnvironmentService,
+		@ILifecycleService private readonly lifecycleService: ILifecycleService,
+		@IConfigurationService private readonly configurationService: ConfigurationService,
+		@IStateService private readonly stateService: IStateService
 	) {
 		super();
 
@@ -260,6 +260,12 @@ export class CodeApplication extends Disposable {
 		ipc.on('vscode:openDevTools', (event: Event) => event.sender.openDevTools());
 
 		ipc.on('vscode:reloadWindow', (event: Event) => event.sender.reload());
+
+		powerMonitor.on('resume', () => { // After waking up from sleep
+			if (this.windowsMainService) {
+				this.windowsMainService.sendToAll('vscode:osResume', undefined);
+			}
+		});
 	}
 
 	private onUnexpectedError(err: Error): void {
@@ -468,7 +474,7 @@ export class CodeApplication extends Disposable {
 		this.lifecycleService.onWillShutdown(e => e.join(storageMainService.close()));
 
 		// Initialize storage service
-		return storageMainService.initialize().then(void 0, error => {
+		return storageMainService.initialize().then(undefined, error => {
 			errors.onUnexpectedError(error);
 			this.logService.error(error);
 		}).then(() => {
