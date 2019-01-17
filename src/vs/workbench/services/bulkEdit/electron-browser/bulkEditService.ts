@@ -340,7 +340,6 @@ export class BulkEdit {
 	}
 
 	private async _performTextEdits(edits: ResourceTextEdit[], progress: IProgress<void>): Promise<void> {
-		console.log(JSON.stringify(edits, null, '\t'));
 		this._logService.debug('_performTextEdits', JSON.stringify(edits));
 
 		const recording = Recording.start(this._fileService);
@@ -392,8 +391,7 @@ export class BulkEditService implements IBulkEditService {
 		let codeEditor = options.editor;
 
 		// First check if loaded models were not changed in the meantime
-		for (let i = 0, len = edits.length; i < len; i++) {
-			const edit = edits[i];
+		for (const edit of edits) {
 			if (!isResourceFileEdit(edit) && typeof edit.modelVersionId === 'number') {
 				let model = this._modelService.getModel(edit.resource);
 				if (model && model.getVersionId() !== edit.modelVersionId) {
