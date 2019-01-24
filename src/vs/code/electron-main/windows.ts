@@ -13,7 +13,7 @@ import { IEnvironmentService, ParsedArgs } from 'vs/platform/environment/common/
 import { IStateService } from 'vs/platform/state/common/state';
 import { CodeWindow, defaultWindowState } from 'vs/code/electron-main/window';
 import { hasArgs, asArray } from 'vs/platform/environment/node/argv';
-import { ipcMain as ipc, screen, BrowserWindow, dialog, systemPreferences, app } from 'electron';
+import { ipcMain as ipc, screen, BrowserWindow, dialog, systemPreferences } from 'electron';
 import { IPathWithLineAndColumn, parseLineAndColumnAware } from 'vs/code/node/paths';
 import { ILifecycleService, UnloadReason, IWindowUnloadEvent, LifecycleService } from 'vs/platform/lifecycle/electron-main/lifecycleMain';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
@@ -145,12 +145,6 @@ export class WindowsManager implements IWindowsMainService {
 	private _onWindowLoad = new Emitter<number>();
 	onWindowLoad: CommonEvent<number> = this._onWindowLoad.event;
 
-	private _onActiveWindowChanged = new Emitter<ICodeWindow>();
-	onActiveWindowChanged: CommonEvent<ICodeWindow> = this._onActiveWindowChanged.event;
-
-	private _onWindowReload = new Emitter<number>();
-	onWindowReload: CommonEvent<number> = this._onWindowReload.event;
-
 	private _onWindowsCountChanged = new Emitter<IWindowsCountChangedEvent>();
 	onWindowsCountChanged: CommonEvent<IWindowsCountChangedEvent> = this._onWindowsCountChanged.event;
 
@@ -207,13 +201,6 @@ export class WindowsManager implements IWindowsMainService {
 	}
 
 	private registerListeners(): void {
-
-		// React to windows focus changes
-		app.on('browser-window-focus', () => {
-			setTimeout(() => {
-				this._onActiveWindowChanged.fire(this.getLastActiveWindow());
-			});
-		});
 
 		// React to workbench ready events from windows
 		ipc.on('vscode:workbenchReady', (event: any, windowId: number) => {
@@ -491,7 +478,7 @@ export class WindowsManager implements IWindowsMainService {
 
 		// Remember in recent document list (unless this opens for extension development)
 		// Also do not add paths when files are opened for diffing, only if opened individually
-		if (!usedWindows.some(w => w.isExtensionDevelopmentHost) && !openConfig.cli.diff) {
+		if (!usedWindows.some(w => w.isExtensionDevelopmentHost) && !openConfig.diffMode) {
 			const recentlyOpenedWorkspaces: Array<IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier> = [];
 			const recentlyOpenedFiles: URI[] = [];
 
@@ -830,7 +817,7 @@ export class WindowsManager implements IWindowsMainService {
 		// folders should be added to the existing window.
 		if (!openConfig.addMode && isCommandLineOrAPICall) {
 			const foldersToOpen = windowsToOpen.filter(path => !!path.folderUri);
-			if (foldersToOpen.length > 1) {
+			if (foldersToOpen.length > 1 && foldersToOpen.every(f => f.folderUri.scheme === Schemas.file)) {
 				const workspace = this.workspacesMainService.createWorkspaceSync(foldersToOpen.map(folder => ({ uri: folder.folderUri })));
 
 				// Add workspace and remove folders thereby
@@ -1471,9 +1458,6 @@ export class WindowsManager implements IWindowsMainService {
 		this.lifecycleService.unload(win, UnloadReason.RELOAD).then(veto => {
 			if (!veto) {
 				win.reload(undefined, cli);
-
-				// Emit
-				this._onWindowReload.fire(win.id);
 			}
 		});
 	}
@@ -2022,7 +2006,6 @@ class WorkspacesManager {
 				return this.doSaveAndOpenWorkspace(window, workspace, path);
 			});
 		});
-
 	}
 
 	private isValidTargetWorkspacePath(window: ICodeWindow, path?: string): Promise<boolean> {
