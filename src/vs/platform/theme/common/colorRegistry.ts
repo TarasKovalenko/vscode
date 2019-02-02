@@ -235,6 +235,9 @@ export const listHighlightForeground = registerColor('list.highlightForeground',
 export const listInvalidItemForeground = registerColor('list.invalidItemForeground', { dark: '#B89500', light: '#B89500', hc: '#B89500' }, nls.localize('invalidItemForeground', 'List/Tree foreground color for invalid items, for example an unresolved root in explorer.'));
 export const listErrorForeground = registerColor('list.errorForeground', { dark: '#F88070', light: '#B01011', hc: null }, nls.localize('listErrorForeground', 'Foreground color of list items containing errors.'));
 export const listWarningForeground = registerColor('list.warningForeground', { dark: '#4d9e4d', light: '#117711', hc: null }, nls.localize('listWarningForeground', 'Foreground color of list items containing warnings.'));
+export const listFilterWidgetBackground = registerColor('listFilterWidget.background', { light: '#efc1ad', dark: '#653723', hc: Color.black }, nls.localize('listFilterWidgetBackground', 'Background color of the type filter widget in lists and trees.'));
+export const listFilterWidgetOutline = registerColor('listFilterWidget.outline', { dark: Color.transparent, light: Color.transparent, hc: '#f38518' }, nls.localize('listFilterWidgetOutline', 'Outline color of the type filter widget in lists and trees.'));
+export const listFilterWidgetNoMatchesOutline = registerColor('listFilterWidget.noMatchesOutline', { dark: '#BE1100', light: '#BE1100', hc: contrastBorder }, nls.localize('listFilterWidgetNoMatchesOutline', 'Outline color of the type filter widget in lists and trees, when there are no matches.'));
 
 export const pickerGroupForeground = registerColor('pickerGroup.foreground', { dark: '#3794FF', light: '#0066BF', hc: Color.white }, nls.localize('pickerGroupForeground', "Quick picker color for grouping labels."));
 export const pickerGroupBorder = registerColor('pickerGroup.border', { dark: '#3F3F46', light: '#CCCEDB', hc: Color.white }, nls.localize('pickerGroupBorder', "Quick picker color for grouping borders."));
@@ -430,21 +433,6 @@ function lessProminent(colorValue: ColorValue, backgroundColorValue: ColorValue,
 				return Color.getDarkerColor(from, backgroundColor, factor).transparent(transparency);
 			}
 			return from.transparent(factor * transparency);
-		}
-		return null;
-	};
-}
-
-export function blend2(transparentColorValue: ColorValue, opaqueColorValue: ColorValue): ColorFunction {
-	return (theme) => {
-		let transparentColor = resolveColorValue(transparentColorValue, theme);
-		let opaqueColor = resolveColorValue(opaqueColorValue, theme);
-		if (transparentColor && opaqueColor) {
-			return opaqueColor.blend2(transparentColor);
-		} else if (transparentColor) {
-			return transparentColor;
-		} else if (opaqueColor) {
-			return opaqueColor;
 		}
 		return null;
 	};
