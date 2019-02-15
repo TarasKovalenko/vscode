@@ -32,7 +32,8 @@ import { FilterOptions } from 'vs/workbench/contrib/markers/electron-browser/mar
 import { IExpression, getEmptyExpression } from 'vs/base/common/glob';
 import { mixin, deepClone } from 'vs/base/common/objects';
 import { IWorkspaceFolder, IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
-import { isAbsolute, join } from 'vs/base/common/paths';
+import { join } from 'vs/base/common/extpath';
+import { isAbsolute } from 'vs/base/common/path';
 import { FilterData, Filter, VirtualDelegate, ResourceMarkersRenderer, MarkerRenderer, RelatedInformationRenderer, TreeElement, MarkersTreeAccessibilityProvider, MarkersViewModel, ResourceDragAndDrop } from 'vs/workbench/contrib/markers/electron-browser/markersTreeViewer';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { Separator, ActionItem } from 'vs/base/browser/ui/actionbar/actionbar';
@@ -235,7 +236,7 @@ export class MarkersPanel extends Panel implements IMarkerFilterController {
 			}
 
 			const { total, filtered } = this.getFilterStats();
-			dom.toggleClass(this.treeContainer, 'hidden', total > 0 && filtered === 0);
+			dom.toggleClass(this.treeContainer, 'hidden', total === 0 || filtered === 0);
 			this.renderMessage();
 			this._onDidFilter.fire();
 		}
@@ -253,7 +254,7 @@ export class MarkersPanel extends Panel implements IMarkerFilterController {
 		this._onDidFilter.fire();
 
 		const { total, filtered } = this.getFilterStats();
-		dom.toggleClass(this.treeContainer, 'hidden', total > 0 && filtered === 0);
+		dom.toggleClass(this.treeContainer, 'hidden', total === 0 || filtered === 0);
 		this.renderMessage();
 	}
 
@@ -357,7 +358,7 @@ export class MarkersPanel extends Panel implements IMarkerFilterController {
 
 		const markersNavigator = this._register(new TreeResourceNavigator2(this.tree, { openOnFocus: true }));
 		this._register(Event.debounce(markersNavigator.onDidOpenResource, (last, event) => event, 75, true)(options => {
-			this.openFileAtElement(options.element, options.editorOptions.preserveFocus, options.sideBySide, options.editorOptions.pinned);
+			this.openFileAtElement(options.element, !!options.editorOptions.preserveFocus, options.sideBySide, !!options.editorOptions.pinned);
 		}));
 		this._register(this.tree.onDidChangeCollapseState(({ node }) => {
 			const { element } = node;
@@ -401,7 +402,7 @@ export class MarkersPanel extends Panel implements IMarkerFilterController {
 	}
 
 	private createActions(): void {
-		this.collapseAllAction = new Action('vs.tree.collapse', localize('collapse', "Collapse"), 'monaco-tree-action collapse-all', true, async () => {
+		this.collapseAllAction = new Action('vs.tree.collapse', localize('collapseAll', "Collapse All"), 'monaco-tree-action collapse-all', true, async () => {
 			this.tree.collapseAll();
 			this.tree.setSelection([]);
 			this.tree.setFocus([]);
@@ -497,7 +498,7 @@ export class MarkersPanel extends Panel implements IMarkerFilterController {
 		this.cachedFilterStats = undefined;
 		this.tree.setChildren(null, createModelIterator(this.markersWorkbenchService.markersModel));
 		const { total, filtered } = this.getFilterStats();
-		dom.toggleClass(this.treeContainer, 'hidden', total > 0 && filtered === 0);
+		dom.toggleClass(this.treeContainer, 'hidden', total === 0 || filtered === 0);
 		this.renderMessage();
 	}
 

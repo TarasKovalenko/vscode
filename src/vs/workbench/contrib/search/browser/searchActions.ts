@@ -9,7 +9,7 @@ import { INavigator } from 'vs/base/common/iterator';
 import { createKeybinding, ResolvedKeybinding } from 'vs/base/common/keyCodes';
 import { normalizeDriveLetter } from 'vs/base/common/labels';
 import { Schemas } from 'vs/base/common/network';
-import { normalize } from 'vs/base/common/paths';
+import { normalize } from 'vs/base/common/extpath';
 import { isWindows, OS } from 'vs/base/common/platform';
 import { repeat } from 'vs/base/common/strings';
 import { URI } from 'vs/base/common/uri';
@@ -21,7 +21,7 @@ import { IEditorOptions } from 'vs/platform/editor/common/editor';
 import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { WorkbenchObjectTree } from 'vs/platform/list/browser/listService';
-import { ISearchConfiguration, ISearchHistoryService, VIEW_ID } from 'vs/platform/search/common/search';
+import { ISearchConfiguration, ISearchHistoryService, VIEW_ID } from 'vs/workbench/services/search/common/search';
 import { SearchView } from 'vs/workbench/contrib/search/browser/searchView';
 import * as Constants from 'vs/workbench/contrib/search/common/constants';
 import { IReplaceService } from 'vs/workbench/contrib/search/common/replace';
@@ -34,7 +34,7 @@ import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
 export function isSearchViewFocused(viewletService: IViewletService, panelService: IPanelService): boolean {
 	const searchView = getSearchView(viewletService, panelService);
 	const activeElement = document.activeElement;
-	return searchView && activeElement && DOM.isAncestor(activeElement, searchView.getContainer());
+	return !!(searchView && activeElement && DOM.isAncestor(activeElement, searchView.getContainer()));
 }
 
 export function appendKeyBindingLabel(label: string, keyBinding: number | ResolvedKeybinding, keyBindingService2: IKeybindingService): string {
@@ -54,7 +54,7 @@ export function openSearchView(viewletService: IViewletService, panelService: IP
 	return Promise.resolve(panelService.openPanel(VIEW_ID, focus) as SearchView);
 }
 
-export function getSearchView(viewletService: IViewletService, panelService: IPanelService): SearchView {
+export function getSearchView(viewletService: IViewletService, panelService: IPanelService): SearchView | null {
 	const activeViewlet = viewletService.getActiveViewlet();
 	if (activeViewlet && activeViewlet.getId() === VIEW_ID) {
 		return <SearchView>activeViewlet;
@@ -65,7 +65,7 @@ export function getSearchView(viewletService: IViewletService, panelService: IPa
 		return <SearchView>activePanel;
 	}
 
-	return undefined;
+	return null;
 }
 
 function doAppendKeyBindingLabel(label: string, keyBinding: ResolvedKeybinding): string {
@@ -230,7 +230,7 @@ export class RefreshAction extends Action {
 	}
 
 	get enabled(): boolean {
-		return this.searchView.isSearchSubmitted();
+		return this.searchView && this.searchView.isSearchSubmitted();
 	}
 
 	update(): void {
@@ -242,6 +242,7 @@ export class RefreshAction extends Action {
 		if (searchView) {
 			searchView.onQueryChanged();
 		}
+
 		return Promise.resolve(null);
 	}
 }
@@ -261,7 +262,7 @@ export class CollapseDeepestExpandedLevelAction extends Action {
 
 	update(): void {
 		const searchView = getSearchView(this.viewletService, this.panelService);
-		this.enabled = searchView && searchView.hasSearchResults();
+		this.enabled = !!searchView && searchView.hasSearchResults();
 	}
 
 	run(): Promise<void> {
@@ -318,7 +319,7 @@ export class ClearSearchResultsAction extends Action {
 
 	update(): void {
 		const searchView = getSearchView(this.viewletService, this.panelService);
-		this.enabled = searchView && (!searchView.allSearchFieldsClear() || searchView.hasSearchResults());
+		this.enabled = !!searchView && (!searchView.allSearchFieldsClear() || searchView.hasSearchResults());
 	}
 
 	run(): Promise<void> {
@@ -326,7 +327,7 @@ export class ClearSearchResultsAction extends Action {
 		if (searchView) {
 			searchView.clearSearchResults();
 		}
-		return Promise.resolve(null);
+		return Promise.resolve();
 	}
 }
 
@@ -345,7 +346,7 @@ export class CancelSearchAction extends Action {
 
 	update(): void {
 		const searchView = getSearchView(this.viewletService, this.panelService);
-		this.enabled = searchView && searchView.isSearching();
+		this.enabled = !!searchView && searchView.isSearching();
 	}
 
 	run(): Promise<void> {
@@ -473,7 +474,7 @@ export class RemoveAction extends AbstractSearchAndReplaceAction {
 			this.viewer.setFocus([nextFocusElement], getKeyboardEventForEditorOpen());
 		}
 
-		let elementToRefresh: FolderMatch | FileMatch | SearchResult;
+		let elementToRefresh: FolderMatch | FileMatch | SearchResult | undefined;
 		const element = this.element;
 		if (element instanceof FolderMatch) {
 			const parent = element.parent();
@@ -710,7 +711,7 @@ const maxClipboardMatches = 1e4;
 export const copyMatchCommand: ICommandHandler = (accessor, match: RenderableMatch) => {
 	const clipboardService = accessor.get(IClipboardService);
 
-	let text: string;
+	let text: string | undefined;
 	if (match instanceof Match) {
 		text = matchToString(match);
 	} else if (match instanceof FileMatch) {

@@ -3,8 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { basename, normalize, join, dirname } from 'path';
 import * as fs from 'fs';
+import { basename, normalize, join, dirname } from 'vs/base/common/path';
 import { localize } from 'vs/nls';
 import * as arrays from 'vs/base/common/arrays';
 import { assign, mixin, equals } from 'vs/base/common/objects';
@@ -511,7 +511,7 @@ export class WindowsManager implements IWindowsMainService {
 		// Handle folders to add by looking for the last active workspace (not on initial startup)
 		if (!openConfig.initialStartup && foldersToAdd.length > 0) {
 			const authority = getRemoteAuthority(foldersToAdd[0]);
-			const lastActiveWindow = authority ? this.getLastActiveWindowForAuthority(authority) : undefined;
+			const lastActiveWindow = this.getLastActiveWindowForAuthority(authority);
 			if (lastActiveWindow) {
 				usedWindows.push(this.doAddFoldersToExistingWindow(lastActiveWindow, foldersToAdd));
 			}
@@ -531,7 +531,7 @@ export class WindowsManager implements IWindowsMainService {
 				newWindow: openFilesInNewWindow,
 				context: openConfig.context,
 				fileUri: fileToCheck && fileToCheck.fileUri,
-				workspaceResolver: workspace => workspace.configPath.scheme === Schemas.file ? this.workspacesMainService.resolveWorkspaceSync(fsPath(workspace.configPath)) : null
+				localWorkspaceResolver: workspace => workspace.configPath.scheme === Schemas.file ? this.workspacesMainService.resolveLocalWorkspaceSync(workspace.configPath) : null
 			});
 
 			// We found a window to open the files in
@@ -762,8 +762,6 @@ export class WindowsManager implements IWindowsMainService {
 	}
 
 	private getPathsToOpen(openConfig: IOpenConfiguration): IPathToOpen[] {
-		debugger;
-
 		let windowsToOpen: IPathToOpen[];
 		let isCommandLineOrAPICall = false;
 
@@ -1051,7 +1049,7 @@ export class WindowsManager implements IWindowsMainService {
 
 					// Workspace (unless disabled via flag)
 					if (!options.forceOpenWorkspaceAsFile) {
-						const workspace = this.workspacesMainService.resolveWorkspaceSync(candidate);
+						const workspace = this.workspacesMainService.resolveLocalWorkspaceSync(URI.file(candidate));
 						if (workspace) {
 							return { workspace: { id: workspace.id, configPath: workspace.configPath }, remoteAuthority };
 						}
@@ -1552,7 +1550,7 @@ export class WindowsManager implements IWindowsMainService {
 		return getLastActiveWindow(WindowsManager.WINDOWS);
 	}
 
-	getLastActiveWindowForAuthority(remoteAuthority: string): ICodeWindow | undefined {
+	getLastActiveWindowForAuthority(remoteAuthority: string | undefined): ICodeWindow | undefined {
 		return getLastActiveWindow(WindowsManager.WINDOWS.filter(w => w.remoteAuthority === remoteAuthority));
 	}
 
@@ -2128,7 +2126,7 @@ class WorkspacesManager {
 				return workspace.scheme === Schemas.file ? dirname(workspace.fsPath) : undefined;
 			}
 
-			const resolvedWorkspace = workspace.configPath.scheme === Schemas.file && this.workspacesMainService.resolveWorkspaceSync(workspace.configPath.fsPath);
+			const resolvedWorkspace = workspace.configPath.scheme === Schemas.file && this.workspacesMainService.resolveLocalWorkspaceSync(workspace.configPath);
 			if (resolvedWorkspace && resolvedWorkspace.folders.length > 0) {
 				for (const folder of resolvedWorkspace.folders) {
 					if (folder.uri.scheme === Schemas.file) {

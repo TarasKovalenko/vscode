@@ -14,7 +14,7 @@ import { Event as CommonEvent, Emitter } from 'vs/base/common/event';
 import { isWindows, isMacintosh, isLinux } from 'vs/base/common/platform';
 import { IWorkspaceIdentifier, IWorkspacesMainService, ISingleFolderWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
 import { IHistoryMainService, IRecentlyOpened } from 'vs/platform/history/common/history';
-import { isEqual } from 'vs/base/common/paths';
+import { isEqual } from 'vs/base/common/extpath';
 import { RunOnceScheduler } from 'vs/base/common/async';
 import { getComparisonKey, isEqual as areResourcesEqual, dirname, fsPath } from 'vs/base/common/resources';
 import { URI } from 'vs/base/common/uri';
@@ -289,12 +289,12 @@ export class HistoryMainService implements IHistoryMainService {
 				type: 'custom',
 				name: nls.localize('recentFolders', "Recent Workspaces"),
 				items: arrays.coalesce(this.getRecentlyOpened().workspaces.slice(0, 7 /* limit number of entries here */).map(workspace => {
-					const title = getSimpleWorkspaceLabel(workspace, this.environmentService.workspacesHome);
+					const title = getSimpleWorkspaceLabel(workspace, this.environmentService.untitledWorkspacesHome);
 					let description;
 					let args;
 					if (isSingleFolderWorkspaceIdentifier(workspace)) {
 						const parentFolder = dirname(workspace);
-						description = parentFolder ? nls.localize('folderDesc', "{0} {1}", getBaseLabel(workspace), getPathLabel(parentFolder, this.environmentService)) : getBaseLabel(workspace);
+						description = nls.localize('folderDesc', "{0} {1}", getBaseLabel(workspace), getPathLabel(parentFolder, this.environmentService));
 						args = `--folder-uri "${workspace.toString()}"`;
 					} else {
 						description = nls.localize('codeWorkspace', "Code Workspace");

@@ -27,7 +27,7 @@ import { MainContext, ExtHostContext } from 'vs/workbench/api/node/extHost.proto
 import { ExtHostDiagnostics } from 'vs/workbench/api/node/extHostDiagnostics';
 import * as vscode from 'vscode';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import 'vs/workbench/contrib/search/electron-browser/search.contribution';
+import 'vs/workbench/contrib/search/browser/search.contribution';
 import { NullLogService } from 'vs/platform/log/common/log';
 import { ITextModel } from 'vs/editor/common/model';
 import { nullExtensionDescription } from 'vs/workbench/services/extensions/common/extensions';
@@ -796,20 +796,21 @@ suite('ExtHostLanguageFeatureCommands', function () {
 
 	// --- selection ranges
 
-	test('Links, back and forth', async function () {
+	test('Selection Range, back and forth', async function () {
 
 		disposables.push(extHost.registerSelectionRangeProvider(nullExtensionDescription, defaultSelector, <vscode.SelectionRangeProvider>{
 			provideSelectionRanges() {
-				return [
+				return [[
 					new types.SelectionRange(new types.Range(0, 10, 0, 18), types.SelectionRangeKind.Empty),
 					new types.SelectionRange(new types.Range(0, 2, 0, 20), types.SelectionRangeKind.Empty)
-				];
+				]];
 			}
 		}));
 
 		await rpcProtocol.sync();
-		let value = await commands.executeCommand<vscode.DocumentLink[]>('vscode.executeSelectionRangeProvider', model.uri, new types.Position(0, 10));
-		assert.ok(value.length >= 2);
+		let value = await commands.executeCommand<vscode.SelectionRange[][]>('vscode.executeSelectionRangeProvider', model.uri, [new types.Position(0, 10)]);
+		assert.equal(value.length, 1);
+		assert.ok(value[0].length >= 2);
 	});
 
 });

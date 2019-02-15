@@ -17,7 +17,7 @@ import { Emitter, Event } from 'vs/base/common/event';
 import { Iterator } from 'vs/base/common/iterator';
 import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { dispose, IDisposable } from 'vs/base/common/lifecycle';
-import * as paths from 'vs/base/common/paths';
+import * as extpath from 'vs/base/common/extpath';
 import * as env from 'vs/base/common/platform';
 import * as strings from 'vs/base/common/strings';
 import { URI } from 'vs/base/common/uri';
@@ -36,7 +36,7 @@ import { IInstantiationService } from 'vs/platform/instantiation/common/instanti
 import { TreeResourceNavigator2, WorkbenchObjectTree } from 'vs/platform/list/browser/listService';
 import { INotificationService, Severity } from 'vs/platform/notification/common/notification';
 import { IProgressService } from 'vs/platform/progress/common/progress';
-import { IPatternInfo, ISearchComplete, ISearchConfiguration, ISearchConfigurationProperties, ISearchHistoryService, ISearchHistoryValues, ITextQuery, SearchErrorCode, VIEW_ID } from 'vs/platform/search/common/search';
+import { IPatternInfo, ISearchComplete, ISearchConfiguration, ISearchConfigurationProperties, ISearchHistoryService, ISearchHistoryValues, ITextQuery, SearchErrorCode, VIEW_ID } from 'vs/workbench/services/search/common/search';
 import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { diffInserted, diffInsertedOutline, diffRemoved, diffRemovedOutline, editorFindMatchHighlight, editorFindMatchHighlightBorder, listActiveSelectionForeground } from 'vs/platform/theme/common/colorRegistry';
@@ -1082,10 +1082,10 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 
 		if (resources) {
 			resources.forEach(resource => {
-				let folderPath: string;
+				let folderPath: string | undefined;
 				if (this.contextService.getWorkbenchState() === WorkbenchState.FOLDER) {
 					// Show relative path from the root for single-root mode
-					folderPath = paths.normalize(pathToRelative(workspace.folders[0].uri.fsPath, resource.fsPath));
+					folderPath = extpath.normalize(pathToRelative(workspace.folders[0].uri.fsPath, resource.fsPath));
 					if (folderPath && folderPath !== '.') {
 						folderPath = './' + folderPath;
 					}
@@ -1097,7 +1097,7 @@ export class SearchView extends Viewlet implements IViewlet, IPanel {
 						// If this root is the only one with its basename, use a relative ./ path. If there is another, use an absolute path
 						const isUniqueFolder = workspace.folders.filter(folder => folder.name === owningRootName).length === 1;
 						if (isUniqueFolder) {
-							const relativePath = paths.normalize(pathToRelative(owningFolder.uri.fsPath, resource.fsPath));
+							const relativePath = extpath.normalize(pathToRelative(owningFolder.uri.fsPath, resource.fsPath));
 							if (relativePath === '.') {
 								folderPath = `./${owningFolder.name}`;
 							} else {
