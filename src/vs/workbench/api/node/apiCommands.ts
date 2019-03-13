@@ -11,7 +11,6 @@ import { ITextEditorOptions } from 'vs/platform/editor/common/editor';
 import { EditorViewColumn } from 'vs/workbench/api/shared/editor';
 import { EditorGroupLayout } from 'vs/workbench/services/editor/common/editorGroupsService';
 import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
-import { IWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier } from 'vs/platform/workspaces/common/workspaces';
 import { IWindowsService, IOpenSettings } from 'vs/platform/windows/common/windows';
 import { IDownloadService } from 'vs/platform/download/common/download';
 
@@ -35,6 +34,7 @@ function adjustHandler(handler: (executor: ICommandsExecutor, ...args: any[]) =>
 interface IOpenFolderAPICommandOptions {
 	forceNewWindow?: boolean;
 	noRecentEntry?: boolean;
+	recentEntryLabel?: string;
 }
 
 export class OpenFolderAPICommand {
@@ -52,7 +52,8 @@ export class OpenFolderAPICommand {
 		if (arg.noRecentEntry) {
 			options.args = { _: [], 'skip-add-to-recently-opened': true };
 		}
-		return executor.executeCommand('_files.windowOpen', [{ uri }], options);
+		uri = URI.revive(uri);
+		return executor.executeCommand('_files.windowOpen', [{ uri, label: arg.recentEntryLabel }], options);
 	}
 }
 CommandsRegistry.registerCommand({
@@ -62,7 +63,7 @@ CommandsRegistry.registerCommand({
 		description: 'Open a folder or workspace in the current window or new window depending on the newWindow argument. Note that opening in the same window will shutdown the current extension host process and start a new one on the given folder/workspace unless the newWindow parameter is set to true.',
 		args: [
 			{ name: 'uri', description: '(optional) Uri of the folder or workspace file to open. If not provided, a native dialog will ask the user for the folder', constraint: (value: any) => value === undefined || value instanceof URI },
-			{ name: 'options', description: '(optional) Options. Object with the following properties: `forceNewWindow `: Whether to open the folder/workspace in a new window or the same. Defaults to opening in the same window. `noRecentEntry`: Wheter the opened URI will appear in the \'Open Recent\' list. Defaults to true. Note, for backward compatibility, options can also be of type boolean, representing the `forceNewWindow` setting.', constraint: (value: any) => value === undefined || typeof value === 'object' || typeof value === 'boolean' }
+			{ name: 'options', description: '(optional) Options. Object with the following properties: `forceNewWindow `: Whether to open the folder/workspace in a new window or the same. Defaults to opening in the same window. `noRecentEntry`: Wheter the opened URI will appear in the \'Open Recent\' list. Defaults to true. `recentEntryLabel`: The label used for \'Open Recent\' list. Note, for backward compatibility, options can also be of type boolean, representing the `forceNewWindow` setting.', constraint: (value: any) => value === undefined || typeof value === 'object' || typeof value === 'boolean' }
 		]
 	}
 });
@@ -106,15 +107,19 @@ export class OpenAPICommand {
 }
 CommandsRegistry.registerCommand(OpenAPICommand.ID, adjustHandler(OpenAPICommand.execute));
 
-CommandsRegistry.registerCommand('_workbench.removeFromRecentlyOpened', function (accessor: ServicesAccessor, path: IWorkspaceIdentifier | ISingleFolderWorkspaceIdentifier | URI | string) {
+CommandsRegistry.registerCommand('_workbench.removeFromRecentlyOpened', function (accessor: ServicesAccessor, uri: URI) {
 	const windowsService = accessor.get(IWindowsService);
-
-	return windowsService.removeFromRecentlyOpened([path]).then(() => undefined);
+	return windowsService.removeFromRecentlyOpened([uri]).then(() => undefined);
 });
 
 export class RemoveFromRecentlyOpenedAPICommand {
 	public static ID = 'vscode.removeFromRecentlyOpened';
-	public static execute(executor: ICommandsExecutor, path: string): Promise<any> {
+	public static execute(executor: ICommandsExecutor, path: string | URI): Promise<any> {
+		if (typeof path === 'string') {
+			path = path.match(/^[^:/?#]+:\/\//) ? URI.parse(path) : URI.file(path);
+		} else {
+			path = URI.revive(path); // called from extension host
+		}
 		return executor.executeCommand('_workbench.removeFromRecentlyOpened', path);
 	}
 }
