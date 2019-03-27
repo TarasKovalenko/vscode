@@ -6,7 +6,7 @@
 import * as nls from 'vs/nls';
 import { URI } from 'vs/base/common/uri';
 import { toResource, IEditorCommandsContext } from 'vs/workbench/common/editor';
-import { IWindowsService, IWindowService, IURIToOpen, IOpenSettings } from 'vs/platform/windows/common/windows';
+import { IWindowsService, IWindowService, IURIToOpen, IOpenSettings, INewWindowOptions } from 'vs/platform/windows/common/windows';
 import { ServicesAccessor, IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
 import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
@@ -83,6 +83,11 @@ export const openWindowCommand = (accessor: ServicesAccessor, urisToOpen: IURITo
 	}
 };
 
+export const newWindowCommand = (accessor: ServicesAccessor, options?: INewWindowOptions) => {
+	const windowsService = accessor.get(IWindowsService);
+	windowsService.openNewWindow(options);
+};
+
 function save(
 	resource: URI | null,
 	isSaveAs: boolean,
@@ -119,7 +124,7 @@ function save(
 			let viewStateOfSource: IEditorViewState | null;
 			const activeTextEditorWidget = getCodeEditor(editorService.activeTextEditorWidget);
 			if (activeTextEditorWidget) {
-				const activeResource = toResource(editorService.activeEditor || null, { supportSideBySide: true });
+				const activeResource = toResource(editorService.activeEditor, { supportSideBySide: true });
 				if (activeResource && (fileService.canHandleResource(activeResource) || resource.scheme === Schemas.untitled) && activeResource.toString() === resource.toString()) {
 					viewStateOfSource = activeTextEditorWidget.saveViewState();
 				}
@@ -220,7 +225,7 @@ function saveAll(saveAllArguments: any, editorService: IEditorService, untitledE
 			// Update untitled resources to the saved ones, so we open the proper files
 			inputs.forEach(i => {
 				const targetResult = result.results.filter(r => r.success && r.source.toString() === i.resource.toString()).pop();
-				if (targetResult) {
+				if (targetResult && targetResult.target) {
 					i.resource = targetResult.target;
 				}
 			});
@@ -266,8 +271,8 @@ KeybindingsRegistry.registerCommandAndKeybindingRule({
 		// Set side input
 		if (resources.length) {
 			return fileService.resolveFiles(resources.map(resource => ({ resource }))).then(resolved => {
-				const editors = resolved.filter(r => r.success && !r.stat.isDirectory).map(r => ({
-					resource: r.stat.resource
+				const editors = resolved.filter(r => r.stat && r.success && !r.stat.isDirectory).map(r => ({
+					resource: r.stat!.resource
 				}));
 
 				return editorService.openEditors(editors, SIDE_GROUP);
@@ -345,10 +350,13 @@ CommandsRegistry.registerCommand({
 		const editorService = accessor.get(IEditorService);
 		const listService = accessor.get(IListService);
 
-		return editorService.openEditor({
-			leftResource: globalResourceToCompare,
-			rightResource: getResourceForCommand(resource, listService, editorService)
-		}).then(() => undefined);
+		const rightResource = getResourceForCommand(resource, listService, editorService);
+		if (globalResourceToCompare && rightResource) {
+			editorService.openEditor({
+				leftResource: globalResourceToCompare,
+				rightResource
+			}).then(undefined, onUnexpectedError);
+		}
 	}
 });
 
@@ -543,12 +551,14 @@ CommandsRegistry.registerCommand({
 			saveAllArg = [];
 			contexts.forEach(context => {
 				const editorGroup = editorGroupService.getGroup(context.groupId);
-				editorGroup.editors.forEach(editor => {
-					const resource = toResource(editor, { supportSideBySide: true });
-					if (resource && (resource.scheme === Schemas.untitled || fileService.canHandleResource(resource))) {
-						saveAllArg.push(resource);
-					}
-				});
+				if (editorGroup) {
+					editorGroup.editors.forEach(editor => {
+						const resource = toResource(editor, { supportSideBySide: true });
+						if (resource && (resource.scheme === Schemas.untitled || fileService.canHandleResource(resource))) {
+							saveAllArg.push(resource);
+						}
+					});
+				}
 			});
 		}
 

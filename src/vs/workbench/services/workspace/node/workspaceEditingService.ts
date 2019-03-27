@@ -21,7 +21,7 @@ import { BackupFileService } from 'vs/workbench/services/backup/node/backupFileS
 import { ICommandService } from 'vs/platform/commands/common/commands';
 import { distinct } from 'vs/base/common/arrays';
 import { isLinux, isWindows, isMacintosh } from 'vs/base/common/platform';
-import { isEqual, basename, isEqualOrParent } from 'vs/base/common/resources';
+import { isEqual, basename, isEqualOrParent, getComparisonKey } from 'vs/base/common/resources';
 import { INotificationService, Severity } from 'vs/platform/notification/common/notification';
 import { IFileService } from 'vs/platform/files/common/files';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
@@ -40,7 +40,7 @@ export class WorkspaceEditingService implements IWorkspaceEditingService {
 		@IJSONEditingService private readonly jsonEditingService: IJSONEditingService,
 		@IWorkspaceContextService private readonly contextService: WorkspaceService,
 		@IWindowService private readonly windowService: IWindowService,
-		@IConfigurationService private readonly workspaceConfigurationService: IConfigurationService,
+		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IStorageService private readonly storageService: IStorageService,
 		@IExtensionService private readonly extensionService: IExtensionService,
 		@IBackupFileService private readonly backupFileService: IBackupFileService,
@@ -205,7 +205,7 @@ export class WorkspaceEditingService implements IWorkspaceEditingService {
 		if (state !== WorkbenchState.WORKSPACE) {
 			let newWorkspaceFolders = this.contextService.getWorkspace().folders.map(folder => ({ uri: folder.uri } as IWorkspaceFolderCreationData));
 			newWorkspaceFolders.splice(typeof index === 'number' ? index : newWorkspaceFolders.length, 0, ...foldersToAdd);
-			newWorkspaceFolders = distinct(newWorkspaceFolders, folder => isLinux ? folder.uri.toString() : folder.uri.toString().toLowerCase());
+			newWorkspaceFolders = distinct(newWorkspaceFolders, folder => getComparisonKey(folder.uri));
 
 			if (state === WorkbenchState.EMPTY && newWorkspaceFolders.length === 0 || state === WorkbenchState.FOLDER && newWorkspaceFolders.length === 1) {
 				return Promise.resolve(); // return if the operation is a no-op for the current state
@@ -245,8 +245,8 @@ export class WorkspaceEditingService implements IWorkspaceEditingService {
 		if (path && !this.isValidTargetWorkspacePath(path)) {
 			return Promise.reject(null);
 		}
-
-		const untitledWorkspace = await this.workspaceService.createUntitledWorkspace(folders);
+		const remoteAuthority = this.windowService.getConfiguration().remoteAuthority;
+		const untitledWorkspace = await this.workspaceService.createUntitledWorkspace(folders, remoteAuthority);
 		if (path) {
 			await this.saveWorkspaceAs(untitledWorkspace, path);
 		} else {
@@ -411,13 +411,13 @@ export class WorkspaceEditingService implements IWorkspaceEditingService {
 	private doCopyWorkspaceSettings(toWorkspace: IWorkspaceIdentifier, filter?: (config: IConfigurationPropertySchema) => boolean): Promise<void> {
 		const configurationProperties = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).getConfigurationProperties();
 		const targetWorkspaceConfiguration = {};
-		for (const key of this.workspaceConfigurationService.keys().workspace) {
+		for (const key of this.configurationService.keys().workspace) {
 			if (configurationProperties[key]) {
 				if (filter && !filter(configurationProperties[key])) {
 					continue;
 				}
 
-				targetWorkspaceConfiguration[key] = this.workspaceConfigurationService.inspect(key).workspace;
+				targetWorkspaceConfiguration[key] = this.configurationService.inspect(key).workspace;
 			}
 		}
 

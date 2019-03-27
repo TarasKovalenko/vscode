@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IServerChannel } from 'vs/base/parts/ipc/node/ipc';
+import { IServerChannel } from 'vs/base/parts/ipc/common/ipc';
 import { Event } from 'vs/base/common/event';
 import { ILocalizationsService } from 'vs/platform/localizations/common/localizations';
 
@@ -15,7 +15,7 @@ export class LocalizationsChannel implements IServerChannel {
 		this.onDidLanguagesChange = Event.buffer(service.onDidLanguagesChange, true);
 	}
 
-	listen(_, event: string): Event<any> {
+	listen(_: unknown, event: string): Event<any> {
 		switch (event) {
 			case 'onDidLanguagesChange': return this.onDidLanguagesChange;
 		}
@@ -23,7 +23,7 @@ export class LocalizationsChannel implements IServerChannel {
 		throw new Error(`Event not found: ${event}`);
 	}
 
-	call(_, command: string, arg?: any): Promise<any> {
+	call(_: unknown, command: string, arg?: any): Promise<any> {
 		switch (command) {
 			case 'getLanguageIds': return this.service.getLanguageIds(arg);
 		}

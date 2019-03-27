@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IServerChannel } from 'vs/base/parts/ipc/node/ipc';
+import { IServerChannel } from 'vs/base/parts/ipc/common/ipc';
 import { IWorkspaceIdentifier, IWorkspaceFolderCreationData, IWorkspacesMainService } from 'vs/platform/workspaces/common/workspaces';
 import { URI } from 'vs/base/common/uri';
 import { Event } from 'vs/base/common/event';
@@ -12,11 +12,11 @@ export class WorkspacesChannel implements IServerChannel {
 
 	constructor(private service: IWorkspacesMainService) { }
 
-	listen<T>(_, event: string): Event<T> {
+	listen<T>(_: unknown, event: string): Event<T> {
 		throw new Error(`Event not found: ${event}`);
 	}
 
-	call(_, command: string, arg?: any): Promise<any> {
+	call(_: unknown, command: string, arg?: any): Promise<any> {
 		switch (command) {
 			case 'createUntitledWorkspace': {
 				const rawFolders: IWorkspaceFolderCreationData[] = arg[0];

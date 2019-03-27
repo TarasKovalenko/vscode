@@ -138,7 +138,7 @@ export class NewFileAction extends BaseErrorReportingAction {
 		}
 
 		const stat = new ExplorerItem(PLACEHOLDER_URI, folder, false);
-		return folder.fetchChildren(this.fileService).then(() => {
+		return folder.fetchChildren(this.fileService, this.explorerService).then(() => {
 			folder.addChild(stat);
 
 			const onSuccess = (value: string) => {
@@ -206,7 +206,7 @@ export class NewFolderAction extends BaseErrorReportingAction {
 		}
 
 		const stat = new ExplorerItem(PLACEHOLDER_URI, folder, true);
-		return folder.fetchChildren(this.fileService).then(() => {
+		return folder.fetchChildren(this.fileService, this.explorerService).then(() => {
 			folder.addChild(stat);
 
 			const onSuccess = (value: string) => {
@@ -642,7 +642,7 @@ export class GlobalCompareResourcesAction extends Action {
 						override: this.editorService.openEditor({
 							leftResource: activeResource,
 							rightResource: resource
-						}).then(() => undefined)
+						}).then(() => null)
 					};
 				}
 
@@ -833,7 +833,7 @@ export class ShowActiveFileInExplorer extends Action {
 	}
 
 	public run(): Promise<any> {
-		const resource = toResource(this.editorService.activeEditor || null, { supportSideBySide: true });
+		const resource = toResource(this.editorService.activeEditor, { supportSideBySide: true });
 		if (resource) {
 			this.commandService.executeCommand(REVEAL_IN_EXPLORER_COMMAND_ID, resource);
 		} else {
@@ -905,7 +905,7 @@ export class ShowOpenedFileInNewWindow extends Action {
 	}
 
 	public run(): Promise<any> {
-		const fileResource = toResource(this.editorService.activeEditor || null, { supportSideBySide: true });
+		const fileResource = toResource(this.editorService.activeEditor, { supportSideBySide: true });
 		if (fileResource) {
 			if (this.fileService.canHandleResource(fileResource)) {
 				this.windowService.openWindow([{ uri: fileResource, typeHint: 'file' }], { forceNewWindow: true, forceOpenWorkspaceAsFile: true });
@@ -1008,7 +1008,7 @@ export class CompareWithClipboardAction extends Action {
 	}
 
 	public run(): Promise<any> {
-		const resource = toResource(this.editorService.activeEditor || null, { supportSideBySide: true });
+		const resource = toResource(this.editorService.activeEditor, { supportSideBySide: true });
 		if (resource && (this.fileService.canHandleResource(resource) || resource.scheme === Schemas.untitled)) {
 			if (!this.registrationDisposal) {
 				const provider = this.instantiationService.createInstance(ClipboardContentProvider);
@@ -1112,12 +1112,15 @@ export const renameHandler = (accessor: ServicesAccessor) => {
 	}
 
 	const { stat } = getContext(listService.lastFocusedList);
+	if (!stat) {
+		return;
+	}
 
 	explorerService.setEditable(stat, {
 		validationMessage: value => validateFileName(stat, value),
 		onFinish: (value, success) => {
 			if (success) {
-				const parentResource = stat.parent.resource;
+				const parentResource = stat.parent!.resource;
 				const targetResource = resources.joinPath(parentResource, value);
 				textFileService.move(stat.resource, targetResource).then(() => refreshIfSeparator(value, explorerService), onUnexpectedError);
 			}
@@ -1159,9 +1162,11 @@ export const copyFileHandler = (accessor: ServicesAccessor) => {
 	}
 	const explorerContext = getContext(listService.lastFocusedList);
 	const explorerService = accessor.get(IExplorerService);
-	const stats = explorerContext.selection.length > 1 ? explorerContext.selection : [explorerContext.stat];
-	explorerService.setToCopy(stats, false);
-	pasteShouldMove = false;
+	if (explorerContext.stat) {
+		const stats = explorerContext.selection.length > 1 ? explorerContext.selection : [explorerContext.stat];
+		explorerService.setToCopy(stats, false);
+		pasteShouldMove = false;
+	}
 };
 
 export const cutFileHandler = (accessor: ServicesAccessor) => {
@@ -1171,9 +1176,11 @@ export const cutFileHandler = (accessor: ServicesAccessor) => {
 	}
 	const explorerContext = getContext(listService.lastFocusedList);
 	const explorerService = accessor.get(IExplorerService);
-	const stats = explorerContext.selection.length > 1 ? explorerContext.selection : [explorerContext.stat];
-	explorerService.setToCopy(stats, true);
-	pasteShouldMove = true;
+	if (explorerContext.stat) {
+		const stats = explorerContext.selection.length > 1 ? explorerContext.selection : [explorerContext.stat];
+		explorerService.setToCopy(stats, true);
+		pasteShouldMove = true;
+	}
 };
 
 export const pasteFileHandler = (accessor: ServicesAccessor) => {

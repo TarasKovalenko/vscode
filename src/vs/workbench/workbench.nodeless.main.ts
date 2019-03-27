@@ -93,8 +93,12 @@ import { ContextViewService } from 'vs/platform/contextview/browser/contextViewS
 // import { MenubarService } from 'vs/platform/menubar/electron-browser/menubarService';
 // import { IURLService } from 'vs/platform/url/common/url';
 // import { RelayURLService } from 'vs/platform/url/electron-browser/urlService';
+import { IHeapService, NullHeapService } from 'vs/workbench/services/heap/common/heap';
+import { IBroadcastService, NullBroadcastService } from 'vs/workbench/services/broadcast/common/broadcast';
 
 import 'vs/workbench/browser/nodeless.simpleservices';
+import 'vs/platform/dialogs/browser/dialogService';
+
 
 import 'vs/workbench/services/bulkEdit/browser/bulkEditService';
 // import 'vs/workbench/services/integrity/node/integrityService';
@@ -111,9 +115,10 @@ import 'vs/workbench/services/editor/browser/codeEditorService';
 // import 'vs/workbench/services/broadcast/electron-browser/broadcastService';
 import 'vs/workbench/services/preferences/browser/preferencesService';
 import 'vs/workbench/services/output/common/outputChannelModelService';
-// import 'vs/workbench/services/configuration/node/jsonEditingService';
+import 'vs/workbench/services/configuration/common/jsonEditingService';
 import 'vs/workbench/services/textmodelResolver/common/textModelResolverService';
 import 'vs/workbench/services/textfile/common/textFileService';
+import 'vs/workbench/services/dialogs/browser/fileDialogService';
 // import 'vs/workbench/services/dialogs/electron-browser/dialogService';
 // import 'vs/workbench/services/backup/node/backupFileService';
 import 'vs/workbench/services/editor/browser/editorService';
@@ -135,6 +140,8 @@ import 'vs/workbench/services/label/common/labelService';
 // import 'vs/workbench/services/remote/electron-browser/remoteAgentServiceImpl';
 import 'vs/workbench/services/notification/common/notificationService';
 
+
+
 registerSingleton(IMenuService, MenuService, true);
 registerSingleton(IListService, ListService, true);
 registerSingleton(IOpenerService, OpenerService, true);
@@ -154,7 +161,6 @@ registerSingleton(IContextViewService, ContextViewService, true);
 // registerSingleton(ILifecycleService, LifecycleService);
 // registerSingleton(ILocalizationsService, LocalizationsService);
 // registerSingleton(ISharedProcessService, SharedProcessService, true);
-// registerSingleton(IRemoteAuthorityResolverService, RemoteAuthorityResolverService, true);
 // registerSingleton(ITelemetryService, TelemetryService);
 // registerSingleton(IProductService, ProductService, true);
 // registerSingleton(IWindowsService, WindowsService);
@@ -163,6 +169,8 @@ registerSingleton(IContextViewService, ContextViewService, true);
 // registerSingleton(IWorkspacesService, WorkspacesService);
 // registerSingleton(IMenubarService, MenubarService);
 // registerSingleton(IURLService, RelayURLService);
+registerSingleton(IHeapService, NullHeapService);
+registerSingleton(IBroadcastService, NullBroadcastService);
 
 registerSingleton(IContextMenuService, ContextMenuService);
 
@@ -225,14 +233,15 @@ import 'vs/workbench/contrib/scm/browser/scmViewlet';
 // Debug
 // import 'vs/workbench/contrib/debug/electron-browser/debug.contribution';
 // import 'vs/workbench/contrib/debug/browser/debugQuickOpen';
-// import 'vs/workbench/contrib/debug/electron-browser/repl';
+// import 'vs/workbench/contrib/debug/browser/debugEditorContribution';
+// import 'vs/workbench/contrib/debug/browser/repl';
 // import 'vs/workbench/contrib/debug/browser/debugViewlet';
 
 // Markers
 import 'vs/workbench/contrib/markers/browser/markers.contribution';
 
 // Comments
-// import 'vs/workbench/contrib/comments/electron-browser/comments.contribution';
+// import 'vs/workbench/contrib/comments/browser/comments.contribution';
 
 // URL Support
 import 'vs/workbench/contrib/url/common/url.contribution';
@@ -308,7 +317,7 @@ import 'vs/workbench/contrib/watermark/browser/watermark';
 import 'vs/workbench/contrib/welcome/walkThrough/browser/walkThrough.contribution';
 // import 'vs/workbench/contrib/welcome/gettingStarted/electron-browser/gettingStarted.contribution';
 import 'vs/workbench/contrib/welcome/overlay/browser/welcomeOverlay';
-import 'vs/workbench/contrib/welcome/page/browser/welcomePage.contribution';
+// import 'vs/workbench/contrib/welcome/page/browser/welcomePage.contribution';
 
 // Outline
 import 'vs/workbench/contrib/outline/browser/outline.contribution';

@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IServerChannel } from 'vs/base/parts/ipc/node/ipc';
+import { IServerChannel } from 'vs/base/parts/ipc/common/ipc';
 import { Event } from 'vs/base/common/event';
 import { IUpdateService } from 'vs/platform/update/common/update';
 
@@ -11,7 +11,7 @@ export class UpdateChannel implements IServerChannel {
 
 	constructor(private service: IUpdateService) { }
 
-	listen(_, event: string): Event<any> {
+	listen(_: unknown, event: string): Event<any> {
 		switch (event) {
 			case 'onStateChange': return this.service.onStateChange;
 		}
@@ -19,7 +19,7 @@ export class UpdateChannel implements IServerChannel {
 		throw new Error(`Event not found: ${event}`);
 	}
 
-	call(_, command: string, arg?: any): Promise<any> {
+	call(_: unknown, command: string, arg?: any): Promise<any> {
 		switch (command) {
 			case 'checkForUpdates': return this.service.checkForUpdates(arg);
 			case 'downloadUpdate': return this.service.downloadUpdate();

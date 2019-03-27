@@ -16,6 +16,60 @@
 
 declare module 'vscode' {
 
+	//#region Joh - call hierarchy
+
+	export enum CallHierarchyDirection {
+		CallsFrom = 1,
+		CallsTo = 2,
+	}
+
+	export class CallHierarchyItem {
+		kind: SymbolKind;
+		name: string;
+		detail?: string;
+		uri: Uri;
+		range: Range;
+		selectionRange: Range;
+
+		constructor(kind: SymbolKind, name: string, detail: string, uri: Uri, range: Range, selectionRange: Range);
+	}
+
+	export interface CallHierarchyItemProvider {
+
+		/**
+		 * Given a document and position compute a call hierarchy item. This is justed as
+		 * anchor for call hierarchy and then `resolveCallHierarchyItem` is being called.
+		 */
+		provideCallHierarchyItem(
+			document: TextDocument,
+			postion: Position,
+			token: CancellationToken
+		): ProviderResult<CallHierarchyItem>;
+
+		/**
+		 * Resolve a call hierarchy item, e.g. compute all calls from or to a function.
+		 * The result is an array of item/location-tuples. The location in the returned tuples
+		 * is always relative to the "caller" with the caller either being the provided item or
+		 * the returned item.
+		 *
+		 * @param item A call hierarchy item previously returned from `provideCallHierarchyItem` or `resolveCallHierarchyItem`
+		 * @param direction Resolve calls from a function or calls to a function
+		 * @param token A cancellation token
+		 */
+		resolveCallHierarchyItem(
+			item: CallHierarchyItem,
+			direction: CallHierarchyDirection,
+			token: CancellationToken
+		): ProviderResult<[CallHierarchyItem, Location[]][]>;
+	}
+
+	export namespace languages {
+		export function registerCallHierarchyProvider(selector: DocumentSelector, provider: CallHierarchyItemProvider): Disposable;
+	}
+
+	//#endregion
+
+
 	//#region Alex - resolvers
 
 	export class ResolvedAuthority {
@@ -81,68 +135,6 @@ declare module 'vscode' {
 
 	//#endregion
 
-
-	//#region Joh - selection range provider
-
-	/**
-	 * A selection range represents a part of a selection hierarchy. A selection range
-	 * may have a parent selection range that contains it.
-	 */
-	export class SelectionRange {
-
-		/**
-		 * The [range](#Range) of this selection range.
-		 */
-		range: Range;
-
-		/**
-		 * The parent selection range containing this range.
-		 */
-		parent?: SelectionRange;
-
-		/**
-		 * Creates a new selection range.
-		 *
-		 * @param range The range of the selection range.
-		 * @param parent The parent of the selection range.
-		 */
-		constructor(range: Range, parent?: SelectionRange);
-	}
-
-	export interface SelectionRangeProvider {
-		/**
-		 * Provide selection ranges for the given positions.
-		 *
-		 * Selection ranges should be computed individually and independend for each postion. The editor will merge
-		 * and deduplicate ranges but providers must return hierarchies of selection ranges so that a range
-		 * is [contained](#Range.contains) by its parent.
-		 *
-		 * @param document The document in which the command was invoked.
-		 * @param positions The positions at which the command was invoked.
-		 * @param token A cancellation token.
-		 * @return Selection ranges or a thenable that resolves to such. The lack of a result can be
-		 * signaled by returning `undefined` or `null`.
-		 */
-		provideSelectionRanges(document: TextDocument, positions: Position[], token: CancellationToken): ProviderResult<SelectionRange[]>;
-	}
-
-	export namespace languages {
-
-		/**
-		 * Register a selection range provider.
-		 *
-		 * Multiple providers can be registered for a language. In that case providers are asked in
-		 * parallel and the results are merged. A failing provider (rejected promise or exception) will
-		 * not cause a failure of the whole operation.
-		 *
-		 * @param selector A selector that defines the documents this provider is applicable to.
-		 * @param provider A selection range provider.
-		 * @return A [disposable](#Disposable) that unregisters this provider when being disposed.
-		 */
-		export function registerSelectionRangeProvider(selector: DocumentSelector, provider: SelectionRangeProvider): Disposable;
-	}
-
-	//#endregion
 
 	//#region Joh - read/write in chunks
 
@@ -803,13 +795,24 @@ declare module 'vscode' {
 		 * Defaults to Collapsed.
 		 */
 		collapsibleState?: CommentThreadCollapsibleState;
+
+		/**
+		 * The command to be executed when users try to delete the comment thread. Currently, this is only called
+		 * when the user collapses a comment thread that has no comments in it.
+		 */
+		deleteCommand?: Command;
+
+		/**
+		 * Dispose this comment thread.
+		 * Once disposed, the comment thread will be removed from visible text editors and Comments Panel.
+		 */
 		dispose?(): void;
 	}
 
 	/**
 	 * A comment is displayed within the editor or the Comments Panel, depending on how it is provided.
 	 */
-	interface Comment {
+	export interface Comment {
 		/**
 		 * The id of the comment
 		 */
@@ -821,7 +824,8 @@ declare module 'vscode' {
 		body: MarkdownString;
 
 		/**
-		 * Label describing the [Comment](#Comment)
+		 * Optional label describing the [Comment](#Comment)
+		 * Label will be rendered next to userName if exists.
 		 */
 		label?: string;
 
@@ -834,7 +838,6 @@ declare module 'vscode' {
 		 * The icon path for the user who created the comment
 		 */
 		userIconPath?: Uri;
-
 
 		/**
 		 * @deprecated Use userIconPath instead. The avatar src of the user who created the comment
@@ -862,17 +865,40 @@ declare module 'vscode' {
 		canDelete?: boolean;
 
 		/**
+		 * @deprecated
 		 * The command to be executed if the comment is selected in the Comments Panel
 		 */
 		command?: Command;
 
+		/**
+		 * The command to be executed if the comment is selected in the Comments Panel
+		 */
+		selectCommand?: Command;
+
+		/**
+		 * The command to be executed when users try to save the edits to the comment
+		 */
 		editCommand?: Command;
+
+		/**
+		 * The command to be executed when users try to delete the comment
+		 */
 		deleteCommand?: Command;
 
+		/**
+		 * Deprecated
+		 */
 		isDraft?: boolean;
+
+		/**
+		 * Proposed Comment Reaction
+		 */
 		commentReactions?: CommentReaction[];
 	}
 
+	/**
+	 * Deprecated
+	 */
 	export interface CommentThreadChangedEvent {
 		/**
 		 * Added comment threads.
@@ -895,6 +921,9 @@ declare module 'vscode' {
 		readonly inDraftMode: boolean;
 	}
 
+	/**
+	 * Comment Reactions
+	 */
 	interface CommentReaction {
 		readonly label?: string;
 		readonly iconPath?: string | Uri;
@@ -965,15 +994,25 @@ declare module 'vscode' {
 		onDidChangeCommentThreads: Event<CommentThreadChangedEvent>;
 	}
 
+	/**
+	 * The comment input box in Comment Widget.
+	 */
 	export interface CommentInputBox {
-
 		/**
-		 * Setter and getter for the contents of the input box.
+		 * Setter and getter for the contents of the comment input box.
 		 */
 		value: string;
 	}
 
+	export interface CommentReactionProvider {
+		availableReactions: CommentReaction[];
+		toggleReaction?(document: TextDocument, comment: Comment, reaction: CommentReaction): Promise<void>;
+	}
+
 	export interface CommentingRangeProvider {
+		/**
+		 * Provide a list of ranges which allow new comment threads creation or null for a given document
+		 */
 		provideCommentingRanges(document: TextDocument, token: CancellationToken): ProviderResult<Range[]>;
 	}
 
@@ -1000,7 +1039,11 @@ declare module 'vscode' {
 		 * The active (focused) [comment input box](#CommentInputBox).
 		 */
 		readonly inputBox?: CommentInputBox;
-		createCommentThread(id: string, resource: Uri, range: Range): CommentThread;
+
+		/**
+		 * Create a [CommentThread](#CommentThread)
+		 */
+		createCommentThread(id: string, resource: Uri, range: Range, comments: Comment[]): CommentThread;
 
 		/**
 		 * Optional commenting range provider.
@@ -1011,7 +1054,12 @@ declare module 'vscode' {
 		/**
 		 * Optional new comment thread factory.
 		 */
-		emptyCommentThreadFactory: EmptyCommentThreadFactory;
+		emptyCommentThreadFactory?: EmptyCommentThreadFactory;
+
+		/**
+		 * Optional reaction provider
+		 */
+		reactionProvider?: CommentReactionProvider;
 
 		/**
 		 * Dispose this comment controller.
@@ -1326,6 +1374,37 @@ declare module 'vscode' {
 		 * Controls whether the task is executed in a specific terminal group using split panes.
 		 */
 		group?: string;
+	}
+	//#endregion
+
+	//#region Webview Port mapping— mjbvz
+	/**
+	 * Defines a port mapping used for localhost inside the webview.
+	 */
+	export interface WebviewPortMapping {
+		/**
+		 * Localhost port to remap inside the webview.
+		 */
+		readonly port: number;
+
+		/**
+		 * Destination port. The `port` is resolved to this port.
+		 */
+		readonly resolvedPort: number;
+	}
+
+	export interface WebviewOptions {
+		/**
+		 * Mappings of localhost ports used inside the webview.
+		 *
+		 * Port mapping allow webviews to transparently define how localhost ports are resolved. This can be used
+		 * to allow using a static localhost port inside the webview that is resolved to random port that a service is
+		 * running on.
+		 *
+		 * If a webview accesses localhost content, we recomend that you specify port mappings even if
+		 * the `from` and `to` ports are the same.
+		 */
+		readonly portMapping?: ReadonlyArray<WebviewPortMapping>;
 	}
 	//#endregion
 }

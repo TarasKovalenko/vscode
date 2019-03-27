@@ -6,7 +6,6 @@
 import * as nls from 'vs/nls';
 import { URI } from 'vs/base/common/uri';
 import * as perf from 'vs/base/common/performance';
-import { sequence } from 'vs/base/common/async';
 import { Action, IAction } from 'vs/base/common/actions';
 import { memoize } from 'vs/base/common/decorators';
 import { IFilesConfiguration, ExplorerFolderContext, FilesExplorerFocusedContext, ExplorerFocusedContext, ExplorerRootContext, ExplorerResourceReadonlyContext, IExplorerService, ExplorerResourceCut } from 'vs/workbench/contrib/files/common/files';
@@ -26,7 +25,7 @@ import { IContextMenuService } from 'vs/platform/contextview/browser/contextView
 import { IContextKeyService, IContextKey } from 'vs/platform/contextkey/common/contextkey';
 import { ResourceContextKey } from 'vs/workbench/common/resources';
 import { IDecorationsService } from 'vs/workbench/services/decorations/browser/decorations';
-import { WorkbenchAsyncDataTree, IListService, TreeResourceNavigator2 } from 'vs/platform/list/browser/listService';
+import { WorkbenchAsyncDataTree, TreeResourceNavigator2 } from 'vs/platform/list/browser/listService';
 import { DelayedDragHandler } from 'vs/base/browser/dnd';
 import { IEditorService, SIDE_GROUP, ACTIVE_GROUP } from 'vs/workbench/services/editor/common/editorService';
 import { IViewletPanelOptions, ViewletPanel } from 'vs/workbench/browser/parts/views/panelViewlet';
@@ -49,6 +48,9 @@ import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService
 import { isMacintosh } from 'vs/base/common/platform';
 import { KeyCode } from 'vs/base/common/keyCodes';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
+import { isEqualOrParent } from 'vs/base/common/resources';
+import { values } from 'vs/base/common/map';
+import { first } from 'vs/base/common/arrays';
 import { withNullAsUndefined } from 'vs/base/common/types';
 
 export class ExplorerView extends ViewletPanel {
@@ -83,7 +85,6 @@ export class ExplorerView extends ViewletPanel {
 		@IDecorationsService decorationService: IDecorationsService,
 		@ILabelService private readonly labelService: ILabelService,
 		@IThemeService private readonly themeService: IWorkbenchThemeService,
-		@IListService private readonly listService: IListService,
 		@IMenuService private readonly menuService: IMenuService,
 		@ITelemetryService private readonly telemetryService: ITelemetryService,
 		@IExplorerService private readonly explorerService: IExplorerService,
@@ -175,7 +176,7 @@ export class ExplorerView extends ViewletPanel {
 			const isEditing = !!this.explorerService.getEditableData(e);
 
 			if (isEditing) {
-				await this.tree.expand(e.parent);
+				await this.tree.expand(e.parent!);
 			} else {
 				DOM.removeClass(treeContainer, 'highlight');
 			}
@@ -189,7 +190,7 @@ export class ExplorerView extends ViewletPanel {
 				this.tree.domFocus();
 			}
 		}));
-		this.disposables.push(this.explorerService.onDidSelectItem(e => this.onSelectItem(e.item, e.reveal)));
+		this.disposables.push(this.explorerService.onDidSelectResource(e => this.onSelectResource(e.resource, e.reveal)));
 		this.disposables.push(this.explorerService.onDidCopyItems(e => this.onCopyItems(e.items, e.cut, e.previouslyCutItems)));
 
 		// Update configuration
@@ -279,15 +280,15 @@ export class ExplorerView extends ViewletPanel {
 
 		this.disposables.push(createFileIconThemableTreeContainerScope(container, this.themeService));
 
-		this.tree = new WorkbenchAsyncDataTree(container, new ExplorerDelegate(), [filesRenderer],
+		this.tree = this.instantiationService.createInstance(WorkbenchAsyncDataTree, container, new ExplorerDelegate(), [filesRenderer],
 			this.instantiationService.createInstance(ExplorerDataSource), {
 				accessibilityProvider: new ExplorerAccessibilityProvider(),
 				ariaLabel: nls.localize('treeAriaLabel', "Files Explorer"),
 				identityProvider: {
-					getId: stat => stat.resource
+					getId: (stat: ExplorerItem) => stat.resource
 				},
 				keyboardNavigationLabelProvider: {
-					getKeyboardNavigationLabel: stat => {
+					getKeyboardNavigationLabel: (stat: ExplorerItem) => {
 						if (this.explorerService.isEditable(stat)) {
 							return undefined;
 						}
@@ -300,7 +301,7 @@ export class ExplorerView extends ViewletPanel {
 				sorter: this.instantiationService.createInstance(FileSorter),
 				dnd: this.instantiationService.createInstance(FileDragAndDrop),
 				autoExpandSingleChildren: true
-			}, this.contextKeyService, this.listService, this.themeService, this.configurationService, this.keybindingService);
+			}) as WorkbenchAsyncDataTree<ExplorerItem | ExplorerItem[], ExplorerItem, FuzzyScore>;
 		this.disposables.push(this.tree);
 
 		// Bind context keys
@@ -319,9 +320,8 @@ export class ExplorerView extends ViewletPanel {
 			// Check if the item was previously also selected, if yes the user is simply expanding / collapsing current selection #66589.
 			const shiftDown = e.browserEvent instanceof KeyboardEvent && e.browserEvent.shiftKey;
 			if (selection.length === 1 && !shiftDown) {
-				// Do not react if user is clicking on explorer items which are input placeholders
-				if (!selection[0].name || selection[0].isDirectory) {
-					// Do not react if user is clicking on explorer items which are input placeholders
+				if (selection[0].isDirectory || this.explorerService.isEditable(undefined)) {
+					// Do not react if user is clicking on explorer items while some are being edited #70276
 					// Do not react if clicking on directories
 					return;
 				}
@@ -341,7 +341,7 @@ export class ExplorerView extends ViewletPanel {
 		this.disposables.push(this.tree.onKeyDown(e => {
 			const event = new StandardKeyboardEvent(e);
 			const toggleCollapsed = isMacintosh ? (event.keyCode === KeyCode.DownArrow && event.metaKey) : event.keyCode === KeyCode.Enter;
-			if (toggleCollapsed) {
+			if (toggleCollapsed && !this.explorerService.isEditable(undefined)) {
 				const focus = this.tree.getFocus();
 				if (focus.length === 1 && focus[0].isDirectory) {
 					this.tree.toggleCollapsed(focus[0]);
@@ -400,7 +400,7 @@ export class ExplorerView extends ViewletPanel {
 					this.tree.domFocus();
 				}
 			},
-			getActionsContext: () => selection && selection.indexOf(stat) >= 0
+			getActionsContext: () => stat && selection && selection.indexOf(stat) >= 0
 				? selection.map((fs: ExplorerItem) => fs.resource)
 				: stat instanceof ExplorerItem ? [stat.resource] : []
 		});
@@ -508,30 +508,30 @@ export class ExplorerView extends ViewletPanel {
 		return withNullAsUndefined(toResource(input, { supportSideBySide: true }));
 	}
 
-	private onSelectItem(fileStat: ExplorerItem, reveal = this.autoReveal): Promise<void> {
-		if (!fileStat || !this.isBodyVisible() || this.tree.getInput() === fileStat) {
-			return Promise.resolve(undefined);
+	private async onSelectResource(resource: URI | undefined, reveal = this.autoReveal): Promise<void> {
+		if (!resource || !this.isBodyVisible()) {
+			return;
 		}
 
 		// Expand all stats in the parent chain
-		const toExpand: ExplorerItem[] = [];
-		let parent = fileStat.parent;
-		while (parent) {
-			toExpand.push(parent);
-			parent = parent.parent;
+		let item: ExplorerItem | undefined = this.explorerService.roots.filter(i => isEqualOrParent(resource, i.resource))[0];
+
+		while (item && item.resource.toString() !== resource.toString()) {
+			await this.tree.expand(item);
+			item = first(values(item.children), i => isEqualOrParent(resource, i.resource));
 		}
 
-		return sequence(toExpand.reverse().map(s => () => this.tree.expand(s))).then(() => {
+		if (item && item.parent) {
 			if (reveal) {
-				this.tree.reveal(fileStat, 0.5);
+				this.tree.reveal(item, 0.5);
 			}
 
-			this.tree.setFocus([fileStat]);
-			this.tree.setSelection([fileStat]);
-		});
+			this.tree.setFocus([item]);
+			this.tree.setSelection([item]);
+		}
 	}
 
-	private onCopyItems(stats: ExplorerItem[], cut: boolean, previousCut: ExplorerItem[]): void {
+	private onCopyItems(stats: ExplorerItem[], cut: boolean, previousCut: ExplorerItem[] | undefined): void {
 		this.fileCopiedContextKey.set(stats.length > 0);
 		this.resourceCutContextKey.set(cut && stats.length > 0);
 		if (previousCut) {
