@@ -4,19 +4,19 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { mkdir, open, close, read, write } from 'fs';
-import { tmpdir } from 'os';
 import { promisify } from 'util';
 import { IDisposable, Disposable } from 'vs/base/common/lifecycle';
 import { IFileSystemProvider, FileSystemProviderCapabilities, IFileChange, IWatchOptions, IStat, FileType, FileDeleteOptions, FileOverwriteOptions, FileWriteOptions, FileOpenOptions, FileSystemProviderErrorCode, createFileSystemProviderError, FileSystemProviderError } from 'vs/platform/files/common/files';
 import { URI } from 'vs/base/common/uri';
 import { Event, Emitter } from 'vs/base/common/event';
 import { isLinux, isWindows } from 'vs/base/common/platform';
-import { statLink, readdir, unlink, del, move, copy, readFile, writeFile, fileExists, truncate } from 'vs/base/node/pfs';
-import { normalize } from 'vs/base/common/path';
+import { statLink, readdir, unlink, move, copy, readFile, writeFile, fileExists, truncate, rimraf, RimRafMode } from 'vs/base/node/pfs';
+import { normalize, basename, dirname } from 'vs/base/common/path';
 import { joinPath } from 'vs/base/common/resources';
 import { isEqual } from 'vs/base/common/extpath';
 import { retry } from 'vs/base/common/async';
 import { ILogService } from 'vs/platform/log/common/log';
+import { localize } from 'vs/nls';
 
 export class DiskFileSystemProvider extends Disposable implements IFileSystemProvider {
 
@@ -64,7 +64,7 @@ export class DiskFileSystemProvider extends Disposable implements IFileSystemPro
 				ctime: stat.ctime.getTime(),
 				mtime: stat.mtime.getTime(),
 				size: stat.size
-			} as IStat;
+			};
 		} catch (error) {
 			throw this.toFileSystemProviderError(error);
 		}
@@ -113,9 +113,9 @@ export class DiskFileSystemProvider extends Disposable implements IFileSystemPro
 			// Validate target
 			const exists = await fileExists(filePath);
 			if (exists && !opts.overwrite) {
-				throw createFileSystemProviderError(new Error('File already exists'), FileSystemProviderErrorCode.FileExists);
+				throw createFileSystemProviderError(new Error(localize('fileExists', "File already exists")), FileSystemProviderErrorCode.FileExists);
 			} else if (!exists && !opts.create) {
-				throw createFileSystemProviderError(new Error('File does not exist'), FileSystemProviderErrorCode.FileNotFound);
+				throw createFileSystemProviderError(new Error(localize('fileNotExists', "File does not exist")), FileSystemProviderErrorCode.FileNotFound);
 			}
 
 			if (exists && isWindows) {
@@ -224,26 +224,23 @@ export class DiskFileSystemProvider extends Disposable implements IFileSystemPro
 
 			await this.doDelete(filePath, opts);
 		} catch (error) {
-			if (error.code === 'ENOENT') {
-				return Promise.resolve(); // tolerate that the file might not exist
-			}
-
 			throw this.toFileSystemProviderError(error);
 		}
 	}
 
 	protected async doDelete(filePath: string, opts: FileDeleteOptions): Promise<void> {
 		if (opts.recursive) {
-			await del(filePath, tmpdir());
+			await rimraf(filePath, RimRafMode.MOVE);
 		} else {
 			await unlink(filePath);
 		}
 	}
 
 	async rename(from: URI, to: URI, opts: FileOverwriteOptions): Promise<void> {
+		const fromFilePath = this.toFilePath(from);
+		const toFilePath = this.toFilePath(to);
+
 		try {
-			const fromFilePath = this.toFilePath(from);
-			const toFilePath = this.toFilePath(to);
 
 			// Ensure target does not exist
 			await this.validateTargetDeleted(from, to, opts && opts.overwrite);
@@ -251,14 +248,22 @@ export class DiskFileSystemProvider extends Disposable implements IFileSystemPro
 			// Move
 			await move(fromFilePath, toFilePath);
 		} catch (error) {
+
+			// rewrite some typical errors that can happen especially around symlinks
+			// to something the user can better understand
+			if (error.code === 'EINVAL' || error.code === 'EBUSY' || error.code === 'ENAMETOOLONG') {
+				error = new Error(localize('moveError', "Unable to move '{0}' into '{1}' ({2}).", basename(fromFilePath), basename(dirname(toFilePath)), error.toString()));
+			}
+
 			throw this.toFileSystemProviderError(error);
 		}
 	}
 
 	async copy(from: URI, to: URI, opts: FileOverwriteOptions): Promise<void> {
+		const fromFilePath = this.toFilePath(from);
+		const toFilePath = this.toFilePath(to);
+
 		try {
-			const fromFilePath = this.toFilePath(from);
-			const toFilePath = this.toFilePath(to);
 
 			// Ensure target does not exist
 			await this.validateTargetDeleted(from, to, opts && opts.overwrite);
@@ -266,6 +271,13 @@ export class DiskFileSystemProvider extends Disposable implements IFileSystemPro
 			// Copy
 			await copy(fromFilePath, toFilePath);
 		} catch (error) {
+
+			// rewrite some typical errors that can happen especially around symlinks
+			// to something the user can better understand
+			if (error.code === 'EINVAL' || error.code === 'EBUSY' || error.code === 'ENAMETOOLONG') {
+				error = new Error(localize('copyError', "Unable to copy '{0}' into '{1}' ({2}).", basename(fromFilePath), basename(dirname(toFilePath)), error.toString()));
+			}
+
 			throw this.toFileSystemProviderError(error);
 		}
 	}
