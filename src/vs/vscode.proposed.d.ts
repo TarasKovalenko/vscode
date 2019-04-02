@@ -222,7 +222,6 @@ declare module 'vscode' {
 		 * See the vscode setting `"search.useGlobalIgnoreFiles"`.
 		 */
 		useGlobalIgnoreFiles: boolean;
-
 	}
 
 	/**
@@ -391,7 +390,6 @@ declare module 'vscode' {
 		 * Provide the set of files that match a certain file path pattern.
 		 * @param query The parameters for this query.
 		 * @param options A set of options to consider while searching files.
-		 * @param progress A progress callback that must be invoked for all results.
 		 * @param token A cancellation token.
 		 */
 		provideFileSearchResults(query: FileSearchQuery, options: FileSearchOptions, token: CancellationToken): ProviderResult<Uri[]>;
@@ -1402,7 +1400,7 @@ declare module 'vscode' {
 		 * running on.
 		 *
 		 * If a webview accesses localhost content, we recomend that you specify port mappings even if
-		 * the `from` and `to` ports are the same.
+		 * the `port` and `resolvedPort` ports are the same.
 		 */
 		readonly portMapping?: ReadonlyArray<WebviewPortMapping>;
 	}

@@ -94,7 +94,6 @@ import { RelayURLService } from 'vs/platform/url/electron-browser/urlService';
 import 'vs/workbench/services/bulkEdit/browser/bulkEditService';
 import 'vs/workbench/services/integrity/node/integrityService';
 import 'vs/workbench/services/keybinding/common/keybindingEditing';
-import 'vs/workbench/services/hash/node/hashService';
 import 'vs/workbench/services/textMate/electron-browser/textMateService';
 import 'vs/workbench/services/configurationResolver/browser/configurationResolverService';
 import 'vs/workbench/services/workspace/node/workspaceEditingService';
@@ -233,6 +232,7 @@ import 'vs/workbench/contrib/comments/browser/comments.contribution';
 import 'vs/workbench/contrib/url/common/url.contribution';
 
 // Webview
+import 'vs/workbench/contrib/webview/browser/webview.contribution';
 import 'vs/workbench/contrib/webview/electron-browser/webview.contribution';
 
 // Extensions Management
