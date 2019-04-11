@@ -325,8 +325,7 @@ export class FilesFilter implements ITreeFilter<ExplorerItem, FuzzyScore> {
 
 		// Hide those that match Hidden Patterns
 		const cached = this.hiddenExpressionPerRoot.get(stat.root.resource.toString());
-		const relativeTo = this.contextService.getWorkbenchState() === WorkbenchState.WORKSPACE ? path.dirname(stat.root.resource.path) : stat.root.resource.path;
-		if (cached && cached.parsed(path.relative(relativeTo, stat.resource.path), stat.name, name => !!(stat.parent && stat.parent.getChild(name)))) {
+		if (cached && cached.parsed(path.relative(stat.root.resource.path, stat.resource.path), stat.name, name => !!(stat.parent && stat.parent.getChild(name)))) {
 			return false; // hidden through pattern
 		}
 
@@ -334,7 +333,7 @@ export class FilesFilter implements ITreeFilter<ExplorerItem, FuzzyScore> {
 	}
 
 	public dispose(): void {
-		this.workspaceFolderChangeListener = dispose(this.workspaceFolderChangeListener);
+		dispose(this.workspaceFolderChangeListener);
 	}
 }
 

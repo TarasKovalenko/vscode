@@ -75,8 +75,6 @@ declare module 'vscode' {
 	export class ResolvedAuthority {
 		readonly host: string;
 		readonly port: number;
-		debugListenPort?: number;
-		debugConnectPort?: number;
 
 		constructor(host: string, port: number);
 	}
@@ -474,11 +472,6 @@ declare module 'vscode' {
 
 	export namespace workspace {
 		/**
-		 * DEPRECATED
-		 */
-		export function registerSearchProvider(): Disposable;
-
-		/**
 		 * Register a search provider.
 		 *
 		 * Only one provider can be registered per scheme.
@@ -623,6 +616,11 @@ declare module 'vscode' {
 		 * An [event](#Event) that fires when the log level has changed.
 		 */
 		export const onDidChangeLogLevel: Event<LogLevel>;
+
+		/**
+		 * The custom uri scheme the editor registers to in the operating system, like 'vscode', 'vscode-insiders'.
+		 */
+		export const uriScheme: string;
 	}
 
 	//#endregion
@@ -814,28 +812,28 @@ declare module 'vscode' {
 		/**
 		 * The id of the comment
 		 */
-		commentId: string;
+		readonly commentId: string;
 
 		/**
 		 * The text of the comment
 		 */
-		body: MarkdownString;
+		readonly body: MarkdownString;
 
 		/**
 		 * Optional label describing the [Comment](#Comment)
 		 * Label will be rendered next to userName if exists.
 		 */
-		label?: string;
+		readonly label?: string;
 
 		/**
 		 * The display name of the user who created the comment
 		 */
-		userName: string;
+		readonly userName: string;
 
 		/**
 		 * The icon path for the user who created the comment
 		 */
-		userIconPath?: Uri;
+		readonly userIconPath?: Uri;
 
 		/**
 		 * @deprecated Use userIconPath instead. The avatar src of the user who created the comment
@@ -871,17 +869,17 @@ declare module 'vscode' {
 		/**
 		 * The command to be executed if the comment is selected in the Comments Panel
 		 */
-		selectCommand?: Command;
+		readonly selectCommand?: Command;
 
 		/**
 		 * The command to be executed when users try to save the edits to the comment
 		 */
-		editCommand?: Command;
+		readonly editCommand?: Command;
 
 		/**
 		 * The command to be executed when users try to delete the comment
 		 */
-		deleteCommand?: Command;
+		readonly deleteCommand?: Command;
 
 		/**
 		 * Deprecated
@@ -1012,9 +1010,7 @@ declare module 'vscode' {
 		 * Provide a list of ranges which allow new comment threads creation or null for a given document
 		 */
 		provideCommentingRanges(document: TextDocument, token: CancellationToken): ProviderResult<Range[]>;
-	}
 
-	export interface EmptyCommentThreadFactory {
 		/**
 		 * The method `createEmptyCommentThread` is called when users attempt to create new comment thread from the gutter or command palette.
 		 * Extensions still need to call `createCommentThread` inside this call when appropriate.
@@ -1048,11 +1044,6 @@ declare module 'vscode' {
 		 * Provide a list [ranges](#Range) which support commenting to any given resource uri.
 		 */
 		commentingRangeProvider?: CommentingRangeProvider;
-
-		/**
-		 * Optional new comment thread factory.
-		 */
-		emptyCommentThreadFactory?: EmptyCommentThreadFactory;
 
 		/**
 		 * Optional reaction provider

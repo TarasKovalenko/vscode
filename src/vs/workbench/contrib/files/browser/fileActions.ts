@@ -17,7 +17,7 @@ import { dispose, IDisposable } from 'vs/base/common/lifecycle';
 import { VIEWLET_ID, IExplorerService } from 'vs/workbench/contrib/files/common/files';
 import { ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
 import { IFileService, AutoSaveConfiguration } from 'vs/platform/files/common/files';
-import { toResource, ITextEditor } from 'vs/workbench/common/editor';
+import { toResource, ITextEditor, SideBySideEditor } from 'vs/workbench/common/editor';
 import { ExplorerViewlet } from 'vs/workbench/contrib/files/browser/explorerViewlet';
 import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
 import { IQuickOpenService } from 'vs/platform/quickOpen/common/quickOpen';
@@ -712,7 +712,7 @@ export class ShowActiveFileInExplorer extends Action {
 	}
 
 	public run(): Promise<any> {
-		const resource = toResource(this.editorService.activeEditor, { supportSideBySide: true });
+		const resource = toResource(this.editorService.activeEditor, { supportSideBySide: SideBySideEditor.MASTER });
 		if (resource) {
 			this.commandService.executeCommand(REVEAL_IN_EXPLORER_COMMAND_ID, resource);
 		} else {
@@ -784,7 +784,7 @@ export class ShowOpenedFileInNewWindow extends Action {
 	}
 
 	public run(): Promise<any> {
-		const fileResource = toResource(this.editorService.activeEditor, { supportSideBySide: true });
+		const fileResource = toResource(this.editorService.activeEditor, { supportSideBySide: SideBySideEditor.MASTER });
 		if (fileResource) {
 			if (this.fileService.canHandleResource(fileResource)) {
 				this.windowService.openWindow([{ fileUri: fileResource }], { forceNewWindow: true });
@@ -871,7 +871,7 @@ export class CompareWithClipboardAction extends Action {
 
 	private static readonly SCHEME = 'clipboardCompare';
 
-	private registrationDisposal: IDisposable;
+	private registrationDisposal: IDisposable | undefined;
 
 	constructor(
 		id: string,
@@ -887,7 +887,7 @@ export class CompareWithClipboardAction extends Action {
 	}
 
 	public run(): Promise<any> {
-		const resource = toResource(this.editorService.activeEditor, { supportSideBySide: true });
+		const resource = toResource(this.editorService.activeEditor, { supportSideBySide: SideBySideEditor.MASTER });
 		if (resource && (this.fileService.canHandleResource(resource) || resource.scheme === Schemas.untitled)) {
 			if (!this.registrationDisposal) {
 				const provider = this.instantiationService.createInstance(ClipboardContentProvider);
@@ -898,7 +898,8 @@ export class CompareWithClipboardAction extends Action {
 			const editorLabel = nls.localize('clipboardComparisonLabel', "Clipboard ↔ {0}", name);
 
 			return this.editorService.openEditor({ leftResource: resource.with({ scheme: CompareWithClipboardAction.SCHEME }), rightResource: resource, label: editorLabel }).finally(() => {
-				this.registrationDisposal = dispose(this.registrationDisposal);
+				dispose(this.registrationDisposal);
+				this.registrationDisposal = undefined;
 			});
 		}
 
@@ -908,7 +909,8 @@ export class CompareWithClipboardAction extends Action {
 	public dispose(): void {
 		super.dispose();
 
-		this.registrationDisposal = dispose(this.registrationDisposal);
+		dispose(this.registrationDisposal);
+		this.registrationDisposal = undefined;
 	}
 }
 
@@ -955,6 +957,7 @@ async function openExplorerAndCreate(accessor: ServicesAccessor, isFolder: boole
 	const listService = accessor.get(IListService);
 	const explorerService = accessor.get(IExplorerService);
 	const fileService = accessor.get(IFileService);
+	const textFileService = accessor.get(ITextFileService);
 	const editorService = accessor.get(IEditorService);
 	const viewletService = accessor.get(IViewletService);
 	const activeViewlet = viewletService.getActiveViewlet();
@@ -982,7 +985,7 @@ async function openExplorerAndCreate(accessor: ServicesAccessor, isFolder: boole
 		folder.addChild(newStat);
 
 		const onSuccess = async (value: string) => {
-			const createPromise = isFolder ? fileService.createFolder(resources.joinPath(folder.resource, value)) : fileService.createFile(resources.joinPath(folder.resource, value));
+			const createPromise = isFolder ? fileService.createFolder(resources.joinPath(folder.resource, value)) : textFileService.create(resources.joinPath(folder.resource, value));
 			return createPromise.then(created => {
 				refreshIfSeparator(value, explorerService);
 				return isFolder ? explorerService.select(created.resource, true)

@@ -67,7 +67,7 @@ import { storeBackgroundColor } from 'vs/code/electron-main/theme';
 import { homedir } from 'os';
 import { join, sep } from 'vs/base/common/path';
 import { localize } from 'vs/nls';
-import { REMOTE_HOST_SCHEME } from 'vs/platform/remote/common/remoteHosts';
+import { Schemas } from 'vs/base/common/network';
 import { REMOTE_FILE_SYSTEM_CHANNEL_NAME } from 'vs/platform/remote/common/remoteAgentFileSystemChannel';
 import { ResolvedAuthority } from 'vs/platform/remote/common/remoteAuthorityResolver';
 import { SnapUpdateService } from 'vs/platform/update/electron-main/updateService.snap';
@@ -256,6 +256,13 @@ export class CodeApplication extends Disposable {
 
 				// Send to all windows (except sender window)
 				this.windowsMainService.sendToAll('vscode:broadcast', broadcast, [windowId]);
+			}
+		});
+
+		ipc.on('vscode:extensionHostDebug', (_: Event, windowId: number, broadcast: any) => {
+			if (this.windowsMainService) {
+				// Send to all windows (except sender window)
+				this.windowsMainService.sendToAll('vscode:extensionHostDebug', broadcast, [windowId]);
 			}
 		});
 
@@ -741,7 +748,7 @@ export class CodeApplication extends Disposable {
 			}
 		};
 
-		protocol.registerBufferProtocol(REMOTE_HOST_SCHEME, async (request, callback) => {
+		protocol.registerBufferProtocol(Schemas.vscodeRemote, async (request, callback) => {
 			if (request.method !== 'GET') {
 				return callback(undefined);
 			}
@@ -790,4 +797,3 @@ function getURIToOpenFromPathSync(path: string): IURIToOpen {
 	}
 	return { fileUri: URI.file(path) };
 }
-

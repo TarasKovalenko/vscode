@@ -18,9 +18,15 @@ steps:
     password $(VSCODE_MIXIN_PASSWORD)
     EOF
 
+    git config user.email "vscode@microsoft.com"
+    git config user.name "VSCode"
+    git remote add distro "https://github.com/$(VSCODE_MIXIN_REPO).git"
+    git fetch distro
+    git merge $(node -p "require('./package.json').distro")
+
     yarn
-    VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" yarn gulp -- mixin
-    yarn gulp -- hygiene
+    yarn gulp mixin
+    yarn gulp hygiene
     yarn monaco-compile-check
     node build/azure-pipelines/common/installDistro.js
     node build/lib/builtInExtensions.js
@@ -30,10 +36,10 @@ steps:
     set -e
     VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" \
     AZURE_STORAGE_ACCESS_KEY="$(AZURE_STORAGE_ACCESS_KEY)" \
-    yarn gulp -- vscode-darwin-min
+    yarn gulp vscode-darwin-min
     VSCODE_MIXIN_PASSWORD="$(VSCODE_MIXIN_PASSWORD)" \
     AZURE_STORAGE_ACCESS_KEY="$(AZURE_STORAGE_ACCESS_KEY)" \
-    yarn gulp -- upload-vscode-sourcemaps
+    yarn gulp upload-vscode-sourcemaps
   displayName: Build
 
 - script: |
@@ -42,6 +48,11 @@ steps:
     # APP_NAME="`ls $(agent.builddirectory)/VSCode-darwin | head -n 1`"
     # yarn smoketest -- --build "$(agent.builddirectory)/VSCode-darwin/$APP_NAME"
   displayName: Run unit tests
+
+- script: |
+    set -e
+    ./scripts/test-integration.sh --build --tfs "Integration Tests"
+  displayName: Run integration tests
 
 - script: |
     set -e
@@ -78,7 +89,6 @@ steps:
     VERSION=`node -p "require(\"$PACKAGEJSON\").version"`
     AZURE_DOCUMENTDB_MASTERKEY="$(AZURE_DOCUMENTDB_MASTERKEY)" \
     AZURE_STORAGE_ACCESS_KEY_2="$(AZURE_STORAGE_ACCESS_KEY_2)" \
-    MOONCAKE_STORAGE_ACCESS_KEY="$(MOONCAKE_STORAGE_ACCESS_KEY)" \
     node build/azure-pipelines/common/publish.js \
       "$(VSCODE_QUALITY)" \
       darwin \
@@ -93,7 +103,7 @@ steps:
 
     # upload configuration
     AZURE_STORAGE_ACCESS_KEY="$(AZURE_STORAGE_ACCESS_KEY)" \
-    yarn gulp -- upload-vscode-configuration
+    yarn gulp upload-vscode-configuration
   displayName: Publish
 
 - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
