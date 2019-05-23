@@ -342,6 +342,9 @@ export class SearchView extends ViewletPanel {
 		return this.inputPatternExcludes;
 	}
 
+	/**
+	 * Warning: a bit expensive due to updating the view title
+	 */
 	protected updateActions(): void {
 		for (const action of this.actions) {
 			action.update();
@@ -683,10 +686,6 @@ export class SearchView extends ViewletPanel {
 	}
 
 	private onContextMenu(e: ITreeContextMenuEvent<RenderableMatch | null>): void {
-		if (!e.element) {
-			return;
-		}
-
 		if (!this.contextMenu) {
 			this.contextMenu = this._register(this.menuService.createMenu(MenuId.SearchContext, this.contextKeyService));
 		}
@@ -1327,8 +1326,6 @@ export class SearchView extends ViewletPanel {
 				// Indicate as status to ARIA
 				aria.status(message);
 
-				dom.hide(this.resultsElement);
-
 				const messageEl = this.clearMessage();
 				const p = dom.append(messageEl, $('p', undefined, message));
 
@@ -1363,6 +1360,7 @@ export class SearchView extends ViewletPanel {
 				if (this.contextService.getWorkbenchState() === WorkbenchState.EMPTY) {
 					this.showSearchWithoutFolderMessage();
 				}
+				this.reLayout();
 			} else {
 				this.viewModel.searchResult.toggleHighlights(this.isVisible()); // show highlights
 
@@ -1391,6 +1389,8 @@ export class SearchView extends ViewletPanel {
 
 		let visibleMatches = 0;
 
+		let updatedActionsForFileCount = false;
+
 		// Handle UI updates in an interval to show frequent progress and results
 		const uiRefreshHandle: any = setInterval(() => {
 			if (!this.searching) {
@@ -1404,7 +1404,9 @@ export class SearchView extends ViewletPanel {
 				visibleMatches = fileCount;
 				this.refreshAndUpdateCount();
 			}
-			if (fileCount > 0) {
+
+			if (fileCount > 0 && !updatedActionsForFileCount) {
+				updatedActionsForFileCount = true;
 				this.updateActions();
 			}
 		}, 100);
