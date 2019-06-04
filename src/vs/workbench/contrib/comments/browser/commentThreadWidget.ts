@@ -211,6 +211,10 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 
 		this._bodyElement = <HTMLDivElement>dom.$('.body');
 		container.appendChild(this._bodyElement);
+
+		dom.addDisposableListener(this._bodyElement, dom.EventType.FOCUS_IN, e => {
+			this.commentService.setActiveCommentThread(this._commentThread);
+		});
 	}
 
 	protected _fillHead(container: HTMLElement): void {
@@ -265,6 +269,7 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 			} else {
 				const deleteCommand = (this._commentThread as modes.CommentThread2).deleteCommand;
 				if (deleteCommand) {
+					this.commentService.setActiveCommentThread(this._commentThread);
 					return this.commandService.executeCommand(deleteCommand.id, ...(deleteCommand.arguments || []));
 				} else if (this._commentEditor.getValue() === '') {
 					this.commentService.disposeCommentThread(this._owner, this._commentThread.threadId!);
@@ -516,6 +521,7 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 				uri: this._commentEditor.getModel()!.uri,
 				value: this._commentEditor.getValue()
 			};
+			this.commentService.setActiveCommentThread(this._commentThread);
 		}));
 
 		this._commentThreadDisposables.push(this._commentEditor.getModel()!.onDidChangeContent(() => {
@@ -526,6 +532,7 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 				newInput.value = modelContent;
 				thread.input = newInput;
 			}
+			this.commentService.setActiveCommentThread(this._commentThread);
 		}));
 
 		this._commentThreadDisposables.push((this._commentThread as modes.CommentThread2).onDidChangeInput(input => {
@@ -727,6 +734,7 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 					uri: this._commentEditor.getModel()!.uri,
 					value: this._commentEditor.getValue()
 				};
+				this.commentService.setActiveCommentThread(this._commentThread);
 				await this.commandService.executeCommand(acceptInputCommand.id, ...(acceptInputCommand.arguments || []));
 			}));
 
@@ -751,6 +759,7 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 						uri: this._commentEditor.getModel()!.uri,
 						value: this._commentEditor.getValue()
 					};
+					this.commentService.setActiveCommentThread(this._commentThread);
 					await this.commandService.executeCommand(command.id, ...(command.arguments || []));
 				}));
 			});
@@ -763,7 +772,14 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 			this._commentFormActions.setActions(menu);
 		}));
 
-		this._commentFormActions = new CommentFormActions(container, (action: IAction) => {
+		this._commentFormActions = new CommentFormActions(container, async (action: IAction) => {
+			if (!commentThread.comments || !commentThread.comments.length) {
+				let newPosition = this.getPosition();
+
+				if (newPosition) {
+					this.commentService.updateCommentThreadTemplate(this.owner, commentThread.commentThreadHandle, new Range(newPosition.lineNumber, 1, newPosition.lineNumber, 1));
+				}
+			}
 			action.run({
 				thread: this._commentThread,
 				text: this._commentEditor.getValue(),
@@ -821,6 +837,7 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 						uri: this._commentEditor.getModel()!.uri,
 						value: this._commentEditor.getValue()
 					};
+					this.commentService.setActiveCommentThread(this._commentThread);
 					let commandId = commentThread.acceptInputCommand.id;
 					let args = commentThread.acceptInputCommand.arguments || [];
 
@@ -965,6 +982,13 @@ export class ReviewZoneWidget extends ZoneWidget implements ICommentThreadWidget
 			const frameThickness = Math.round(lineHeight / 9) * 2;
 
 			const computedLinesNumber = Math.ceil((headHeight + dimensions.height + arrowHeight + frameThickness + 8 /** margin bottom to avoid margin collapse */) / lineHeight);
+
+			let currentPosition = this.getPosition();
+
+			if (this._viewZone && currentPosition && currentPosition.lineNumber !== this._viewZone.afterLineNumber) {
+				this._viewZone.afterLineNumber = currentPosition.lineNumber;
+			}
+
 			this._relayout(computedLinesNumber);
 		}
 	}
