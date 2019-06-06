@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
+import { createDecorator, ServiceIdentifier } from 'vs/platform/instantiation/common/instantiation';
 import { IDisposable } from 'vs/base/common/lifecycle';
 import { ThemeColor } from 'vs/platform/theme/common/themeService';
 import { ExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
@@ -11,7 +11,8 @@ import { ExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
 export const IStatusbarService = createDecorator<IStatusbarService>('statusbarService');
 
 export const enum StatusbarAlignment {
-	LEFT, RIGHT
+	LEFT,
+	RIGHT
 }
 
 /**
@@ -64,18 +65,24 @@ export interface IStatusbarEntry {
 
 export interface IStatusbarService {
 
-	_serviceBrand: any;
+	_serviceBrand: ServiceIdentifier<IStatusbarService>;
 
 	/**
 	 * Adds an entry to the statusbar with the given alignment and priority. Use the returned accessor
 	 * to update or remove the statusbar entry.
+	 *
+	 * @param id  identifier of the entry is needed to allow users to hide entries via settings
+	 * @param name human readable name the entry is about
+	 * @param alignment either LEFT or RIGHT
+	 * @param priority items get arranged from highest priority to lowest priority from left to right
+	 * in their respective alignment slot
 	 */
-	addEntry(entry: IStatusbarEntry, alignment: StatusbarAlignment, priority?: number): IStatusbarEntryAccessor;
+	addEntry(entry: IStatusbarEntry, id: string, name: string, alignment: StatusbarAlignment, priority?: number): IStatusbarEntryAccessor;
 
 	/**
-	 * Prints something to the status bar area with optional auto dispose and delay.
+	 * Allows to update an entry's visibilty with the provided ID.
 	 */
-	setStatusMessage(message: string, autoDisposeAfter?: number, delayBy?: number): IDisposable;
+	updateEntryVisibility(id: string, visible: boolean): void;
 }
 
 export interface IStatusbarEntryAccessor extends IDisposable {

@@ -32,11 +32,11 @@ import { IOutputService } from 'vs/workbench/contrib/output/common/output';
 import { StartStopProblemCollector, WatchingProblemCollector, ProblemCollectorEventKind, ProblemHandlingStrategy } from 'vs/workbench/contrib/tasks/common/problemCollectors';
 import {
 	Task, CustomTask, ContributedTask, RevealKind, CommandOptions, ShellConfiguration, RuntimeType, PanelKind,
-	TaskEvent, TaskEventKind, ShellQuotingOptions, ShellQuoting, CommandString, CommandConfiguration, ExtensionTaskSource, TaskScope, RevealProblemKind
+	TaskEvent, TaskEventKind, ShellQuotingOptions, ShellQuoting, CommandString, CommandConfiguration, ExtensionTaskSource, TaskScope, RevealProblemKind, DependsOrder
 } from 'vs/workbench/contrib/tasks/common/tasks';
 import {
 	ITaskSystem, ITaskSummary, ITaskExecuteResult, TaskExecuteKind, TaskError, TaskErrors, ITaskResolver,
-	TelemetryEvent, Triggers, TaskTerminateResponse, TaskSystemInfoResovler, TaskSystemInfo, ResolveSet, ResolvedVariables
+	TelemetryEvent, Triggers, TaskTerminateResponse, TaskSystemInfoResolver, TaskSystemInfo, ResolveSet, ResolvedVariables
 } from 'vs/workbench/contrib/tasks/common/taskSystem';
 import { REMOTE_HOST_SCHEME } from 'vs/platform/remote/common/remoteHosts';
 import { URI } from 'vs/base/common/uri';
@@ -154,7 +154,7 @@ export class TerminalTaskSystem implements ITaskSystem {
 	private terminals: IStringDictionary<TerminalData>;
 	private idleTaskTerminals: LinkedMap<string, string>;
 	private sameTaskTerminals: IStringDictionary<string>;
-	private taskSystemInfoResolver: TaskSystemInfoResovler;
+	private taskSystemInfoResolver: TaskSystemInfoResolver;
 	private lastTask: VerifiedTask;
 	private currentTask: VerifiedTask;
 	private isRerun: boolean;
@@ -172,7 +172,7 @@ export class TerminalTaskSystem implements ITaskSystem {
 		private environmentService: IWorkbenchEnvironmentService,
 		private outputChannelId: string,
 		private fileService: IFileService,
-		taskSystemInfoResolver: TaskSystemInfoResovler,
+		taskSystemInfoResolver: TaskSystemInfoResolver,
 	) {
 
 		this.activeTasks = Object.create(null);
@@ -333,10 +333,11 @@ export class TerminalTaskSystem implements ITaskSystem {
 		return Promise.all<TaskTerminateResponse>(promises);
 	}
 
-	private executeTask(task: Task, resolver: ITaskResolver, trigger: string): Promise<ITaskSummary> {
+	private async executeTask(task: Task, resolver: ITaskResolver, trigger: string): Promise<ITaskSummary> {
 		let promises: Promise<ITaskSummary>[] = [];
 		if (task.configurationProperties.dependsOn) {
-			task.configurationProperties.dependsOn.forEach((dependency) => {
+			for (let index in task.configurationProperties.dependsOn) {
+				const dependency = task.configurationProperties.dependsOn[index];
 				let dependencyTask = resolver.resolve(dependency.workspaceFolder, dependency.task!);
 				if (dependencyTask) {
 					let key = dependencyTask.getMapKey();
@@ -344,6 +345,9 @@ export class TerminalTaskSystem implements ITaskSystem {
 					if (!promise) {
 						this._onDidStateChange.fire(TaskEvent.create(TaskEventKind.DependsOnStarted, task));
 						promise = this.executeTask(dependencyTask, resolver, trigger);
+					}
+					if (task.configurationProperties.dependsOrder === DependsOrder.sequence) {
+						promise = Promise.resolve(await promise);
 					}
 					promises.push(promise);
 				} else {
@@ -354,7 +358,7 @@ export class TerminalTaskSystem implements ITaskSystem {
 					));
 					this.showOutput();
 				}
-			});
+			}
 		}
 
 		if ((ContributedTask.is(task) || CustomTask.is(task)) && (task.command)) {
@@ -425,12 +429,12 @@ export class TerminalTaskSystem implements ITaskSystem {
 			variables.forEach(variable => variablesArray.push(variable));
 
 			return new Promise((resolve, reject) => {
-				this.configurationResolverService.resolveWithInteraction(workspaceFolder, variablesArray, 'tasks').then(resolvedVariablesMap => {
+				this.configurationResolverService.resolveWithInteraction(workspaceFolder, variablesArray, 'tasks').then(async resolvedVariablesMap => {
 					if (resolvedVariablesMap) {
 						if (isProcess) {
 							let processVarValue: string;
 							if (Platform.isWindows) {
-								processVarValue = win32.findExecutable(
+								processVarValue = await win32.findExecutable(
 									this.configurationResolverService.resolve(workspaceFolder, CommandString.value(task.command.name!)),
 									cwd ? this.configurationResolverService.resolve(workspaceFolder, cwd) : undefined,
 									envPath ? envPath.split(path.delimiter).map(p => this.configurationResolverService.resolve(workspaceFolder, p)) : undefined
@@ -555,14 +559,13 @@ export class TerminalTaskSystem implements ITaskSystem {
 				this._onDidStateChange.fire(TaskEvent.create(TaskEventKind.Start, task, terminal.id));
 				const registeredLinkMatchers = this.registerLinkMatchers(terminal, problemMatchers);
 				const onData = terminal.onLineData((line) => {
-					return watchingProblemMatcher.processLine(line).then(() => {
-						if (!delayer) {
-							delayer = new Async.Delayer(3000);
-						}
-						delayer.trigger(() => {
-							watchingProblemMatcher.forceDelivery();
-							delayer = undefined;
-						});
+					watchingProblemMatcher.processLine(line);
+					if (!delayer) {
+						delayer = new Async.Delayer(3000);
+					}
+					delayer.trigger(() => {
+						watchingProblemMatcher.forceDelivery();
+						delayer = undefined;
 					});
 				});
 				const onExit = terminal.onExit((exitCode) => {
@@ -635,7 +638,7 @@ export class TerminalTaskSystem implements ITaskSystem {
 				let startStopProblemMatcher = new StartStopProblemCollector(problemMatchers, this.markerService, this.modelService, ProblemHandlingStrategy.Clean, this.fileService);
 				const registeredLinkMatchers = this.registerLinkMatchers(terminal, problemMatchers);
 				const onData = terminal.onLineData((line) => {
-					return startStopProblemMatcher.processLine(line);
+					startStopProblemMatcher.processLine(line);
 				});
 				const onExit = terminal.onExit((exitCode) => {
 					onData.dispose();
@@ -1232,7 +1235,7 @@ export class TerminalTaskSystem implements ITaskSystem {
 				matcher = value;
 			}
 			if (!matcher) {
-				this.appendOutput(nls.localize('unkownProblemMatcher', 'Problem matcher {0} can\'t be resolved. The matcher will be ignored'));
+				this.appendOutput(nls.localize('unknownProblemMatcher', 'Problem matcher {0} can\'t be resolved. The matcher will be ignored'));
 				return;
 			}
 			let taskSystemInfo: TaskSystemInfo | undefined = resolver.taskSystemInfo;
