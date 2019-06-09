@@ -180,7 +180,7 @@ export class MarkerNavigationWidget extends PeekViewWidget {
 
 	constructor(
 		editor: ICodeEditor,
-		private readonly actions: IAction[],
+		private readonly actions: ReadonlyArray<IAction>,
 		private readonly _themeService: IThemeService
 	) {
 		super(editor, { showArrow: true, showFrame: true, isAccessible: true });
@@ -252,7 +252,7 @@ export class MarkerNavigationWidget extends PeekViewWidget {
 		container.appendChild(this._container);
 
 		this._message = new MessageWidget(this._container, this.editor, related => this._onDidSelectRelatedInformation.fire(related));
-		this._disposables.push(this._message);
+		this._disposables.add(this._message);
 	}
 
 	show(where: Position, heightInLines: number): void {

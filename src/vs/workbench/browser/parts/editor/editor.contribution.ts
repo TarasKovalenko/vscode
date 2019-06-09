@@ -52,6 +52,8 @@ import { OpenWorkspaceButtonContribution } from 'vs/workbench/browser/parts/edit
 import { ZoomStatusbarItem } from 'vs/workbench/browser/parts/editor/resourceViewer';
 import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
 import { toLocalResource } from 'vs/base/common/resources';
+import { Extensions as WorkbenchExtensions, IWorkbenchContributionsRegistry } from 'vs/workbench/common/contributions';
+import { LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 
 // Register String Editor
 Registry.as<IEditorRegistry>(EditorExtensions.Editors).registerEditor(
@@ -220,16 +222,10 @@ Registry.as<IEditorInputFactoryRegistry>(EditorInputExtensions.EditorInputFactor
 registerEditorContribution(OpenWorkspaceButtonContribution);
 
 // Register Editor Status
-const statusBar = Registry.as<IStatusbarRegistry>(StatusExtensions.Statusbar);
-statusBar.registerStatusbarItem(new StatusbarItemDescriptor(
-	EditorStatus,
-	'status.editor',
-	nls.localize('status.editor', "Editor Status"),
-	StatusbarAlignment.RIGHT,
-	100 /* towards the left of the right hand side */
-));
+Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench).registerWorkbenchContribution(EditorStatus, LifecyclePhase.Ready);
 
 // Register Zoom Status
+const statusBar = Registry.as<IStatusbarRegistry>(StatusExtensions.Statusbar);
 statusBar.registerStatusbarItem(new StatusbarItemDescriptor(
 	ZoomStatusbarItem,
 	'status.imageZoom',
@@ -257,7 +253,7 @@ export class QuickOpenActionContributor extends ActionBarContributor {
 		return !!entry;
 	}
 
-	getActions(context: any): IAction[] {
+	getActions(context: any): ReadonlyArray<IAction> {
 		const actions: Action[] = [];
 
 		const entry = this.getEntry(context);
