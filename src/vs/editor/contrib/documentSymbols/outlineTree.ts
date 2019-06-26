@@ -15,7 +15,6 @@ import { Range } from 'vs/editor/common/core/range';
 import { SymbolKind, symbolKindToCssClass } from 'vs/editor/common/modes';
 import { OutlineElement, OutlineGroup, OutlineModel, TreeElement } from 'vs/editor/contrib/documentSymbols/outlineModel';
 import { localize } from 'vs/nls';
-import { IKeybindingService, IKeyboardEvent } from 'vs/platform/keybinding/common/keybinding';
 import { IconLabel } from 'vs/base/browser/ui/iconLabel/iconLabel';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { OutlineConfigKeys } from 'vs/editor/contrib/documentSymbols/outline';
@@ -27,18 +26,12 @@ export type OutlineItem = OutlineGroup | OutlineElement;
 
 export class OutlineNavigationLabelProvider implements IKeyboardNavigationLabelProvider<OutlineItem> {
 
-	constructor(@IKeybindingService private readonly _keybindingService: IKeybindingService) { }
-
 	getKeyboardNavigationLabel(element: OutlineItem): { toString(): string; } {
 		if (element instanceof OutlineGroup) {
 			return element.provider.displayName || element.id;
 		} else {
 			return element.symbol.name;
 		}
-	}
-
-	mightProducePrintableCharacter(event: IKeyboardEvent): boolean {
-		return this._keybindingService.mightProducePrintableCharacter(event);
 	}
 }
 
@@ -225,11 +218,11 @@ export class OutlineItemComparator implements ITreeSorter<OutlineItem> {
 
 		} else if (a instanceof OutlineElement && b instanceof OutlineElement) {
 			if (this.type === OutlineSortOrder.ByKind) {
-				return a.symbol.kind - b.symbol.kind || a.symbol.name.localeCompare(b.symbol.name);
+				return a.symbol.kind - b.symbol.kind || a.symbol.name.localeCompare(b.symbol.name, undefined, { numeric: true });
 			} else if (this.type === OutlineSortOrder.ByName) {
-				return a.symbol.name.localeCompare(b.symbol.name) || Range.compareRangesUsingStarts(a.symbol.range, b.symbol.range);
+				return a.symbol.name.localeCompare(b.symbol.name, undefined, { numeric: true }) || Range.compareRangesUsingStarts(a.symbol.range, b.symbol.range);
 			} else if (this.type === OutlineSortOrder.ByPosition) {
-				return Range.compareRangesUsingStarts(a.symbol.range, b.symbol.range) || a.symbol.name.localeCompare(b.symbol.name);
+				return Range.compareRangesUsingStarts(a.symbol.range, b.symbol.range) || a.symbol.name.localeCompare(b.symbol.name, undefined, { numeric: true });
 			}
 		}
 		return 0;

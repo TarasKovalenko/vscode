@@ -43,9 +43,10 @@ import { IFileService, FileChangesEvent, FileChangeType } from 'vs/platform/file
 import { dirname, isEqual } from 'vs/base/common/resources';
 import { parse } from 'vs/base/common/json';
 import * as objects from 'vs/base/common/objects';
-import { IKeymapService } from 'vs/workbench/services/keybinding/common/keymapService';
+import { IKeymapService } from 'vs/workbench/services/keybinding/common/keymapInfo';
 import { getDispatchConfig } from 'vs/workbench/services/keybinding/common/dispatchConfig';
 import { isArray } from 'vs/base/common/types';
+import { INavigatorWithKeyboard } from 'vs/workbench/services/keybinding/common/navigatorKeyboard';
 
 interface ContributedKeyBinding {
 	command: string;
@@ -237,6 +238,24 @@ export class WorkbenchKeybindingService extends AbstractKeybindingService {
 		telemetryService.publicLog('keyboardLayout', {
 			currentKeyboardLayout: data
 		});
+
+		this._register(browser.onDidChangeFullscreen(() => {
+			const keyboard = (<INavigatorWithKeyboard>navigator).keyboard;
+
+			if (!keyboard) {
+				return;
+			}
+
+			if (browser.isFullscreen()) {
+				keyboard.lock(['Escape']);
+			} else {
+				keyboard.unlock();
+			}
+
+			// update resolver which will bring back all unbound keyboard shortcuts
+			this._cachedResolver = null;
+			this._onDidUpdateKeybindings.fire({ source: KeybindingSource.User });
+		}));
 	}
 
 	public _dumpDebugInfo(): string {
@@ -244,6 +263,14 @@ export class WorkbenchKeybindingService extends AbstractKeybindingService {
 		const mapperInfo = this._keyboardMapper.dumpDebugInfo();
 		const rawMapping = JSON.stringify(this.keymapService.getRawKeyboardMapping(), null, '\t');
 		return `Layout info:\n${layoutInfo}\n${mapperInfo}\n\nRaw mapping:\n${rawMapping}`;
+	}
+
+	public _dumpDebugInfoJSON(): string {
+		const info = {
+			layout: this.keymapService.getCurrentKeyboardLayout(),
+			rawMapping: this.keymapService.getRawKeyboardMapping()
+		};
+		return JSON.stringify(info, null, '\t');
 	}
 
 	public customKeybindingsCount(): number {
@@ -347,31 +374,31 @@ export class WorkbenchKeybindingService extends AbstractKeybindingService {
 			}
 
 			if ((partModifiersMask & modifiersMask) === KeyMod.CtrlCmd && part.keyCode === KeyCode.KEY_W) {
-				console.warn('Ctrl/Cmd+W keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
+				// console.warn('Ctrl/Cmd+W keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
 
 				return true;
 			}
 
 			if ((partModifiersMask & modifiersMask) === KeyMod.CtrlCmd && part.keyCode === KeyCode.KEY_N) {
-				console.warn('Ctrl/Cmd+N keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
+				// console.warn('Ctrl/Cmd+N keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
 
 				return true;
 			}
 
 			if ((partModifiersMask & modifiersMask) === KeyMod.CtrlCmd && part.keyCode === KeyCode.KEY_T) {
-				console.warn('Ctrl/Cmd+T keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
+				// console.warn('Ctrl/Cmd+T keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
 
 				return true;
 			}
 
 			if ((partModifiersMask & modifiersMask) === (KeyMod.CtrlCmd | KeyMod.Alt) && (part.keyCode === KeyCode.LeftArrow || part.keyCode === KeyCode.RightArrow)) {
-				console.warn('Ctrl/Cmd+Arrow keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
+				// console.warn('Ctrl/Cmd+Arrow keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
 
 				return true;
 			}
 
 			if ((partModifiersMask & modifiersMask) === KeyMod.CtrlCmd && part.keyCode >= KeyCode.KEY_0 && part.keyCode <= KeyCode.KEY_9) {
-				console.warn('Ctrl/Cmd+Num keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
+				// console.warn('Ctrl/Cmd+Num keybindings should not be used by default in web. Offender: ', kb.getHashCode(), ' for ', commandId);
 
 				return true;
 			}
@@ -502,6 +529,10 @@ export class WorkbenchKeybindingService extends AbstractKeybindingService {
 	mightProducePrintableCharacter(event: IKeyboardEvent): boolean {
 		if (event.ctrlKey || event.metaKey) {
 			// ignore ctrl/cmd-combination but not shift/alt-combinatios
+			return false;
+		}
+		if (event.keyCode === KeyCode.Escape) {
+			// https://github.com/microsoft/vscode/issues/74934
 			return false;
 		}
 		// consult the KeyboardMapperFactory to check the given event for

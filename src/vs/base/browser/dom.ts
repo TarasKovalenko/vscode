@@ -804,8 +804,7 @@ export function createCSSRule(selector: string, cssText: string, style: HTMLStyl
 	if (!style || !cssText) {
 		return;
 	}
-
-	(<CSSStyleSheet>style.sheet).insertRule(selector + '{' + cssText + '}', 0);
+	style.textContent = `${selector}{${cssText}}\n${style.textContent}`;
 }
 
 export function removeCSSRulesContainingSelector(ruleName: string, style: HTMLStyleElement = getSharedStyleSheet()): void {
@@ -858,6 +857,8 @@ export const EventType = {
 	ERROR: 'error',
 	RESIZE: 'resize',
 	SCROLL: 'scroll',
+	FULLSCREEN_CHANGE: 'fullscreenchange',
+	WK_FULLSCREEN_CHANGE: 'webkitfullscreenchange',
 	// Form
 	SELECT: 'select',
 	CHANGE: 'change',

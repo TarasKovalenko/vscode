@@ -22,11 +22,10 @@ import { REMOTE_HOST_SCHEME } from 'vs/platform/remote/common/remoteHosts';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 import { IQuickInputService, IQuickPickItem, IQuickPickSeparator } from 'vs/platform/quickinput/common/quickInput';
 import { ILogService } from 'vs/platform/log/common/log';
-import { IFileService } from 'vs/platform/files/common/files';
 import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
 import { DialogChannel } from 'vs/platform/dialogs/node/dialogIpc';
 import { DownloadServiceChannel } from 'vs/platform/download/node/downloadIpc';
-import { LogLevelSetterChannel } from 'vs/platform/log/node/logIpc';
+import { LogLevelSetterChannel } from 'vs/platform/log/common/logIpc';
 import { ipcRenderer as ipc } from 'electron';
 import { IDiagnosticInfoOptions, IRemoteDiagnosticInfo } from 'vs/platform/diagnostics/common/diagnosticsService';
 import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
@@ -35,7 +34,7 @@ import { PersistenConnectionEventType } from 'vs/platform/remote/common/remoteAg
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from 'vs/platform/configuration/common/configurationRegistry';
 import Severity from 'vs/base/common/severity';
-import { ReloadWindowAction } from 'vs/workbench/electron-browser/actions/windowActions';
+import { ReloadWindowAction } from 'vs/workbench/browser/actions/windowActions';
 import { IRemoteAuthorityResolverService } from 'vs/platform/remote/common/remoteAuthorityResolver';
 import { IWindowsService } from 'vs/platform/windows/common/windows';
 import { RemoteConnectionState } from 'vs/workbench/browser/contextkeys';
@@ -216,7 +215,6 @@ class RemoteChannelsContribution implements IWorkbenchContribution {
 	constructor(
 		@ILogService logService: ILogService,
 		@IRemoteAgentService remoteAgentService: IRemoteAgentService,
-		@IFileService fileService: IFileService,
 		@IDialogService dialogService: IDialogService
 	) {
 		const connection = remoteAgentService.getConnection();
