@@ -8,16 +8,14 @@ import * as browser from 'vs/base/browser/browser';
 import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
 import { Event } from 'vs/base/common/event';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
-import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService';
 // tslint:disable-next-line: import-patterns no-standalone-editor
 import { IDownloadService } from 'vs/platform/download/common/download';
 import { CancellationToken } from 'vs/base/common/cancellation';
-import { IExtensionGalleryService, IQueryOptions, IGalleryExtension, InstallOperation, StatisticType, ITranslation, IGalleryExtensionVersion, IExtensionIdentifier, IReportedExtension, IExtensionManagementService, ILocalExtension, IGalleryMetadata, IExtensionTipsService, ExtensionRecommendationReason, IExtensionRecommendation, IExtensionEnablementService, EnablementState } from 'vs/platform/extensionManagement/common/extensionManagement';
-import { IPager } from 'vs/base/common/paging';
-import { IExtensionManifest, ExtensionType, ExtensionIdentifier, IExtension } from 'vs/platform/extensions/common/extensions';
+import { IGalleryExtension, IExtensionIdentifier, IReportedExtension, IExtensionManagementService, ILocalExtension, IGalleryMetadata, IExtensionTipsService, ExtensionRecommendationReason, IExtensionRecommendation, IExtensionEnablementService, EnablementState } from 'vs/platform/extensionManagement/common/extensionManagement';
+import { ExtensionType, ExtensionIdentifier, IExtension } from 'vs/platform/extensions/common/extensions';
 import { IURLHandler, IURLService } from 'vs/platform/url/common/url';
 import { ITelemetryService, ITelemetryData, ITelemetryInfo } from 'vs/platform/telemetry/common/telemetry';
-import { ConsoleLogService } from 'vs/platform/log/common/log';
+import { ConsoleLogService, ILogService } from 'vs/platform/log/common/log';
 import { Disposable, IDisposable } from 'vs/base/common/lifecycle';
 import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
 import { IUpdateService, State } from 'vs/platform/update/common/update';
@@ -30,7 +28,6 @@ import { ITunnelService } from 'vs/platform/remote/common/tunnel';
 import { IReloadSessionEvent, IExtensionHostDebugService, ICloseSessionEvent, IAttachSessionEvent, ILogToSessionEvent, ITerminateSessionEvent } from 'vs/workbench/services/extensions/common/extensionHostDebug';
 import { IRemoteConsoleLog } from 'vs/base/common/console';
 // tslint:disable-next-line: import-patterns
-// tslint:disable-next-line: import-patterns
 import { IExtensionsWorkbenchService, IExtension as IExtension2 } from 'vs/workbench/contrib/extensions/common/extensions';
 import { IWorkspaceContextService, WorkbenchState } from 'vs/platform/workspace/common/workspace';
 import { addDisposableListener, EventType } from 'vs/base/browser/dom';
@@ -42,45 +39,8 @@ import { ParsedArgs } from 'vs/platform/environment/common/environment';
 import { ClassifiedEvent, StrictPropertyCheck, GDPRClassification } from 'vs/platform/telemetry/common/gdprTypings';
 import { IProcessEnvironment } from 'vs/base/common/platform';
 import { toStoreData, restoreRecentlyOpened } from 'vs/platform/history/common/historyStorage';
-
-//#region Clipboard
-
-export class SimpleClipboardService implements IClipboardService {
-
-	_serviceBrand: any;
-
-	writeText(text: string, type?: string): void { }
-
-	readText(type?: string): string {
-		// @ts-ignore
-		return undefined;
-	}
-
-	readTextSync(): string | undefined {
-		return undefined;
-	}
-
-	readFindText(): string {
-		// @ts-ignore
-		return undefined;
-	}
-
-	writeFindText(text: string): void { }
-
-	writeResources(resources: URI[]): void { }
-
-	readResources(): URI[] {
-		return [];
-	}
-
-	hasResources(): boolean {
-		return false;
-	}
-}
-
-registerSingleton(IClipboardService, SimpleClipboardService, true);
-
-//#endregion
+// tslint:disable-next-line: import-patterns
+import { IExperimentService, IExperiment, ExperimentActionType, ExperimentState } from 'vs/workbench/contrib/experiments/common/experimentService';
 
 //#region Download
 
@@ -95,74 +55,6 @@ export class SimpleDownloadService implements IDownloadService {
 }
 
 registerSingleton(IDownloadService, SimpleDownloadService, true);
-
-//#endregion
-
-//#region Extension Gallery
-
-export class SimpleExtensionGalleryService implements IExtensionGalleryService {
-
-	_serviceBrand: any;
-
-	isEnabled(): boolean {
-		return false;
-	}
-
-	query(token: CancellationToken): Promise<IPager<IGalleryExtension>>;
-	query(options: IQueryOptions, token: CancellationToken): Promise<IPager<IGalleryExtension>>;
-	query(arg1: any, arg2?: any): Promise<IPager<IGalleryExtension>> {
-		// @ts-ignore
-		return Promise.resolve(undefined);
-	}
-
-	download(extension: IGalleryExtension, operation: InstallOperation): Promise<string> {
-		// @ts-ignore
-		return Promise.resolve(undefined);
-	}
-
-	reportStatistic(publisher: string, name: string, version: string, type: StatisticType): Promise<void> {
-		return Promise.resolve(undefined);
-	}
-
-	getReadme(extension: IGalleryExtension, token: CancellationToken): Promise<string> {
-		// @ts-ignore
-		return Promise.resolve(undefined);
-	}
-
-	getManifest(extension: IGalleryExtension, token: CancellationToken): Promise<IExtensionManifest> {
-		// @ts-ignore
-		return Promise.resolve(undefined);
-	}
-
-	getChangelog(extension: IGalleryExtension, token: CancellationToken): Promise<string> {
-		// @ts-ignore
-		return Promise.resolve(undefined);
-	}
-
-	getCoreTranslation(extension: IGalleryExtension, languageId: string): Promise<ITranslation> {
-		// @ts-ignore
-		return Promise.resolve(undefined);
-	}
-
-	getAllVersions(extension: IGalleryExtension, compatible: boolean): Promise<IGalleryExtensionVersion[]> {
-		// @ts-ignore
-		return Promise.resolve(undefined);
-	}
-
-	getExtensionsReport(): Promise<IReportedExtension[]> {
-		// @ts-ignore
-		return Promise.resolve(undefined);
-	}
-
-	// @ts-ignore
-	getCompatibleExtension(extension: IGalleryExtension): Promise<IGalleryExtension>;
-	getCompatibleExtension(id: IExtensionIdentifier, version?: string): Promise<IGalleryExtension>;
-	getCompatibleExtension(id: any, version?: any) {
-		return Promise.resolve(undefined);
-	}
-}
-
-registerSingleton(IExtensionGalleryService, SimpleExtensionGalleryService, true);
 
 //#endregion
 
@@ -300,17 +192,17 @@ export class SimpleExtensionManagementService implements IExtensionManagementSer
 
 	getInstalled(type?: ExtensionType): Promise<ILocalExtension[]> {
 		// @ts-ignore
-		return Promise.resolve(undefined);
+		return Promise.resolve([]);
 	}
 
 	getExtensionsReport(): Promise<IReportedExtension[]> {
 		// @ts-ignore
-		return Promise.resolve(undefined);
+		return Promise.resolve([]);
 	}
 
 	updateMetadata(local: ILocalExtension, metadata: IGalleryMetadata): Promise<ILocalExtension> {
 		// @ts-ignore
-		return Promise.resolve(undefined);
+		return Promise.resolve(local);
 	}
 }
 
@@ -399,27 +291,6 @@ export class SimpleMultiExtensionsManagementService implements IExtensionManagem
 	updateMetadata(local: ILocalExtension, metadata: IGalleryMetadata): Promise<ILocalExtension> {
 		// @ts-ignore
 		return Promise.resolve(undefined);
-	}
-}
-
-//#endregion
-
-//#region Request
-
-export const IRequestService = createDecorator<IRequestService>('requestService');
-
-export interface IRequestService {
-	_serviceBrand: any;
-
-	request(options: any, token: CancellationToken): Promise<object>;
-}
-
-export class SimpleRequestService implements IRequestService {
-
-	_serviceBrand: any;
-
-	request(options: any, token: CancellationToken): Promise<object> {
-		return Promise.resolve(Object.create(null));
 	}
 }
 
@@ -529,7 +400,8 @@ export class SimpleWindowService extends Disposable implements IWindowService {
 		@IFileService private readonly fileService: IFileService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IStorageService private readonly storageService: IStorageService,
-		@IWorkspaceContextService private readonly workspaceService: IWorkspaceContextService
+		@IWorkspaceContextService private readonly workspaceService: IWorkspaceContextService,
+		@ILogService private readonly logService: ILogService
 	) {
 		super();
 
@@ -657,7 +529,7 @@ export class SimpleWindowService extends Disposable implements IWindowService {
 	async getRecentlyOpened(): Promise<IRecentlyOpened> {
 		const recentlyOpenedRaw = this.storageService.get(SimpleWindowService.RECENTLY_OPENED_KEY, StorageScope.GLOBAL);
 		if (recentlyOpenedRaw) {
-			return restoreRecentlyOpened(JSON.parse(recentlyOpenedRaw));
+			return restoreRecentlyOpened(JSON.parse(recentlyOpenedRaw), this.logService);
 		}
 
 		return { workspaces: [], files: [] };
@@ -1124,5 +996,36 @@ class SimpleTunnelService implements ITunnelService {
 }
 
 registerSingleton(ITunnelService, SimpleTunnelService);
+
+//#endregion
+
+//#region experiments
+
+class ExperimentService implements IExperimentService {
+	_serviceBrand: any;
+
+	async getExperimentById(id: string): Promise<IExperiment> {
+		return {
+			enabled: false,
+			id: '',
+			state: ExperimentState.NoRun
+		};
+	}
+
+	async getExperimentsByType(type: ExperimentActionType): Promise<IExperiment[]> {
+		return [];
+	}
+
+	async getCuratedExtensionsList(curatedExtensionsKey: string): Promise<string[]> {
+		return [];
+	}
+
+	markAsCompleted(experimentId: string): void { }
+
+	onExperimentEnabled: Event<IExperiment> = Event.None;
+
+}
+
+registerSingleton(IExperimentService, ExperimentService);
 
 //#endregion
