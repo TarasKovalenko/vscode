@@ -13,7 +13,7 @@ import { SyncDescriptor } from 'vs/platform/instantiation/common/descriptors';
 import { InstantiationService } from 'vs/platform/instantiation/common/instantiationService';
 import { IEnvironmentService, ParsedArgs } from 'vs/platform/environment/common/environment';
 import { EnvironmentService } from 'vs/platform/environment/node/environmentService';
-import { ExtensionManagementChannel } from 'vs/platform/extensionManagement/node/extensionManagementIpc';
+import { ExtensionManagementChannel } from 'vs/platform/extensionManagement/common/extensionManagementIpc';
 import { IExtensionManagementService, IExtensionGalleryService } from 'vs/platform/extensionManagement/common/extensionManagement';
 import { ExtensionManagementService } from 'vs/platform/extensionManagement/node/extensionManagementService';
 import { ExtensionGalleryService } from 'vs/platform/extensionManagement/common/extensionGalleryService';
@@ -38,7 +38,7 @@ import { LocalizationsChannel } from 'vs/platform/localizations/node/localizatio
 import { DialogChannelClient } from 'vs/platform/dialogs/node/dialogIpc';
 import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
 import { combinedDisposable, DisposableStore } from 'vs/base/common/lifecycle';
-import { DownloadService } from 'vs/platform/download/node/downloadService';
+import { DownloadService } from 'vs/platform/download/common/downloadService';
 import { IDownloadService } from 'vs/platform/download/common/download';
 import { IChannel, IServerChannel, StaticRouter } from 'vs/base/parts/ipc/common/ipc';
 import { NodeCachedDataCleaner } from 'vs/code/electron-browser/sharedProcess/contrib/nodeCachedDataCleaner';
@@ -115,7 +115,6 @@ async function main(server: Server, initData: ISharedProcessInitData, configurat
 	services.set(ILogService, logService);
 	services.set(IConfigurationService, configurationService);
 	services.set(IRequestService, new SyncDescriptor(RequestService));
-	services.set(IDownloadService, new SyncDescriptor(DownloadService));
 	services.set(IProductService, new SyncDescriptor(ProductService));
 
 	const mainProcessService = new MainProcessService(server, mainRouter);
@@ -138,6 +137,8 @@ async function main(server: Server, initData: ISharedProcessInitData, configurat
 	disposables.add(diskFileSystemProvider);
 	fileService.registerProvider(Schemas.file, diskFileSystemProvider);
 
+	services.set(IDownloadService, new SyncDescriptor(DownloadService));
+
 	const instantiationService = new InstantiationService(services);
 
 	let telemetryService: ITelemetryService;
@@ -158,7 +159,7 @@ async function main(server: Server, initData: ISharedProcessInitData, configurat
 			const config: ITelemetryServiceConfig = {
 				appender: combinedAppender(appInsightsAppender, new LogAppender(logService)),
 				commonProperties: resolveCommonProperties(product.commit, pkg.version, configuration.machineId, installSourcePath),
-				piiPaths: [appRoot, extensionsPath]
+				piiPaths: extensionsPath ? [appRoot, extensionsPath] : [appRoot]
 			};
 
 			telemetryService = new TelemetryService(config, configurationService);
