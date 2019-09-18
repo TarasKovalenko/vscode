@@ -12,7 +12,7 @@ import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
 import { IFileService } from 'vs/platform/files/common/files';
-import { IProductService } from 'vs/platform/product/common/product';
+import { IProductService } from 'vs/platform/product/common/productService';
 import { AbstractExtensionService } from 'vs/workbench/services/extensions/common/abstractExtensionService';
 import { ExtensionHostProcessManager } from 'vs/workbench/services/extensions/common/extensionHostProcessManager';
 import { RemoteExtensionHostClient, IInitDataProvider } from 'vs/workbench/services/extensions/common/remoteExtensionHostClient';
@@ -86,7 +86,7 @@ export class ExtensionService extends AbstractExtensionService implements IExten
 		const result: ExtensionHostProcessManager[] = [];
 
 		const webExtensions = this.getExtensions().then(extensions => extensions.filter(ext => isWebExtension(ext, this._configService)));
-		const webHostProcessWorker = this._instantiationService.createInstance(WebWorkerExtensionHostStarter, true, webExtensions, URI.parse('empty:value')); //todo@joh
+		const webHostProcessWorker = this._instantiationService.createInstance(WebWorkerExtensionHostStarter, true, webExtensions, URI.file(this._environmentService.logsPath).with({ scheme: this._environmentService.logFile.scheme }));
 		const webHostProcessManager = this._instantiationService.createInstance(ExtensionHostProcessManager, false, webHostProcessWorker, null, initialActivationEvents);
 		result.push(webHostProcessManager);
 

@@ -14,6 +14,7 @@ import { parse } from 'vs/base/common/marshalling';
 import { cloneAndChange } from 'vs/base/common/objects';
 import { escape } from 'vs/base/common/strings';
 import { URI } from 'vs/base/common/uri';
+import { Schemas } from 'vs/base/common/network';
 
 export interface MarkdownRenderOptions extends FormattedTextRenderOptions {
 	codeBlockRenderer?: (modeId: string, value: string) => Promise<string>;
@@ -172,9 +173,9 @@ export function renderMarkdown(markdown: IMarkdownString, options: MarkdownRende
 		renderer
 	};
 
-	const allowedSchemes = ['http', 'https', 'mailto'];
+	const allowedSchemes = [Schemas.http, Schemas.https, Schemas.mailto, Schemas.data, Schemas.file, Schemas.vscodeRemote];
 	if (markdown.isTrusted) {
-		allowedSchemes.push('command');
+		allowedSchemes.push(Schemas.command);
 	}
 
 	const renderedMarkdown = marked.parse(markdown.value, markedOptions);
@@ -183,9 +184,11 @@ export function renderMarkdown(markdown: IMarkdownString, options: MarkdownRende
 		allowedAttributes: {
 			'a': ['href', 'name', 'target', 'data-href'],
 			'iframe': ['allowfullscreen', 'frameborder', 'src'],
-			'img': ['src', 'title', 'alt', 'width', 'height']
+			'img': ['src', 'title', 'alt', 'width', 'height'],
+			'div': ['class', 'data-code']
 		}
 	});
+
 	signalInnerHTML!();
 
 	return element;

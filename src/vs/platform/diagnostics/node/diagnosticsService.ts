@@ -9,13 +9,12 @@ import { readdir, stat, exists, readFile } from 'fs';
 import { join, basename } from 'vs/base/common/path';
 import { parse, ParseError } from 'vs/base/common/json';
 import { listProcesses } from 'vs/base/node/ps';
-import product from 'vs/platform/product/node/product';
-import pkg from 'vs/platform/product/node/package';
+import product from 'vs/platform/product/common/product';
 import { repeat, pad } from 'vs/base/common/strings';
 import { isWindows } from 'vs/base/common/platform';
 import { URI } from 'vs/base/common/uri';
 import { ProcessItem } from 'vs/base/common/processes';
-import { IMainProcessInfo } from 'vs/platform/launch/common/launchService';
+import { IMainProcessInfo } from 'vs/platform/launch/common/launch';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 
@@ -23,7 +22,7 @@ export const ID = 'diagnosticsService';
 export const IDiagnosticsService = createDecorator<IDiagnosticsService>(ID);
 
 export interface IDiagnosticsService {
-	_serviceBrand: any;
+	_serviceBrand: undefined;
 
 	getPerformanceInfo(mainProcessInfo: IMainProcessInfo, remoteInfo: (IRemoteDiagnosticInfo | IRemoteDiagnosticError)[]): Promise<PerformanceInfo>;
 	getSystemInfo(mainProcessInfo: IMainProcessInfo, remoteInfo: (IRemoteDiagnosticInfo | IRemoteDiagnosticError)[]): Promise<SystemInfo>;
@@ -76,16 +75,27 @@ export function collectWorkspaceStats(folder: string, filter: string[]): Promise
 				return done(results);
 			}
 
+			if (token.count > MAX_FILES) {
+				token.count += files.length;
+				token.maxReached = true;
+				return done(results);
+			}
+
 			let pending = files.length;
 			if (pending === 0) {
 				return done(results);
 			}
 
-			for (const file of files) {
-				if (token.maxReached) {
-					return done(results);
-				}
+			let filesToRead = files;
+			if (token.count + files.length > MAX_FILES) {
+				token.maxReached = true;
+				pending = MAX_FILES - token.count;
+				filesToRead = files.slice(0, pending);
+			}
 
+			token.count += files.length;
+
+			for (const file of filesToRead) {
 				stat(join(dir, file), (err, stats) => {
 					// Ignore files that can't be read
 					if (err) {
@@ -108,11 +118,6 @@ export function collectWorkspaceStats(folder: string, filter: string[]): Promise
 								}
 							}
 						} else {
-							if (token.count >= MAX_FILES) {
-								token.maxReached = true;
-							}
-
-							token.count++;
 							results.push(file);
 
 							if (--pending === 0) {
@@ -242,7 +247,7 @@ export function collectLaunchConfigs(folder: string): Promise<WorkspaceStatItem[
 
 export class DiagnosticsService implements IDiagnosticsService {
 
-	_serviceBrand: any;
+	_serviceBrand: undefined;
 
 	constructor(@ITelemetryService private readonly telemetryService: ITelemetryService) { }
 
@@ -261,7 +266,7 @@ export class DiagnosticsService implements IDiagnosticsService {
 		const GB = 1024 * MB;
 
 		const output: string[] = [];
-		output.push(`Version:          ${pkg.name} ${pkg.version} (${product.commit || 'Commit unknown'}, ${product.date || 'Date unknown'})`);
+		output.push(`Version:          ${product.nameShort} ${product.version} (${product.commit || 'Commit unknown'}, ${product.date || 'Date unknown'})`);
 		output.push(`OS Version:       ${osLib.type()} ${osLib.arch()} ${osLib.release()}`);
 		const cpus = osLib.cpus();
 		if (cpus && cpus.length > 0) {
@@ -532,15 +537,11 @@ export class DiagnosticsService implements IDiagnosticsService {
 			if (folderUri.scheme === 'file') {
 				const folder = folderUri.fsPath;
 				collectWorkspaceStats(folder, ['node_modules', '.git']).then(stats => {
-					type WorkspaceStatItemClassification = {
-						name: { classification: 'SystemMetaData', purpose: 'FeatureInsight' };
-						count: { classification: 'SystemMetaData', purpose: 'FeatureInsight', isMeasurement: true };
-					};
 					type WorkspaceStatsClassification = {
 						'workspace.id': { classification: 'SystemMetaData', purpose: 'FeatureInsight' };
-						fileTypes: WorkspaceStatItemClassification;
-						configTypes: WorkspaceStatItemClassification;
-						launchConfigs: WorkspaceStatItemClassification;
+						fileTypes: { classification: 'SystemMetaData', purpose: 'FeatureInsight', isMeasurement: true };
+						configTypes: { classification: 'SystemMetaData', purpose: 'FeatureInsight', isMeasurement: true };
+						launchConfigs: { classification: 'SystemMetaData', purpose: 'FeatureInsight', isMeasurement: true };
 					};
 					type WorkspaceStatsEvent = {
 						'workspace.id': string | undefined;

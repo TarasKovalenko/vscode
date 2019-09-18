@@ -3,28 +3,31 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { localize } from 'vs/nls';
-import { SyncActionDescriptor, MenuRegistry, MenuId } from 'vs/platform/actions/common/actions';
-import { Registry } from 'vs/platform/registry/common/platform';
-import { Extensions as ActionExtensions, IWorkbenchActionRegistry } from 'vs/workbench/common/actions';
-import { IURLService } from 'vs/platform/url/common/url';
-import { IQuickInputService, IQuickPickItem, IQuickPickSeparator } from 'vs/platform/quickinput/common/quickInput';
-import { URI } from 'vs/base/common/uri';
 import { Action } from 'vs/base/common/actions';
-import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
+import { URI } from 'vs/base/common/uri';
+import { localize } from 'vs/nls';
+import { MenuId, MenuRegistry, SyncActionDescriptor } from 'vs/platform/actions/common/actions';
 import { CommandsRegistry } from 'vs/platform/commands/common/commands';
-import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
+import { LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
+import { IQuickInputService } from 'vs/platform/quickinput/common/quickInput';
+import { Registry } from 'vs/platform/registry/common/platform';
+import { IURLService } from 'vs/platform/url/common/url';
+import { Extensions as ActionExtensions, IWorkbenchActionRegistry } from 'vs/workbench/common/actions';
+import { Extensions as WorkbenchExtensions, IWorkbenchContributionsRegistry } from 'vs/workbench/common/contributions';
+import { ExternalUriResolverContribution } from 'vs/workbench/contrib/url/common/externalUriResolver';
+import { configureTrustedDomainSettingsCommand } from 'vs/workbench/contrib/url/common/trustedDomains';
+import { TrustedDomainsFileSystemProvider } from 'vs/workbench/contrib/url/common/trustedDomainsFileSystemProvider';
+import { OpenerValidatorContributions } from 'vs/workbench/contrib/url/common/trustedDomainsValidator';
 
 export class OpenUrlAction extends Action {
-
 	static readonly ID = 'workbench.action.url.openUrl';
-	static readonly LABEL = localize('openUrl', "Open URL");
+	static readonly LABEL = localize('openUrl', 'Open URL');
 
 	constructor(
 		id: string,
 		label: string,
 		@IURLService private readonly urlService: IURLService,
-		@IQuickInputService private readonly quickInputService: IQuickInputService,
+		@IQuickInputService private readonly quickInputService: IQuickInputService
 	) {
 		super(id, label);
 	}
@@ -43,91 +46,27 @@ Registry.as<IWorkbenchActionRegistry>(ActionExtensions.WorkbenchActions).registe
 	localize('developer', 'Developer')
 );
 
-const VSCODE_DOMAIN = 'https://code.visualstudio.com';
+/**
+ * Trusted Domains Contribution
+ */
 
-const configureTrustedDomainsHandler = (
-	quickInputService: IQuickInputService,
-	storageService: IStorageService,
-	domainToConfigure?: string
-) => {
-	let trustedDomains: string[] = [VSCODE_DOMAIN];
-
-	try {
-		const trustedDomainsSrc = storageService.get('http.trustedDomains', StorageScope.GLOBAL);
-		if (trustedDomainsSrc) {
-			trustedDomains = JSON.parse(trustedDomainsSrc);
-		}
-	} catch (err) { }
-
-	const domainQuickPickItems: IQuickPickItem[] = trustedDomains
-		.filter(d => d !== '*')
-		.map(d => {
-			return {
-				type: 'item',
-				label: d,
-				id: d,
-				picked: true,
-			};
-		});
-
-	const specialQuickPickItems: IQuickPickItem[] = [
-		{
-			type: 'item',
-			label: localize('openAllLinksWithoutPrompt', 'Open all links without prompt'),
-			id: '*',
-			picked: trustedDomains.indexOf('*') !== -1
-		}
-	];
-
-	let domainToConfigureItem: IQuickPickItem | undefined = undefined;
-	if (domainToConfigure && trustedDomains.indexOf(domainToConfigure) === -1) {
-		domainToConfigureItem = {
-			type: 'item',
-			label: domainToConfigure,
-			id: domainToConfigure,
-			picked: true,
-			description: localize('trustDomainAndOpenLink', 'Trust domain and open link')
-		};
-		specialQuickPickItems.push(<IQuickPickItem>domainToConfigureItem);
-	}
-
-	const quickPickItems: (IQuickPickItem | IQuickPickSeparator)[] = domainQuickPickItems.length === 0
-		? specialQuickPickItems
-		: [...specialQuickPickItems, { type: 'separator' }, ...domainQuickPickItems];
-
-	return quickInputService.pick(quickPickItems, {
-		canPickMany: true,
-		activeItem: domainToConfigureItem
-	}).then(result => {
-		if (result) {
-			const pickedDomains = result.map(r => r.id);
-			storageService.store('http.trustedDomains', JSON.stringify(pickedDomains), StorageScope.GLOBAL);
-
-			return pickedDomains;
-		}
-
-		return [];
-	});
-};
-
-const configureTrustedDomainCommand = {
-	id: 'workbench.action.configureTrustedDomains',
-	description: {
-		description: localize('configureTrustedDomains', 'Configure Trusted Domains'),
-		args: [{ name: 'domainToConfigure', schema: { type: 'string' } }]
-	},
-	handler: (accessor: ServicesAccessor, domainToConfigure?: string) => {
-		const quickInputService = accessor.get(IQuickInputService);
-		const storageService = accessor.get(IStorageService);
-
-		return configureTrustedDomainsHandler(quickInputService, storageService, domainToConfigure);
-	}
-};
-
-CommandsRegistry.registerCommand(configureTrustedDomainCommand);
+CommandsRegistry.registerCommand(configureTrustedDomainSettingsCommand);
 MenuRegistry.appendMenuItem(MenuId.CommandPalette, {
 	command: {
-		id: configureTrustedDomainCommand.id,
-		title: configureTrustedDomainCommand.description.description
+		id: configureTrustedDomainSettingsCommand.id,
+		title: configureTrustedDomainSettingsCommand.description.description
 	}
 });
+
+Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench).registerWorkbenchContribution(
+	OpenerValidatorContributions,
+	LifecyclePhase.Restored
+);
+Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench).registerWorkbenchContribution(
+	TrustedDomainsFileSystemProvider,
+	LifecyclePhase.Ready
+);
+Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench).registerWorkbenchContribution(
+	ExternalUriResolverContribution,
+	LifecyclePhase.Ready
+);

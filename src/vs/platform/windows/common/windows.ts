@@ -94,7 +94,7 @@ export interface IDevToolsOptions {
 
 export interface IWindowsService {
 
-	_serviceBrand: any;
+	_serviceBrand: undefined;
 
 	readonly onWindowOpen: Event<number>;
 	readonly onWindowFocus: Event<number>;
@@ -156,7 +156,6 @@ export interface IWindowsService {
 	openExtensionDevelopmentHostWindow(args: ParsedArgs, env: IProcessEnvironment): Promise<void>;
 	getWindows(): Promise<{ id: number; workspace?: IWorkspaceIdentifier; folderUri?: ISingleFolderWorkspaceIdentifier; title: string; filename?: string; }[]>;
 	getWindowCount(): Promise<number>;
-	log(severity: string, args: string[]): Promise<void>;
 	showItemInFolder(path: URI): Promise<void>;
 	getActiveWindowId(): Promise<number | undefined>;
 
@@ -167,7 +166,6 @@ export interface IWindowsService {
 	// TODO: this is a bit backwards
 	startCrashReporter(config: CrashReporterStartOptions): Promise<void>;
 
-	openAboutDialog(): Promise<void>;
 	resolveProxy(windowId: number, url: string): Promise<string | undefined>;
 }
 
@@ -221,7 +219,7 @@ export function isFileToOpen(uriToOpen: IURIToOpen): uriToOpen is IFileToOpen {
 
 export interface IWindowService {
 
-	_serviceBrand: any;
+	_serviceBrand: undefined;
 
 	readonly onDidChangeFocus: Event<boolean>;
 	readonly onDidChangeMaximize: Event<boolean>;

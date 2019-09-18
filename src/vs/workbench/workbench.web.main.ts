@@ -37,6 +37,11 @@ import 'vs/workbench/services/extensionManagement/common/extensionManagementServ
 import 'vs/workbench/services/telemetry/browser/telemetryService';
 import 'vs/workbench/services/configurationResolver/browser/configurationResolverService';
 import 'vs/workbench/services/credentials/browser/credentialsService';
+import 'vs/workbench/services/url/browser/urlService';
+import 'vs/workbench/services/update/browser/updateService';
+import 'vs/workbench/contrib/stats/browser/workspaceStatsService';
+import 'vs/workbench/services/workspace/browser/workspacesService';
+import 'vs/workbench/services/dialogs/browser/dialogService';
 import 'vs/workbench/browser/web.simpleservices';
 
 import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
@@ -49,30 +54,27 @@ import { BrowserAccessibilityService } from 'vs/platform/accessibility/common/ac
 import { IExtensionManagementService } from 'vs/platform/extensionManagement/common/extensionManagement';
 import { BrowserLifecycleService } from 'vs/platform/lifecycle/browser/lifecycleService';
 import { ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
-import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
-import { DialogService } from 'vs/platform/dialogs/browser/dialogService';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { ContextMenuService } from 'vs/platform/contextview/browser/contextMenuService';
 import { IBackupFileService } from 'vs/workbench/services/backup/common/backup';
 import { BackupFileService } from 'vs/workbench/services/backup/common/backupFileService';
 import { ExtensionManagementService } from 'vs/workbench/services/extensionManagement/common/extensionManagementService';
+import { ITunnelService } from 'vs/platform/remote/common/tunnel';
+import { NoOpTunnelService } from 'vs/platform/remote/common/tunnelService';
 
 registerSingleton(IRequestService, RequestService, true);
 registerSingleton(IExtensionManagementService, ExtensionManagementService);
 registerSingleton(IBackupFileService, BackupFileService);
-registerSingleton(IDialogService, DialogService, true);
 registerSingleton(IClipboardService, BrowserClipboardService, true);
 registerSingleton(IAccessibilityService, BrowserAccessibilityService, true);
 registerSingleton(ILifecycleService, BrowserLifecycleService);
 registerSingleton(IContextMenuService, ContextMenuService);
+registerSingleton(ITunnelService, NoOpTunnelService, true);
 
 //#endregion
 
 
 //#region --- workbench contributions
-
-// Resource Service Worker
-import 'vs/workbench/contrib/resources/browser/resourceServiceWorkerClient';
 
 // Preferences
 import 'vs/workbench/contrib/preferences/browser/keyboardLayoutPicker';
