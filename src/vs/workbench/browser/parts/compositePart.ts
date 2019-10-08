@@ -57,15 +57,15 @@ export abstract class CompositePart<T extends Composite> extends Part {
 	protected readonly onDidCompositeOpen = this._register(new Emitter<{ composite: IComposite, focus: boolean }>());
 	protected readonly onDidCompositeClose = this._register(new Emitter<IComposite>());
 
-	protected toolBar!: ToolBar;
+	protected toolBar: ToolBar;
 
 	private mapCompositeToCompositeContainer = new Map<string, HTMLElement>();
 	private mapActionsBindingToComposite = new Map<string, () => void>();
-	private activeComposite: Composite | null;
+	private activeComposite: Composite | undefined;
 	private lastActiveCompositeId: string;
 	private instantiatedCompositeItems: Map<string, CompositeItem>;
-	private titleLabel!: ICompositeTitleLabel;
-	private progressBar!: ProgressBar;
+	private titleLabel: ICompositeTitleLabel;
+	private progressBar: ProgressBar;
 	private contentAreaSize: Dimension | undefined;
 	private readonly telemetryActionsListener = this._register(new MutableDisposable());
 	private currentCompositeOpenToken: string | undefined;
@@ -90,7 +90,6 @@ export abstract class CompositePart<T extends Composite> extends Part {
 	) {
 		super(id, options, themeService, storageService, layoutService);
 
-		this.activeComposite = null;
 		this.instantiatedCompositeItems = new Map<string, CompositeItem>();
 		this.lastActiveCompositeId = storageService.get(activeCompositeSettingsKey, StorageScope.WORKSPACE, this.defaultCompositeId);
 	}
@@ -168,7 +167,7 @@ export abstract class CompositePart<T extends Composite> extends Part {
 		// Instantiate composite from registry otherwise
 		const compositeDescriptor = this.registry.getComposite(id);
 		if (compositeDescriptor) {
-			const compositeProgressIndicator = this.instantiationService.createInstance(CompositeProgressIndicator, this.progressBar, compositeDescriptor.id, isActive);
+			const compositeProgressIndicator = this.instantiationService.createInstance(CompositeProgressIndicator, this.progressBar, compositeDescriptor.id, !!isActive);
 			const compositeInstantiationService = this.instantiationService.createChild(new ServiceCollection(
 				[IEditorProgressService, compositeProgressIndicator] // provide the editor progress service for any editors instantiated within the composite
 			));
@@ -332,7 +331,7 @@ export abstract class CompositePart<T extends Composite> extends Part {
 		return this.toolBar.setActions(prepareActions(primaryActions), prepareActions(secondaryActions));
 	}
 
-	protected getActiveComposite(): IComposite | null {
+	protected getActiveComposite(): IComposite | undefined {
 		return this.activeComposite;
 	}
 
@@ -346,7 +345,7 @@ export abstract class CompositePart<T extends Composite> extends Part {
 		}
 
 		const composite = this.activeComposite;
-		this.activeComposite = null;
+		this.activeComposite = undefined;
 
 		const compositeContainer = this.mapCompositeToCompositeContainer.get(composite.getId());
 
@@ -446,10 +445,10 @@ export abstract class CompositePart<T extends Composite> extends Part {
 		return contentContainer;
 	}
 
-	getProgressIndicator(id: string): IProgressIndicator | null {
+	getProgressIndicator(id: string): IProgressIndicator | undefined {
 		const compositeItem = this.instantiatedCompositeItems.get(id);
 
-		return compositeItem ? compositeItem.progress : null;
+		return compositeItem ? compositeItem.progress : undefined;
 	}
 
 	protected getActions(): ReadonlyArray<IAction> {
