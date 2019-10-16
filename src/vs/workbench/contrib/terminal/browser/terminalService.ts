@@ -11,7 +11,6 @@ import { IWorkbenchLayoutService } from 'vs/workbench/services/layout/browser/la
 import { ILifecycleService } from 'vs/platform/lifecycle/common/lifecycle';
 import { TerminalPanel } from 'vs/workbench/contrib/terminal/browser/terminalPanel';
 import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
-import { INotificationService } from 'vs/platform/notification/common/notification';
 import { TerminalTab } from 'vs/workbench/contrib/terminal/browser/terminalTab';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
@@ -92,7 +91,6 @@ export class TerminalService implements ITerminalService {
 		@IPanelService private _panelService: IPanelService,
 		@IWorkbenchLayoutService private _layoutService: IWorkbenchLayoutService,
 		@ILifecycleService lifecycleService: ILifecycleService,
-		@INotificationService private _notificationService: INotificationService,
 		@IDialogService private _dialogService: IDialogService,
 		@IInstantiationService private _instantiationService: IInstantiationService,
 		@IExtensionService private _extensionService: IExtensionService,
@@ -136,7 +134,7 @@ export class TerminalService implements ITerminalService {
 		return activeInstance ? activeInstance : this.createTerminal(undefined);
 	}
 
-	public requestSpawnExtHostProcess(proxy: ITerminalProcessExtHostProxy, shellLaunchConfig: IShellLaunchConfig, activeWorkspaceRootUri: URI | undefined, cols: number, rows: number, isWorkspaceShellAllowed: boolean): void {
+	public requestSpawnExtHostProcess(proxy: ITerminalProcessExtHostProxy, shellLaunchConfig: IShellLaunchConfig, activeWorkspaceRootUri: URI, cols: number, rows: number, isWorkspaceShellAllowed: boolean): void {
 		this._extensionService.whenInstalledExtensionsRegistered().then(async () => {
 			// Wait for the remoteAuthority to be ready (and listening for events) before firing
 			// the event to spawn the ext host process
@@ -393,12 +391,7 @@ export class TerminalService implements ITerminalService {
 			return null;
 		}
 
-		const instance = tab.split(this._terminalFocusContextKey, this.configHelper, shellLaunchConfig);
-		if (!instance) {
-			this._showNotEnoughSpaceToast();
-			return null;
-		}
-
+		const instance = tab.split(shellLaunchConfig);
 		this._initInstanceListeners(instance);
 		this._onInstancesChanged.fire();
 
@@ -493,10 +486,6 @@ export class TerminalService implements ITerminalService {
 			type: 'warning',
 		});
 		return !res.confirmed;
-	}
-
-	protected _showNotEnoughSpaceToast(): void {
-		this._notificationService.info(nls.localize('terminal.minWidth', "Not enough space to split terminal."));
 	}
 
 	protected _validateShellPaths(label: string, potentialPaths: string[]): Promise<[string, string] | null> {

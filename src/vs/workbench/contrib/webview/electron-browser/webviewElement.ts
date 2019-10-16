@@ -17,14 +17,13 @@ import { IFileService } from 'vs/platform/files/common/files';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ITunnelService } from 'vs/platform/remote/common/tunnel';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { Webview, WebviewContentOptions, WebviewOptions } from 'vs/workbench/contrib/webview/browser/webview';
+import { Webview, WebviewContentOptions, WebviewExtensionDescription, WebviewOptions } from 'vs/workbench/contrib/webview/browser/webview';
 import { WebviewPortMappingManager } from 'vs/workbench/contrib/webview/common/portMapping';
 import { WebviewResourceScheme } from 'vs/workbench/contrib/webview/common/resourceLoader';
 import { WebviewThemeDataProvider } from 'vs/workbench/contrib/webview/common/themeing';
 import { registerFileProtocol } from 'vs/workbench/contrib/webview/electron-browser/webviewProtocols';
-import { areWebviewInputOptionsEqual } from '../browser/webviewEditorService';
 import { WebviewFindDelegate, WebviewFindWidget } from '../browser/webviewFindWidget';
+import { areWebviewInputOptionsEqual } from '../browser/webviewWorkbenchService';
 
 interface IKeydownEvent {
 	key: string;
@@ -247,17 +246,13 @@ export class ElectronWebviewBasedWebview extends Disposable implements Webview, 
 	private readonly _onDidFocus = this._register(new Emitter<void>());
 	public readonly onDidFocus: Event<void> = this._onDidFocus.event;
 
-	public extension: {
-		readonly location: URI;
-		readonly id?: ExtensionIdentifier;
-	} | undefined;
+	public extension: WebviewExtensionDescription | undefined;
 
 	constructor(
 		options: WebviewOptions,
 		contentOptions: WebviewContentOptions,
 		private readonly webviewThemeDataProvider: WebviewThemeDataProvider,
 		@IInstantiationService instantiationService: IInstantiationService,
-		@IThemeService themeService: IThemeService,
 		@IFileService fileService: IFileService,
 		@ITunnelService tunnelService: ITunnelService,
 		@ITelemetryService private readonly _telemetryService: ITelemetryService,
@@ -318,8 +313,6 @@ export class ElectronWebviewBasedWebview extends Disposable implements Webview, 
 			console.log(`[Embedded Page] ${e.message}`);
 		}));
 		this._register(addDisposableListener(this._webview, 'dom-ready', () => {
-			this.layout();
-
 			// Workaround for https://github.com/electron/electron/issues/14474
 			if (this._webview && (this._focused || document.activeElement === this._webview)) {
 				this._webview.blur();
@@ -367,7 +360,6 @@ export class ElectronWebviewBasedWebview extends Disposable implements Webview, 
 					this._webview.style.flex = '';
 					this._webview.style.width = '100%';
 					this._webview.style.height = '100%';
-					this.layout();
 					return;
 
 				case 'did-scroll':
@@ -435,10 +427,6 @@ export class ElectronWebviewBasedWebview extends Disposable implements Webview, 
 			this._webview = undefined;
 		}
 
-		if (this._webviewFindWidget) {
-			this._webviewFindWidget.dispose();
-			this._webviewFindWidget = undefined;
-		}
 		super.dispose();
 	}
 
@@ -496,18 +484,6 @@ export class ElectronWebviewBasedWebview extends Disposable implements Webview, 
 		this.content = {
 			html: value,
 			options: this.content.options,
-			state: this.content.state,
-		};
-		this.doUpdateContent();
-	}
-
-	public update(html: string, options: WebviewContentOptions, retainContextWhenHidden: boolean) {
-		if (retainContextWhenHidden && html === this.content.html && areWebviewInputOptionsEqual(options, this.content.options)) {
-			return;
-		}
-		this.content = {
-			html: html,
-			options: options,
 			state: this.content.state,
 		};
 		this.doUpdateContent();
@@ -580,11 +556,6 @@ export class ElectronWebviewBasedWebview extends Disposable implements Webview, 
 		if (this._webviewFindWidget) {
 			this._webviewFindWidget.updateTheme(this.webviewThemeDataProvider.getTheme());
 		}
-	}
-
-	public layout(): void {
-		// noop
-
 	}
 
 	private readonly _hasFindResult = this._register(new Emitter<boolean>());

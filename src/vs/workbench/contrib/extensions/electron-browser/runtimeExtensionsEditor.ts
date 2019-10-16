@@ -547,7 +547,7 @@ export class DebugExtensionHostAction extends Action {
 
 	async run(): Promise<any> {
 
-		const inspectPort = this._extensionService.getInspectPort();
+		const inspectPort = await this._extensionService.getInspectPort(false);
 		if (!inspectPort) {
 			const res = await this._dialogService.confirm({
 				type: 'info',
@@ -557,8 +557,10 @@ export class DebugExtensionHostAction extends Action {
 				secondaryButton: nls.localize('cancel', "Cancel")
 			});
 			if (res.confirmed) {
-				this._electronService.relaunch({ addArgs: [`--inspect-extensions=${randomPort()}`] });
+				await this._electronService.relaunch({ addArgs: [`--inspect-extensions=${randomPort()}`] });
 			}
+
+			return;
 		}
 
 		return this._debugService.startDebugging(undefined, {
@@ -636,7 +638,7 @@ export class SaveExtensionHostProfileAction extends Action {
 			}]
 		});
 
-		if (!picked || !picked.filePath) {
+		if (!picked || !picked.filePath || picked.canceled) {
 			return;
 		}
 

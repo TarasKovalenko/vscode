@@ -12,8 +12,8 @@ import { IConfigurationService } from 'vs/platform/configuration/common/configur
 import { ExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
 import { IFileService } from 'vs/platform/files/common/files';
 import { ITunnelService } from 'vs/platform/remote/common/tunnel';
-import { Webview, WebviewContentOptions, WebviewOptions } from 'vs/workbench/contrib/webview/browser/webview';
-import { areWebviewInputOptionsEqual } from 'vs/workbench/contrib/webview/browser/webviewEditorService';
+import { Webview, WebviewContentOptions, WebviewOptions, WebviewExtensionDescription } from 'vs/workbench/contrib/webview/browser/webview';
+import { areWebviewInputOptionsEqual } from 'vs/workbench/contrib/webview/browser/webviewWorkbenchService';
 import { WebviewPortMappingManager } from 'vs/workbench/contrib/webview/common/portMapping';
 import { loadLocalResource } from 'vs/workbench/contrib/webview/common/resourceLoader';
 import { WebviewThemeDataProvider } from 'vs/workbench/contrib/webview/common/themeing';
@@ -35,10 +35,7 @@ export class IFrameWebview extends Disposable implements Webview {
 
 	private readonly _portMappingManager: WebviewPortMappingManager;
 
-	public extension: {
-		readonly location: URI;
-		readonly id?: ExtensionIdentifier;
-	} | undefined;
+	public extension: WebviewExtensionDescription | undefined;
 
 	constructor(
 		private readonly id: string,
@@ -194,18 +191,6 @@ export class IFrameWebview extends Disposable implements Webview {
 			`${startQuote}${this.externalEndpoint}/vscode-resource/file${path}${endQuote}`);
 	}
 
-	public update(html: string, options: WebviewContentOptions, retainContextWhenHidden: boolean) {
-		if (retainContextWhenHidden && html === this.content.html && areWebviewInputOptionsEqual(options, this.content.options)) {
-			return;
-		}
-		this.content = {
-			html: this.preprocessHtml(html),
-			options: options,
-			state: this.content.state,
-		};
-		this.doUpdateContent();
-	}
-
 	private doUpdateContent() {
 		this._send('content', {
 			contents: this.content.html,
@@ -245,10 +230,6 @@ export class IFrameWebview extends Disposable implements Webview {
 
 	sendMessage(data: any): void {
 		this._send('message', data);
-	}
-
-	layout(): void {
-		// noop
 	}
 
 	focus(): void {
