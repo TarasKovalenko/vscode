@@ -137,7 +137,7 @@ export interface IEditorOptions {
 	fixedOverflowWidgets?: boolean;
 	/**
 	 * The number of vertical lanes the overview ruler should render.
-	 * Defaults to 2.
+	 * Defaults to 3.
 	 */
 	overviewRulerLanes?: number;
 	/**
@@ -1258,7 +1258,7 @@ class EditorFontSize extends SimpleEditorOption<EditorOption.fontSize, number> {
 		if (r === 0) {
 			return EDITOR_FONT_DEFAULTS.fontSize;
 		}
-		return EditorFloatOption.clamp(r, 8, 100);
+		return EditorFloatOption.clamp(r, 6, 100);
 	}
 	public compute(env: IEnvironmentalOptions, options: IComputedEditorOptions, value: number): number {
 		// The final fontSize respects the editor zoom level.
@@ -2287,6 +2287,10 @@ class EditorScrollbar extends BaseEditorOption<EditorOption.scrollbar, InternalE
  */
 export interface ISuggestOptions {
 	/**
+	 * Overwrite word ends on accept. Default to false.
+	 */
+	overwriteOnAccept?: boolean;
+	/**
 	 * Enable graceful matching. Defaults to true.
 	 */
 	filterGraceful?: boolean;
@@ -2322,6 +2326,7 @@ class EditorSuggest extends BaseEditorOption<EditorOption.suggest, InternalSugge
 
 	constructor() {
 		const defaults: InternalSuggestOptions = {
+			overwriteOnAccept: false,
 			filterGraceful: true,
 			snippetsPreventQuickSuggestions: true,
 			localityBonus: false,
@@ -2333,6 +2338,11 @@ class EditorSuggest extends BaseEditorOption<EditorOption.suggest, InternalSugge
 		super(
 			EditorOption.suggest, 'suggest', defaults,
 			{
+				'editor.suggest.overwriteOnAccept': {
+					type: 'boolean',
+					default: defaults.overwriteOnAccept,
+					description: nls.localize('suggest.overwriteOnAccept', "Controls whether words are overwritten when accepting completions.")
+				},
 				'editor.suggest.filterGraceful': {
 					type: 'boolean',
 					default: defaults.filterGraceful,
@@ -2505,6 +2515,7 @@ class EditorSuggest extends BaseEditorOption<EditorOption.suggest, InternalSugge
 		}
 		const input = _input as ISuggestOptions;
 		return {
+			overwriteOnAccept: EditorBooleanOption.boolean(input.overwriteOnAccept, this.defaultValue.overwriteOnAccept),
 			filterGraceful: EditorBooleanOption.boolean(input.filterGraceful, this.defaultValue.filterGraceful),
 			snippetsPreventQuickSuggestions: EditorBooleanOption.boolean(input.snippetsPreventQuickSuggestions, this.defaultValue.filterGraceful),
 			localityBonus: EditorBooleanOption.boolean(input.localityBonus, this.defaultValue.localityBonus),
@@ -3083,8 +3094,7 @@ export const EditorOptions = {
 	)),
 	overviewRulerLanes: register(new EditorIntOption(
 		EditorOption.overviewRulerLanes, 'overviewRulerLanes',
-		3, 0, 3,
-		{ description: nls.localize('overviewRulerLanes', "Controls the number of decorations that can show up at the same position in the overview ruler.") }
+		3, 0, 3
 	)),
 	parameterHints: register(new EditorParameterHints()),
 	quickSuggestions: register(new EditorQuickSuggestions()),

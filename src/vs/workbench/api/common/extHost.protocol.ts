@@ -540,8 +540,13 @@ export interface WebviewPanelShowOptions {
 	readonly preserveFocus?: boolean;
 }
 
+export interface WebviewExtensionDescription {
+	readonly id: ExtensionIdentifier;
+	readonly location: UriComponents;
+}
+
 export interface MainThreadWebviewsShape extends IDisposable {
-	$createWebviewPanel(handle: WebviewPanelHandle, viewType: string, title: string, showOptions: WebviewPanelShowOptions, options: modes.IWebviewPanelOptions & modes.IWebviewOptions, extensionId: ExtensionIdentifier, extensionLocation: UriComponents): void;
+	$createWebviewPanel(extension: WebviewExtensionDescription, handle: WebviewPanelHandle, viewType: string, title: string, showOptions: WebviewPanelShowOptions, options: modes.IWebviewPanelOptions & modes.IWebviewOptions): void;
 	$disposeWebview(handle: WebviewPanelHandle): void;
 	$reveal(handle: WebviewPanelHandle, showOptions: WebviewPanelShowOptions): void;
 	$setTitle(handle: WebviewPanelHandle, value: string): void;
@@ -556,7 +561,7 @@ export interface MainThreadWebviewsShape extends IDisposable {
 	$registerSerializer(viewType: string): void;
 	$unregisterSerializer(viewType: string): void;
 
-	$registerEditorProvider(viewType: string, extensionId: ExtensionIdentifier, extensionLocation: UriComponents): void;
+	$registerEditorProvider(extension: WebviewExtensionDescription, viewType: string, options: modes.IWebviewPanelOptions): void;
 	$unregisterEditorProvider(viewType: string): void;
 }
 
@@ -1188,7 +1193,7 @@ export interface ExtHostTerminalServiceShape {
 	$acceptTerminalTitleChange(id: number, name: string): void;
 	$acceptTerminalDimensions(id: number, cols: number, rows: number): void;
 	$acceptTerminalMaximumDimensions(id: number, cols: number, rows: number): void;
-	$spawnExtHostProcess(id: number, shellLaunchConfig: IShellLaunchConfigDto, activeWorkspaceRootUri: UriComponents, cols: number, rows: number, isWorkspaceShellAllowed: boolean): void;
+	$spawnExtHostProcess(id: number, shellLaunchConfig: IShellLaunchConfigDto, activeWorkspaceRootUri: UriComponents | undefined, cols: number, rows: number, isWorkspaceShellAllowed: boolean): void;
 	$startExtensionTerminal(id: number, initialDimensions: ITerminalDimensionsDto | undefined): void;
 	$acceptProcessInput(id: number, data: string): void;
 	$acceptProcessResize(id: number, cols: number, rows: number): void;

@@ -347,7 +347,7 @@ export class TerminalTaskSystem implements ITaskSystem {
 		let promises: Promise<ITaskSummary>[] = [];
 		if (task.configurationProperties.dependsOn) {
 			for (const dependency of task.configurationProperties.dependsOn) {
-				let dependencyTask = resolver.resolve(dependency.workspaceFolder, dependency.task!);
+				let dependencyTask = resolver.resolve(dependency.uri, dependency.task!);
 				if (dependencyTask) {
 					let key = dependencyTask.getMapKey();
 					let promise = this.activeTasks[key] ? this.activeTasks[key].promise : undefined;
@@ -363,7 +363,7 @@ export class TerminalTaskSystem implements ITaskSystem {
 					this.log(nls.localize('dependencyFailed',
 						'Couldn\'t resolve dependent task \'{0}\' in workspace folder \'{1}\'',
 						Types.isString(dependency.task) ? dependency.task : JSON.stringify(dependency.task, undefined, 0),
-						dependency.workspaceFolder.name
+						dependency.uri.toString()
 					));
 					this.showOutput();
 				}
@@ -393,6 +393,14 @@ export class TerminalTaskSystem implements ITaskSystem {
 				return { exitCode: 0 };
 			});
 		}
+	}
+
+	private resolveAndFindExecutable(workspaceFolder: IWorkspaceFolder | undefined, task: CustomTask | ContributedTask, cwd: string | undefined, envPath: string | undefined): Promise<string> {
+		return this.findExecutable(
+			this.configurationResolverService.resolve(workspaceFolder, CommandString.value(task.command.name!)),
+			cwd ? this.configurationResolverService.resolve(workspaceFolder, cwd) : undefined,
+			envPath ? envPath.split(path.delimiter).map(p => this.configurationResolverService.resolve(workspaceFolder, p)) : undefined
+		);
 	}
 
 	private resolveVariablesFromSet(taskSystemInfo: TaskSystemInfo | undefined, workspaceFolder: IWorkspaceFolder | undefined, task: CustomTask | ContributedTask, variables: Set<string>): Promise<ResolvedVariables> {
@@ -426,9 +434,13 @@ export class TerminalTaskSystem implements ITaskSystem {
 					resolveSet.process.path = envPath;
 				}
 			}
-			resolvedVariables = taskSystemInfo.resolveVariables(workspaceFolder, resolveSet).then(resolved => {
-				if ((taskSystemInfo.platform !== Platform.Platform.Windows) && isProcess) {
-					resolved.variables.set(TerminalTaskSystem.ProcessVarName, CommandString.value(task.command.name!));
+			resolvedVariables = taskSystemInfo.resolveVariables(workspaceFolder, resolveSet).then(async (resolved) => {
+				if (isProcess) {
+					let process = CommandString.value(task.command.name!);
+					if (taskSystemInfo.platform === Platform.Platform.Windows) {
+						process = await this.resolveAndFindExecutable(workspaceFolder, task, cwd, envPath);
+					}
+					resolved.variables.set(TerminalTaskSystem.ProcessVarName, process);
 				}
 				return Promise.resolve(resolved);
 			});
@@ -443,11 +455,7 @@ export class TerminalTaskSystem implements ITaskSystem {
 						if (isProcess) {
 							let processVarValue: string;
 							if (Platform.isWindows) {
-								processVarValue = await this.findExecutable(
-									this.configurationResolverService.resolve(workspaceFolder, CommandString.value(task.command.name!)),
-									cwd ? this.configurationResolverService.resolve(workspaceFolder, cwd) : undefined,
-									envPath ? envPath.split(path.delimiter).map(p => this.configurationResolverService.resolve(workspaceFolder, p)) : undefined
-								);
+								processVarValue = await this.resolveAndFindExecutable(workspaceFolder, task, cwd, envPath);
 							} else {
 								processVarValue = this.configurationResolverService.resolve(workspaceFolder, CommandString.value(task.command.name!));
 							}
