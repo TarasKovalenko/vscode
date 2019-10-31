@@ -97,6 +97,7 @@ interface IExtensionHostDebugEnvironment {
 	params: IExtensionHostDebugParams;
 	isExtensionDevelopment: boolean;
 	extensionDevelopmentLocationURI: URI[];
+	extensionTestsLocationURI?: URI;
 }
 
 export class BrowserWorkbenchEnvironmentService implements IWorkbenchEnvironmentService {
@@ -163,10 +164,18 @@ export class BrowserWorkbenchEnvironmentService implements IWorkbenchEnvironment
 		return this._extensionHostDebugEnvironment.extensionDevelopmentLocationURI;
 	}
 
+	get extensionTestsLocationURI(): URI | undefined {
+		if (!this._extensionHostDebugEnvironment) {
+			this._extensionHostDebugEnvironment = this.resolveExtensionHostDebugEnvironment();
+		}
+
+		return this._extensionHostDebugEnvironment.extensionTestsLocationURI;
+	}
+
 	@memoize
 	get webviewExternalEndpoint(): string {
 		// TODO: get fallback from product.json
-		return (this.options.webviewEndpoint || 'https://{{uuid}}.vscode-webview-test.com/{{commit}}').replace('{{commit}}', product.commit || 'c58aaab8a1cc22a7139b761166a0d4f37d41e998');
+		return (this.options.webviewEndpoint || 'https://{{uuid}}.vscode-webview-test.com/{{commit}}').replace('{{commit}}', product.commit || 'b53811e67e65c6a564a80e1c412ca2b13de02907');
 	}
 
 	@memoize
@@ -242,8 +251,6 @@ export class BrowserWorkbenchEnvironmentService implements IWorkbenchEnvironment
 
 	//#region TODO ENABLE IN WEB
 
-	extensionTestsLocationURI?: URI;
-
 	galleryMachineIdResource?: URI;
 
 	//#endregion
@@ -268,6 +275,9 @@ export class BrowserWorkbenchEnvironmentService implements IWorkbenchEnvironment
 					case 'extensionDevelopmentPath':
 						extensionHostDebugEnvironment.extensionDevelopmentLocationURI = [URI.parse(value)];
 						extensionHostDebugEnvironment.isExtensionDevelopment = true;
+						break;
+					case 'extensionTestsPath':
+						extensionHostDebugEnvironment.extensionTestsLocationURI = URI.parse(value);
 						break;
 					case 'debugId':
 						extensionHostDebugEnvironment.params.debugId = value;
