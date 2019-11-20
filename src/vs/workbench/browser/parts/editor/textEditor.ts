@@ -6,17 +6,17 @@
 import { localize } from 'vs/nls';
 import { URI } from 'vs/base/common/uri';
 import { distinct, deepClone, assign } from 'vs/base/common/objects';
-import { isObject, assertIsDefined } from 'vs/base/common/types';
+import { isObject, assertIsDefined, withNullAsUndefined, isFunction } from 'vs/base/common/types';
 import { Dimension } from 'vs/base/browser/dom';
 import { CodeEditorWidget } from 'vs/editor/browser/widget/codeEditorWidget';
-import { EditorInput, EditorOptions, IEditorMemento, ITextEditor } from 'vs/workbench/common/editor';
+import { EditorInput, EditorOptions, IEditorMemento, ITextEditor, SaveReason, TextEditorOptions } from 'vs/workbench/common/editor';
 import { BaseEditor } from 'vs/workbench/browser/parts/editor/baseEditor';
-import { IEditorViewState, IEditor } from 'vs/editor/common/editorCommon';
+import { IEditorViewState, IEditor, ScrollType } from 'vs/editor/common/editorCommon';
 import { IStorageService } from 'vs/platform/storage/common/storage';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
-import { ITextFileService, SaveReason, AutoSaveMode } from 'vs/workbench/services/textfile/common/textfiles';
+import { ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
 import { ITextResourceConfigurationService } from 'vs/editor/common/services/resourceConfiguration';
 import { IEditorOptions } from 'vs/editor/common/config/editorOptions';
 import { isDiffEditor, isCodeEditor, getCodeEditor } from 'vs/editor/browser/editorBrowser';
@@ -24,6 +24,7 @@ import { IEditorGroupsService, IEditorGroup } from 'vs/workbench/services/editor
 import { CancellationToken } from 'vs/base/common/cancellation';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IHostService } from 'vs/workbench/services/host/browser/host';
+import { IFilesConfigurationService, AutoSaveMode } from 'vs/workbench/services/filesConfiguration/common/filesConfigurationService';
 
 const TEXT_EDITOR_VIEW_STATE_PREFERENCE_KEY = 'textEditorViewState';
 
@@ -38,7 +39,7 @@ export interface IEditorConfiguration {
  */
 export abstract class BaseTextEditor extends BaseEditor implements ITextEditor {
 	private editorControl: IEditor | undefined;
-	private _editorContainer: HTMLElement | undefined;
+	private editorContainer: HTMLElement | undefined;
 	private hasPendingConfigurationChange: boolean | undefined;
 	private lastAppliedEditorOptions?: IEditorOptions;
 	private editorMemento: IEditorMemento<IEditorViewState>;
@@ -53,7 +54,8 @@ export abstract class BaseTextEditor extends BaseEditor implements ITextEditor {
 		@ITextFileService private readonly _textFileService: ITextFileService,
 		@IEditorService protected editorService: IEditorService,
 		@IEditorGroupsService protected editorGroupService: IEditorGroupsService,
-		@IHostService private readonly hostService: IHostService
+		@IHostService private readonly hostService: IHostService,
+		@IFilesConfigurationService private readonly filesConfigurationService: IFilesConfigurationService
 	) {
 		super(id, telemetryService, themeService, storageService);
 
@@ -119,20 +121,18 @@ export abstract class BaseTextEditor extends BaseEditor implements ITextEditor {
 	}
 
 	protected getConfigurationOverrides(): IEditorOptions {
-		const overrides = {};
-		assign(overrides, {
+		return {
 			overviewRulerLanes: 3,
 			lineNumbersMinChars: 3,
-			fixedOverflowWidgets: true
-		});
-
-		return overrides;
+			fixedOverflowWidgets: true,
+			readOnly: this.input?.isReadonly()
+		};
 	}
 
 	protected createEditor(parent: HTMLElement): void {
 
 		// Editor for Text
-		this._editorContainer = parent;
+		this.editorContainer = parent;
 		this.editorControl = this._register(this.createEditorControl(parent, this.computeConfiguration(this.configurationService.getValue<IEditorConfiguration>(this.getResource()))));
 
 		// Model & Language changes
@@ -165,7 +165,7 @@ export abstract class BaseTextEditor extends BaseEditor implements ITextEditor {
 	}
 
 	private maybeTriggerSaveAll(reason: SaveReason): void {
-		const mode = this.textFileService.getAutoSaveMode();
+		const mode = this.filesConfigurationService.getAutoSaveMode();
 
 		// Determine if we need to save all. In case of a window focus change we also save if auto save mode
 		// is configured to be ON_FOCUS_CHANGE (editor focus change)
@@ -198,8 +198,16 @@ export abstract class BaseTextEditor extends BaseEditor implements ITextEditor {
 		// editor input specific options (e.g. an ARIA label depending on the input showing)
 		this.updateEditorConfiguration();
 
-		const editorContainer = assertIsDefined(this._editorContainer);
+		const editorContainer = assertIsDefined(this.editorContainer);
 		editorContainer.setAttribute('aria-label', this.computeAriaLabel());
+	}
+
+	setOptions(options: EditorOptions | undefined): void {
+		const textOptions = options as TextEditorOptions;
+		if (textOptions && isFunction(textOptions.apply)) {
+			const textEditor = assertIsDefined(this.getControl());
+			textOptions.apply(textEditor, ScrollType.Smooth);
+		}
 	}
 
 	protected setEditorVisible(visible: boolean, group: IEditorGroup | undefined): void {
@@ -244,6 +252,15 @@ export abstract class BaseTextEditor extends BaseEditor implements ITextEditor {
 		}
 
 		this.editorMemento.saveEditorState(this.group, resource, editorViewState);
+	}
+
+	getViewState(): IEditorViewState | undefined {
+		const resource = this.input?.getResource();
+		if (resource) {
+			return withNullAsUndefined(this.retrieveTextEditorViewState(resource));
+		}
+
+		return undefined;
 	}
 
 	protected retrieveTextEditorViewState(resource: URI): IEditorViewState | null {
@@ -292,6 +309,7 @@ export abstract class BaseTextEditor extends BaseEditor implements ITextEditor {
 				configuration = this.configurationService.getValue<IEditorConfiguration>(resource);
 			}
 		}
+
 		if (!this.editorControl || !configuration) {
 			return;
 		}

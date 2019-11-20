@@ -14,8 +14,12 @@ import { IDisposable } from 'vs/base/common/lifecycle';
 import { IJSONContributionRegistry, Extensions as JSONExtensions } from 'vs/platform/jsonschemas/common/jsonContributionRegistry';
 import { IJSONSchema } from 'vs/base/common/jsonSchema';
 import { ILogService } from 'vs/platform/log/common/log';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
+
+const CONFIGURATION_SYNC_STORE_KEY = 'configurationSync.store';
 
 export const DEFAULT_IGNORED_SETTINGS = [
+	CONFIGURATION_SYNC_STORE_KEY,
 	'configurationSync.enable',
 	'configurationSync.enableSettings',
 	'configurationSync.enableExtensions',
@@ -33,7 +37,7 @@ export function registerConfiguration(): IDisposable {
 			'configurationSync.enable': {
 				type: 'boolean',
 				description: localize('configurationSync.enable', "When enabled, synchronizes configuration that includes Settings and Extensions."),
-				default: true,
+				default: false,
 				scope: ConfigurationScope.APPLICATION
 			},
 			'configurationSync.enableSettings': {
@@ -63,12 +67,6 @@ export function registerConfiguration(): IDisposable {
 				$ref: ignoredSettingsSchemaId,
 				additionalProperties: true,
 				uniqueItems: true
-			},
-			'configurationSync.enableAuth': {
-				'type': 'boolean',
-				description: localize('configurationSync.enableAuth', "Enables authentication and requires VS Code restart when changed"),
-				'default': false,
-				'scope': ConfigurationScope.APPLICATION
 			}
 		}
 	});
@@ -104,12 +102,23 @@ export class UserDataSyncStoreError extends Error {
 
 }
 
+export interface IUserDataSyncStore {
+	url: string;
+	name: string;
+	account: string;
+}
+
+export function getUserDataSyncStore(configurationService: IConfigurationService): IUserDataSyncStore | undefined {
+	const value = configurationService.getValue<IUserDataSyncStore>(CONFIGURATION_SYNC_STORE_KEY);
+	return value && value.url && value.name && value.account ? value : undefined;
+}
+
 export const IUserDataSyncStoreService = createDecorator<IUserDataSyncStoreService>('IUserDataSyncStoreService');
 
 export interface IUserDataSyncStoreService {
 	_serviceBrand: undefined;
 
-	readonly enabled: boolean;
+	readonly userDataSyncStore: IUserDataSyncStore | undefined;
 
 	read(key: string, oldValue: IUserData | null): Promise<IUserData>;
 	write(key: string, content: string, ref: string | null): Promise<string>;

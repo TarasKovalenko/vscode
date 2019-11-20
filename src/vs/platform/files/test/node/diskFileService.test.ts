@@ -1493,15 +1493,15 @@ suite('Disk File Service', function () {
 	}
 
 	test('createFile', async () => {
-		assertCreateFile(contents => VSBuffer.fromString(contents));
+		return assertCreateFile(contents => VSBuffer.fromString(contents));
 	});
 
 	test('createFile (readable)', async () => {
-		assertCreateFile(contents => bufferToReadable(VSBuffer.fromString(contents)));
+		return assertCreateFile(contents => bufferToReadable(VSBuffer.fromString(contents)));
 	});
 
 	test('createFile (stream)', async () => {
-		assertCreateFile(contents => bufferToStream(VSBuffer.fromString(contents)));
+		return assertCreateFile(contents => bufferToStream(VSBuffer.fromString(contents)));
 	});
 
 	async function assertCreateFile(converter: (content: string) => VSBuffer | VSBufferReadable | VSBufferReadableStream): Promise<void> {

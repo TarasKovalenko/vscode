@@ -167,7 +167,7 @@ function toNodeEncoding(enc: string | null): string {
 	return enc;
 }
 
-export function detectEncodingByBOMFromBuffer(buffer: Buffer | VSBuffer | null, bytesRead: number): string | null {
+export function detectEncodingByBOMFromBuffer(buffer: Buffer | VSBuffer | null, bytesRead: number): typeof UTF8_with_bom | typeof UTF16le | typeof UTF16be | null {
 	if (!buffer || bytesRead < UTF16be_BOM.length) {
 		return null;
 	}
@@ -193,7 +193,7 @@ export function detectEncodingByBOMFromBuffer(buffer: Buffer | VSBuffer | null, 
 
 	// UTF-8
 	if (b0 === UTF8_BOM[0] && b1 === UTF8_BOM[1] && b2 === UTF8_BOM[2]) {
-		return UTF8;
+		return UTF8_with_bom;
 	}
 
 	return null;
@@ -207,6 +207,17 @@ async function guessEncodingByBuffer(buffer: Buffer): Promise<string | null> {
 
 	const guessed = jschardet.detect(buffer);
 	if (!guessed || !guessed.encoding) {
+		return null;
+	}
+
+	// Ignore 'ascii' as guessed encoding because that
+	// is almost never what we want, rather fallback
+	// to the configured encoding then. Otherwise,
+	// opening a ascii-only file with auto guessing
+	// enabled will put the file into 'ascii' mode
+	// and thus typing any special characters is
+	// not possible anymore.
+	if (guessed.encoding.toLowerCase() === 'ascii') {
 		return null;
 	}
 
