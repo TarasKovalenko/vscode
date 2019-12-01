@@ -2731,6 +2731,10 @@ declare namespace monaco.editor {
 		 */
 		accessibilitySupport?: 'auto' | 'off' | 'on';
 		/**
+		 * Controls the number of lines in the editor that can be read out by a screen reader
+		 */
+		accessibilityPageSize?: number;
+		/**
 		 * Suggest options.
 		 */
 		suggest?: ISuggestOptions;
@@ -2775,7 +2779,7 @@ declare namespace monaco.editor {
 		 * Enable auto indentation adjustment.
 		 * Defaults to false.
 		 */
-		autoIndent?: boolean;
+		autoIndent?: 'none' | 'keep' | 'brackets' | 'advanced' | 'full';
 		/**
 		 * Enable format on type.
 		 * Defaults to false.
