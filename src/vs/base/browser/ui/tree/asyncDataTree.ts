@@ -230,9 +230,16 @@ function asObjectTreeOptions<TInput, T, TFilterData>(options?: IAsyncDataTreeOpt
 			}
 		},
 		accessibilityProvider: options.accessibilityProvider && {
+			...options.accessibilityProvider,
 			getAriaLabel(e) {
 				return options.accessibilityProvider!.getAriaLabel(e.element as T);
-			}
+			},
+			getAriaLevel: options.accessibilityProvider!.getAriaLevel && (node => {
+				return options.accessibilityProvider!.getAriaLevel!(node.element as T);
+			}),
+			getActiveDescendantId: options.accessibilityProvider.getActiveDescendantId && (node => {
+				return options.accessibilityProvider!.getActiveDescendantId!(node.element as T);
+			})
 		},
 		filter: options.filter && {
 			filter(e, parentVisibility) {
@@ -1182,14 +1189,16 @@ export class CompressibleAsyncDataTree<TInput, T, TFilterData = void> extends As
 			if (compressedNode) {
 				for (let i = 0; i < compressedNode.elements.length; i++) {
 					const id = getId(compressedNode.elements[i].element as T);
+					const element = compressedNode.elements[compressedNode.elements.length - 1].element as T;
 
-					if (oldSelection.has(id)) {
-						selection.push(compressedNode.elements[compressedNode.elements.length - 1].element as T);
+					// github.com/microsoft/vscode/issues/85938
+					if (oldSelection.has(id) && selection.indexOf(element) === -1) {
+						selection.push(element);
 						didChangeSelection = true;
 					}
 
-					if (oldFocus.has(id)) {
-						focus.push(compressedNode.elements[compressedNode.elements.length - 1].element as T);
+					if (oldFocus.has(id) && focus.indexOf(element) === -1) {
+						focus.push(element);
 						didChangeFocus = true;
 					}
 				}

@@ -18,10 +18,10 @@ import { IStorageService, StorageScope } from 'vs/platform/storage/common/storag
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IFileService } from 'vs/platform/files/common/files';
-import { IWorkspaceContextService, IWorkspaceFolder, WorkbenchState } from 'vs/platform/workspace/common/workspace';
+import { IWorkspaceContextService, IWorkspaceFolder, WorkbenchState, IWorkspaceFoldersChangeEvent } from 'vs/platform/workspace/common/workspace';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ICommandService } from 'vs/platform/commands/common/commands';
-import { IDebugConfigurationProvider, ICompound, IDebugConfiguration, IConfig, IGlobalConfig, IConfigurationManager, ILaunch, IDebugAdapterDescriptorFactory, IDebugAdapter, IDebugSession, IAdapterDescriptor, CONTEXT_DEBUG_CONFIGURATION_TYPE, IDebugAdapterFactory } from 'vs/workbench/contrib/debug/common/debug';
+import { IDebugConfigurationProvider, ICompound, IDebugConfiguration, IConfig, IGlobalConfig, IConfigurationManager, ILaunch, IDebugAdapterDescriptorFactory, IDebugAdapter, IDebugSession, IAdapterDescriptor, CONTEXT_DEBUG_CONFIGURATION_TYPE, IDebugAdapterFactory, IConfigPresentation } from 'vs/workbench/contrib/debug/common/debug';
 import { Debugger } from 'vs/workbench/contrib/debug/common/debugger';
 import { IEditorService, ACTIVE_GROUP, SIDE_GROUP } from 'vs/workbench/services/editor/common/editorService';
 import { isCodeEditor } from 'vs/editor/browser/editorBrowser';
@@ -68,8 +68,8 @@ export class ConfigurationManager implements IConfigurationManager {
 		@ICommandService private readonly commandService: ICommandService,
 		@IStorageService private readonly storageService: IStorageService,
 		@IExtensionService private readonly extensionService: IExtensionService,
-		@IContextKeyService contextKeyService: IContextKeyService,
-		@IHistoryService historyService: IHistoryService
+		@IHistoryService private readonly historyService: IHistoryService,
+		@IContextKeyService contextKeyService: IContextKeyService
 	) {
 		this.configProviders = [];
 		this.adapterDescriptorFactories = [];
@@ -80,16 +80,10 @@ export class ConfigurationManager implements IConfigurationManager {
 		const previousSelectedRoot = this.storageService.get(DEBUG_SELECTED_ROOT, StorageScope.WORKSPACE);
 		const previousSelectedLaunch = this.launches.filter(l => l.uri.toString() === previousSelectedRoot).pop();
 		this.debugConfigurationTypeContext = CONTEXT_DEBUG_CONFIGURATION_TYPE.bindTo(contextKeyService);
-		if (previousSelectedLaunch) {
+		if (previousSelectedLaunch && previousSelectedLaunch.getConfigurationNames().length) {
 			this.selectConfiguration(previousSelectedLaunch, this.storageService.get(DEBUG_SELECTED_CONFIG_NAME_KEY, StorageScope.WORKSPACE));
 		} else if (this.launches.length > 0) {
-			const rootUri = historyService.getLastActiveWorkspaceRoot();
-			let launch = this.getLaunch(rootUri);
-			if (!launch || launch.getConfigurationNames().length === 0) {
-				launch = first(this.launches, l => !!(l && l.getConfigurationNames().length), launch) || this.launches[0];
-			}
-
-			this.selectConfiguration(launch);
+			this.selectConfiguration(undefined);
 		}
 	}
 
@@ -220,6 +214,43 @@ export class ConfigurationManager implements IConfigurationManager {
 		return results.reduce((first, second) => first.concat(second), []);
 	}
 
+	getAllConfigurations(): { launch: ILaunch; name: string; presentation?: IConfigPresentation }[] {
+		const all: { launch: ILaunch, name: string, presentation?: IConfigPresentation }[] = [];
+		for (let l of this.launches) {
+			for (let name of l.getConfigurationNames()) {
+				const config = l.getConfiguration(name) || l.getCompound(name);
+				if (config && !config.presentation?.hidden) {
+					all.push({ launch: l, name, presentation: config.presentation });
+				}
+			}
+		}
+
+		return all.sort((first, second) => {
+			if (!first.presentation) {
+				return 1;
+			}
+			if (!second.presentation) {
+				return -1;
+			}
+			if (!first.presentation.group) {
+				return 1;
+			}
+			if (!second.presentation.group) {
+				return -1;
+			}
+			if (first.presentation.group !== second.presentation.group) {
+				return first.presentation.group.localeCompare(second.presentation.group);
+			}
+			if (typeof first.presentation.order !== 'number') {
+				return 1;
+			}
+			if (typeof second.presentation.order !== 'number') {
+				return -1;
+			}
+			return first.presentation.order - second.presentation.order;
+		});
+	}
+
 	private registerListeners(): void {
 		debuggersExtPoint.setHandler((extensions, delta) => {
 			delta.added.forEach(added => {
@@ -284,14 +315,15 @@ export class ConfigurationManager implements IConfigurationManager {
 			});
 		});
 
-		this.toDispose.push(this.contextService.onDidChangeWorkspaceFolders(() => {
+		this.toDispose.push(Event.any<IWorkspaceFoldersChangeEvent | WorkbenchState>(this.contextService.onDidChangeWorkspaceFolders, this.contextService.onDidChangeWorkbenchState)(() => {
 			this.initLaunches();
-			this.selectConfiguration(this.selectedLaunch);
+			this.selectConfiguration(undefined);
 			this.setCompoundSchemaValues();
 		}));
 		this.toDispose.push(this.configurationService.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration('launch')) {
-				this.selectConfiguration(this.selectedLaunch);
+				// A change happen in the launch.json. If there is already a launch configuration selected, do not change the selection.
+				this.selectConfiguration(undefined);
 				this.setCompoundSchemaValues();
 			}
 		}));
@@ -305,7 +337,7 @@ export class ConfigurationManager implements IConfigurationManager {
 		this.launches.push(this.instantiationService.createInstance(UserLaunch));
 
 		if (this.selectedLaunch && this.launches.indexOf(this.selectedLaunch) === -1) {
-			this.setSelectedLaunch(undefined);
+			this.selectConfiguration(undefined);
 		}
 	}
 
@@ -354,10 +386,23 @@ export class ConfigurationManager implements IConfigurationManager {
 	}
 
 	selectConfiguration(launch: ILaunch | undefined, name?: string): void {
+		if (typeof launch === 'undefined') {
+			const rootUri = this.historyService.getLastActiveWorkspaceRoot();
+			launch = this.getLaunch(rootUri);
+			if (!launch || launch.getConfigurationNames().length === 0) {
+				launch = first(this.launches, l => !!(l && l.getConfigurationNames().length), launch) || this.launches[0];
+			}
+		}
+
 		const previousLaunch = this.selectedLaunch;
 		const previousName = this.selectedName;
+		this.selectedLaunch = launch;
 
-		this.setSelectedLaunch(launch);
+		if (this.selectedLaunch) {
+			this.storageService.store(DEBUG_SELECTED_ROOT, this.selectedLaunch.uri.toString(), StorageScope.WORKSPACE);
+		} else {
+			this.storageService.remove(DEBUG_SELECTED_ROOT, StorageScope.WORKSPACE);
+		}
 		const names = launch ? launch.getConfigurationNames() : [];
 		if (name && names.indexOf(name) >= 0) {
 			this.setSelectedLaunchName(name);
@@ -466,16 +511,6 @@ export class ConfigurationManager implements IConfigurationManager {
 		}
 	}
 
-	private setSelectedLaunch(selectedLaunch: ILaunch | undefined): void {
-		this.selectedLaunch = selectedLaunch;
-
-		if (this.selectedLaunch) {
-			this.storageService.store(DEBUG_SELECTED_ROOT, this.selectedLaunch.uri.toString(), StorageScope.WORKSPACE);
-		} else {
-			this.storageService.remove(DEBUG_SELECTED_ROOT, StorageScope.WORKSPACE);
-		}
-	}
-
 	dispose(): void {
 		this.toDispose = dispose(this.toDispose);
 	}
@@ -495,10 +530,13 @@ abstract class AbstractLaunch {
 
 	getConfigurationNames(includeCompounds = true): string[] {
 		const config = this.getConfig();
-		if (!config || !config.configurations || !Array.isArray(config.configurations)) {
+		if (!config || (!Array.isArray(config.configurations) && !Array.isArray(config.compounds))) {
 			return [];
 		} else {
-			const names = config.configurations.filter(cfg => cfg && typeof cfg.name === 'string').map(cfg => cfg.name);
+			const names: string[] = [];
+			if (config.configurations) {
+				names.push(...config.configurations.filter(cfg => cfg && typeof cfg.name === 'string').map(cfg => cfg.name));
+			}
 			if (includeCompounds && config.compounds) {
 				if (config.compounds) {
 					names.push(...config.compounds.filter(compound => typeof compound.name === 'string' && compound.configurations && compound.configurations.length)
@@ -547,7 +585,7 @@ class Launch extends AbstractLaunch implements ILaunch {
 	}
 
 	protected getConfig(): IGlobalConfig | undefined {
-		return this.configurationService.inspect<IGlobalConfig>('launch', { resource: this.workspace.uri }).workspaceFolder;
+		return this.configurationService.inspect<IGlobalConfig>('launch', { resource: this.workspace.uri }).workspaceFolderValue;
 	}
 
 	async openConfigFile(sideBySide: boolean, preserveFocus: boolean, type?: string, token?: CancellationToken): Promise<{ editor: IEditor | null, created: boolean }> {
@@ -627,7 +665,7 @@ class WorkspaceLaunch extends AbstractLaunch implements ILaunch {
 	}
 
 	protected getConfig(): IGlobalConfig | undefined {
-		return this.configurationService.inspect<IGlobalConfig>('launch').workspace;
+		return this.configurationService.inspect<IGlobalConfig>('launch').workspaceValue;
 	}
 
 	async openConfigFile(sideBySide: boolean, preserveFocus: boolean): Promise<{ editor: IEditor | null, created: boolean }> {
@@ -670,7 +708,7 @@ class UserLaunch extends AbstractLaunch implements ILaunch {
 	}
 
 	protected getConfig(): IGlobalConfig | undefined {
-		return this.configurationService.inspect<IGlobalConfig>('launch').user;
+		return this.configurationService.inspect<IGlobalConfig>('launch').userValue;
 	}
 
 	async openConfigFile(_: boolean, preserveFocus: boolean): Promise<{ editor: IEditor | null, created: boolean }> {
