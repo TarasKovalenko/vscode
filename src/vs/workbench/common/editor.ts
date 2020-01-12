@@ -317,7 +317,7 @@ export interface ISaveOptions {
 	context?: SaveContext;
 
 	/**
-	 * Forces to load the contents of the working copy
+	 * Forces to save the contents of the working copy
 	 * again even if the working copy is not dirty.
 	 */
 	force?: boolean;
@@ -402,6 +402,14 @@ export interface IEditorInput extends IDisposable {
 	 * Returns if this input is dirty or not.
 	 */
 	isDirty(): boolean;
+
+	/**
+	 * Returns if this input is currently being saved or soon to be
+	 * saved. Based on this assumption the editor may for example
+	 * decide to not signal the dirty state to the user assuming that
+	 * the save is scheduled to happen anyway.
+	 */
+	isSaving(): boolean;
 
 	/**
 	 * Saves the editor. The provided groupId helps
@@ -508,16 +516,20 @@ export abstract class EditorInput extends Disposable implements IEditorInput {
 		return false;
 	}
 
-	save(groupId: GroupIdentifier, options?: ISaveOptions): Promise<boolean> {
-		return Promise.resolve(true);
+	isSaving(): boolean {
+		return false;
 	}
 
-	saveAs(groupId: GroupIdentifier, options?: ISaveOptions): Promise<boolean> {
-		return Promise.resolve(true);
+	async save(groupId: GroupIdentifier, options?: ISaveOptions): Promise<boolean> {
+		return true;
 	}
 
-	revert(options?: IRevertOptions): Promise<boolean> {
-		return Promise.resolve(true);
+	async saveAs(groupId: GroupIdentifier, options?: ISaveOptions): Promise<boolean> {
+		return true;
+	}
+
+	async revert(options?: IRevertOptions): Promise<boolean> {
+		return true;
 	}
 
 	/**
@@ -559,10 +571,6 @@ export abstract class TextEditorInput extends EditorInput {
 	}
 
 	async save(groupId: GroupIdentifier, options?: ITextFileSaveOptions): Promise<boolean> {
-		if (this.isReadonly()) {
-			return false; // return early if editor is readonly
-		}
-
 		return this.textFileService.save(this.resource, options);
 	}
 
@@ -701,6 +709,10 @@ export class SideBySideEditorInput extends EditorInput {
 		return this.master.isDirty();
 	}
 
+	isSaving(): boolean {
+		return this.master.isSaving();
+	}
+
 	save(groupId: GroupIdentifier, options?: ISaveOptions): Promise<boolean> {
 		return this.master.save(groupId, options);
 	}
@@ -741,8 +753,8 @@ export class SideBySideEditorInput extends EditorInput {
 		this._register(this.master.onDidChangeLabel(() => this._onDidChangeLabel.fire()));
 	}
 
-	resolve(): Promise<EditorModel | null> {
-		return Promise.resolve(null);
+	async resolve(): Promise<EditorModel | null> {
+		return null;
 	}
 
 	getTypeId(): string {
@@ -791,8 +803,8 @@ export class EditorModel extends Disposable implements IEditorModel {
 	/**
 	 * Causes this model to load returning a promise when loading is completed.
 	 */
-	load(): Promise<IEditorModel> {
-		return Promise.resolve(this);
+	async load(): Promise<IEditorModel> {
+		return this;
 	}
 
 	/**
