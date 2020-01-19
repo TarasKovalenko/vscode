@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IEncodingSupport, ISaveOptions } from 'vs/workbench/common/editor';
+import { IEncodingSupport, ISaveOptions, IModeSupport } from 'vs/workbench/common/editor';
 import { BaseTextEditorModel } from 'vs/workbench/common/editor/textEditorModel';
 import { URI } from 'vs/base/common/uri';
 import { IModeService } from 'vs/editor/common/services/modeService';
@@ -13,14 +13,20 @@ import { IBackupFileService, IResolvedBackup } from 'vs/workbench/services/backu
 import { ITextResourceConfigurationService } from 'vs/editor/common/services/textResourceConfigurationService';
 import { ITextBufferFactory } from 'vs/editor/common/model';
 import { createTextBufferFactory } from 'vs/editor/common/model/textModel';
-import { IResolvedTextEditorModel } from 'vs/editor/common/services/resolverService';
+import { IResolvedTextEditorModel, ITextEditorModel } from 'vs/editor/common/services/resolverService';
 import { IWorkingCopyService, IWorkingCopy, WorkingCopyCapabilities } from 'vs/workbench/services/workingCopy/common/workingCopyService';
 import { ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
+import { IModelContentChangedEvent } from 'vs/editor/common/model/textModelEvents';
 
-export class UntitledTextEditorModel extends BaseTextEditorModel implements IEncodingSupport, IWorkingCopy {
+export interface IUntitledTextEditorModel extends ITextEditorModel, IModeSupport, IEncodingSupport, IWorkingCopy { }
+
+export class UntitledTextEditorModel extends BaseTextEditorModel implements IUntitledTextEditorModel {
 
 	private readonly _onDidChangeContent = this._register(new Emitter<void>());
 	readonly onDidChangeContent = this._onDidChangeContent.event;
+
+	private readonly _onDidChangeFirstLine = this._register(new Emitter<void>());
+	readonly onDidChangeFirstLine = this._onDidChangeFirstLine.event;
 
 	private readonly _onDidChangeDirty = this._register(new Emitter<void>());
 	readonly onDidChangeDirty = this._onDidChangeDirty.event;
@@ -168,15 +174,22 @@ export class UntitledTextEditorModel extends BaseTextEditorModel implements IEnc
 		const textEditorModel = this.textEditorModel!;
 
 		// Listen to content changes
-		this._register(textEditorModel.onDidChangeContent(() => this.onModelContentChanged()));
+		this._register(textEditorModel.onDidChangeContent(e => this.onModelContentChanged(e)));
 
 		// Listen to mode changes
 		this._register(textEditorModel.onDidChangeLanguage(() => this.onConfigurationChange())); // mode change can have impact on config
 
+		// If we have initial contents, make sure to emit this
+		// as the appropiate events to the outside.
+		if (backup || this.initialValue) {
+			this._onDidChangeContent.fire();
+			this._onDidChangeFirstLine.fire();
+		}
+
 		return this as UntitledTextEditorModel & IResolvedTextEditorModel;
 	}
 
-	private onModelContentChanged(): void {
+	private onModelContentChanged(e: IModelContentChangedEvent): void {
 		if (!this.isResolved()) {
 			return;
 		}
@@ -194,8 +207,13 @@ export class UntitledTextEditorModel extends BaseTextEditorModel implements IEnc
 			this.setDirty(true);
 		}
 
-		// Emit as event
+		// Emit as general content change event
 		this._onDidChangeContent.fire();
+
+		// Emit as first line change event depending on actual change
+		if (e.changes.some(change => change.range.startLineNumber === 1 || change.range.endLineNumber === 1)) {
+			this._onDidChangeFirstLine.fire();
+		}
 	}
 
 	isReadonly(): boolean {

@@ -14,7 +14,6 @@ import { ITextFileService } from 'vs/workbench/services/textfile/common/textfile
 import { hashPath } from 'vs/workbench/services/backup/node/backupFileService';
 import { BackupTracker } from 'vs/workbench/contrib/backup/common/backupTracker';
 import { TestTextFileService, workbenchInstantiationService } from 'vs/workbench/test/workbenchTestServices';
-import { IUntitledTextEditorService } from 'vs/workbench/services/untitled/common/untitledTextEditorService';
 import { TextFileEditorModelManager } from 'vs/workbench/services/textfile/common/textFileEditorModelManager';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { EditorPart } from 'vs/workbench/browser/parts/editor/editorPart';
@@ -33,6 +32,7 @@ import { toResource } from 'vs/base/test/common/utils';
 import { IFilesConfigurationService } from 'vs/workbench/services/filesConfiguration/common/filesConfigurationService';
 import { IWorkingCopyService } from 'vs/workbench/services/workingCopy/common/workingCopyService';
 import { ILogService } from 'vs/platform/log/common/log';
+import { INewUntitledTextEditorOptions } from 'vs/workbench/services/untitled/common/untitledTextEditorService';
 
 const userdataDir = getRandomTestPath(os.tmpdir(), 'vsctests', 'backuprestorer');
 const backupHome = path.join(userdataDir, 'Backups');
@@ -44,7 +44,6 @@ const workspaceBackupPath = path.join(backupHome, hashPath(workspaceResource));
 class ServiceAccessor {
 	constructor(
 		@ITextFileService public textFileService: TestTextFileService,
-		@IUntitledTextEditorService public untitledTextEditorService: IUntitledTextEditorService,
 		@IEditorService public editorService: IEditorService,
 		@IBackupFileService public backupFileService: NodeTestBackupFileService
 	) {
@@ -92,9 +91,7 @@ suite('BackupTracker', () => {
 		dispose(disposables);
 		disposables = [];
 
-		(<TextFileEditorModelManager>accessor.textFileService.models).clear();
-		(<TextFileEditorModelManager>accessor.textFileService.models).dispose();
-		accessor.untitledTextEditorService.revertAll();
+		(<TextFileEditorModelManager>accessor.textFileService.files).dispose();
 
 		return pfs.rimraf(backupHome, pfs.RimRafMode.MOVE);
 	});
@@ -122,16 +119,17 @@ suite('BackupTracker', () => {
 		return [accessor, part, tracker];
 	}
 
-	test('Track backups (untitled)', async function () {
-		this.timeout(20000);
-
+	async function untitledBackupTest(options?: INewUntitledTextEditorOptions): Promise<void> {
 		const [accessor, part, tracker] = await createTracker();
 
-		const untitledEditor = accessor.untitledTextEditorService.createOrGet();
+		const untitledEditor = accessor.textFileService.untitled.create(options);
 		await accessor.editorService.openEditor(untitledEditor, { pinned: true });
 
 		const untitledModel = await untitledEditor.resolve();
-		untitledModel.textEditorModel.setValue('Super Good');
+
+		if (!options?.initialValue) {
+			untitledModel.textEditorModel.setValue('Super Good');
+		}
 
 		await accessor.backupFileService.joinBackupResource();
 
@@ -145,6 +143,18 @@ suite('BackupTracker', () => {
 
 		part.dispose();
 		tracker.dispose();
+	}
+
+	test('Track backups (untitled)', function () {
+		this.timeout(20000);
+
+		return untitledBackupTest();
+	});
+
+	test('Track backups (untitled with initial contents)', function () {
+		this.timeout(20000);
+
+		return untitledBackupTest({ initialValue: 'Foo Bar' });
 	});
 
 	test('Track backups (file)', async function () {
@@ -155,7 +165,7 @@ suite('BackupTracker', () => {
 		const resource = toResource.call(this, '/path/index.txt');
 		await accessor.editorService.openEditor({ resource, options: { pinned: true } });
 
-		const fileModel = accessor.textFileService.models.get(resource);
+		const fileModel = accessor.textFileService.files.get(resource);
 		fileModel?.textEditorModel?.setValue('Super Good');
 
 		await accessor.backupFileService.joinBackupResource();

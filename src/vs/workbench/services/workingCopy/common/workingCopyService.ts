@@ -9,7 +9,7 @@ import { Event, Emitter } from 'vs/base/common/event';
 import { URI } from 'vs/base/common/uri';
 import { Disposable, IDisposable, toDisposable, DisposableStore, dispose } from 'vs/base/common/lifecycle';
 import { TernarySearchTree, values } from 'vs/base/common/map';
-import { ISaveOptions } from 'vs/workbench/common/editor';
+import { ISaveOptions, IRevertOptions } from 'vs/workbench/common/editor';
 
 export const enum WorkingCopyCapabilities {
 
@@ -48,6 +48,10 @@ export interface IWorkingCopy {
 
 	save(options?: ISaveOptions): Promise<boolean>;
 
+	revert(options?: IRevertOptions): Promise<boolean>;
+
+	hasBackup(): boolean;
+
 	backup(): Promise<void>;
 
 	//#endregion
@@ -77,6 +81,8 @@ export interface IWorkingCopyService {
 
 	readonly dirtyCount: number;
 
+	readonly dirtyWorkingCopies: IWorkingCopy[];
+
 	readonly hasDirty: boolean;
 
 	isDirty(resource: URI): boolean;
@@ -87,6 +93,8 @@ export interface IWorkingCopyService {
 	//#region Registry
 
 	readonly workingCopies: IWorkingCopy[];
+
+	getWorkingCopies(resource: URI): IWorkingCopy[];
 
 	registerWorkingCopy(workingCopy: IWorkingCopy): IDisposable;
 
@@ -114,52 +122,18 @@ export class WorkingCopyService extends Disposable implements IWorkingCopyServic
 	//#endregion
 
 
-	//#region Dirty Tracking
-
-	isDirty(resource: URI): boolean {
-		const workingCopies = this.mapResourceToWorkingCopy.get(resource.toString());
-		if (workingCopies) {
-			for (const workingCopy of workingCopies) {
-				if (workingCopy.isDirty()) {
-					return true;
-				}
-			}
-		}
-
-		return false;
-	}
-
-	get hasDirty(): boolean {
-		for (const workingCopy of this._workingCopies) {
-			if (workingCopy.isDirty()) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	get dirtyCount(): number {
-		let totalDirtyCount = 0;
-
-		for (const workingCopy of this._workingCopies) {
-			if (workingCopy.isDirty()) {
-				totalDirtyCount++;
-			}
-		}
-
-		return totalDirtyCount;
-	}
-
-	//#endregion
-
-
 	//#region Registry
 
 	private mapResourceToWorkingCopy = TernarySearchTree.forPaths<Set<IWorkingCopy>>();
 
 	get workingCopies(): IWorkingCopy[] { return values(this._workingCopies); }
 	private _workingCopies = new Set<IWorkingCopy>();
+
+	getWorkingCopies(resource: URI): IWorkingCopy[] {
+		const workingCopies = this.mapResourceToWorkingCopy.get(resource.toString());
+
+		return workingCopies ? values(workingCopies) : [];
+	}
 
 	registerWorkingCopy(workingCopy: IWorkingCopy): IDisposable {
 		const disposables = new DisposableStore();
@@ -209,6 +183,50 @@ export class WorkingCopyService extends Disposable implements IWorkingCopyServic
 		if (workingCopy.isDirty()) {
 			this._onDidChangeDirty.fire(workingCopy);
 		}
+	}
+
+	//#endregion
+
+
+	//#region Dirty Tracking
+
+	get hasDirty(): boolean {
+		for (const workingCopy of this._workingCopies) {
+			if (workingCopy.isDirty()) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	get dirtyCount(): number {
+		let totalDirtyCount = 0;
+
+		for (const workingCopy of this._workingCopies) {
+			if (workingCopy.isDirty()) {
+				totalDirtyCount++;
+			}
+		}
+
+		return totalDirtyCount;
+	}
+
+	get dirtyWorkingCopies(): IWorkingCopy[] {
+		return this.workingCopies.filter(workingCopy => workingCopy.isDirty());
+	}
+
+	isDirty(resource: URI): boolean {
+		const workingCopies = this.mapResourceToWorkingCopy.get(resource.toString());
+		if (workingCopies) {
+			for (const workingCopy of workingCopies) {
+				if (workingCopy.isDirty()) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	//#endregion

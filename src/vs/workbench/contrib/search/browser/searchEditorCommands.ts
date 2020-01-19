@@ -5,36 +5,42 @@
 
 import { coalesce, flatten } from 'vs/base/common/arrays';
 import * as network from 'vs/base/common/network';
-import { repeat } from 'vs/base/common/strings';
+import { repeat, endsWith } from 'vs/base/common/strings';
 import { assertIsDefined } from 'vs/base/common/types';
 import { URI } from 'vs/base/common/uri';
 import 'vs/css!./media/searchEditor';
-import { isCodeEditor } from 'vs/editor/browser/editorBrowser';
+import { isDiffEditor, ICodeEditor } from 'vs/editor/browser/editorBrowser';
 import { Range } from 'vs/editor/common/core/range';
-import { EndOfLinePreference, TrackedRangeStickiness } from 'vs/editor/common/model';
+import { EndOfLinePreference, TrackedRangeStickiness, ITextModel } from 'vs/editor/common/model';
 import { localize } from 'vs/nls';
-import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { ILabelService } from 'vs/platform/label/common/label';
 import { searchEditorFindMatch, searchEditorFindMatchBorder } from 'vs/platform/theme/common/colorRegistry';
 import { registerThemingParticipant } from 'vs/platform/theme/common/themeService';
-import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace';
 import { UntitledTextEditorInput } from 'vs/workbench/common/editor/untitledTextEditorInput';
-import { ITextQueryBuilderOptions, QueryBuilder } from 'vs/workbench/contrib/search/common/queryBuilder';
-import { getOutOfWorkspaceEditorResources } from 'vs/workbench/contrib/search/common/search';
-import { FileMatch, Match, searchMatchComparer, SearchModel, SearchResult } from 'vs/workbench/contrib/search/common/searchModel';
+import { FileMatch, Match, searchMatchComparer, SearchResult } from 'vs/workbench/contrib/search/common/searchModel';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
-import { IPatternInfo, ISearchConfigurationProperties, ITextQuery } from 'vs/workbench/services/search/common/search';
-import { EditorInput, IEditorInputFactory } from 'vs/workbench/common/editor';
+import { ITextQuery } from 'vs/workbench/services/search/common/search';
+import { IEditorInputFactory, GroupIdentifier, EditorInput, SaveContext } from 'vs/workbench/common/editor';
 import { IModelService } from 'vs/editor/common/services/modelService';
 import { IModeService } from 'vs/editor/common/services/modeService';
 import { SearchEditor } from 'vs/workbench/contrib/search/browser/searchEditor';
+import { IEditorGroupsService } from 'vs/workbench/services/editor/common/editorGroupsService';
+import { ITextFileSaveOptions, ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
+import type { IWorkbenchContribution } from 'vs/workbench/common/contributions';
+import { FileEditorInput } from 'vs/workbench/contrib/files/common/editors/fileEditorInput';
+import { dirname, joinPath, isEqual } from 'vs/base/common/resources';
+import { IHistoryService } from 'vs/workbench/services/history/common/history';
+import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
+import { IFileDialogService } from 'vs/platform/dialogs/common/dialogs';
+import { basename } from 'vs/base/common/path';
+
 
 
 export type SearchConfiguration = {
 	query: string,
 	includes: string,
-	excludes: string,
+	excludes: string
 	contextLines: number,
 	wholeWord: boolean,
 	caseSensitive: boolean,
@@ -43,16 +49,68 @@ export type SearchConfiguration = {
 	showIncludesExcludes: boolean,
 };
 
+export class SearchEditorContribution implements IWorkbenchContribution {
+	constructor(
+		@IEditorService private readonly editorService: IEditorService,
+		@ITextFileService protected readonly textFileService: ITextFileService,
+		@IInstantiationService protected readonly instantiationService: IInstantiationService,
+		@IModelService protected readonly modelService: IModelService,
+	) {
+
+		this.editorService.overrideOpenEditor((editor, options, group) => {
+			const resource = editor.getResource();
+			if (!resource ||
+				!(endsWith(resource.path, '.code-search') || resource.scheme === 'search-editor') ||
+				!(editor instanceof FileEditorInput || (resource.scheme === 'search-editor'))) {
+				return undefined;
+			}
+
+			if (group.isOpened(editor)) {
+				return undefined;
+			}
+
+			return {
+				override: (async () => {
+					const contents = resource.scheme === 'search-editor' ? this.modelService.getModel(resource)?.getValue() ?? '' : (await this.textFileService.read(resource)).value;
+					const header = searchHeaderToContentPattern(contents.split('\n').slice(0, 5));
+
+					const input = instantiationService.createInstance(
+						SearchEditorInput,
+						{
+							query: header.pattern,
+							regexp: header.flags.regex,
+							caseSensitive: header.flags.caseSensitive,
+							wholeWord: header.flags.wholeWord,
+							includes: header.includes,
+							excludes: header.excludes,
+							contextLines: header.context ?? 0,
+							useIgnores: !header.flags.ignoreExcludes,
+							showIncludesExcludes: !!(header.includes || header.excludes || header.flags.ignoreExcludes)
+						}, contents, resource);
+
+					return editorService.openEditor(input, { ...options, pinned: resource.scheme === 'search-editor', ignoreOverrides: true }, group);
+				})()
+			};
+		});
+	}
+}
+
 export class SearchEditorInputFactory implements IEditorInputFactory {
 
 	canSerialize() { return true; }
 
 	serialize(input: SearchEditorInput) {
-		return JSON.stringify(input.config);
+		let resource = undefined;
+		if (input.resource.path) {
+			resource = input.resource.toString();
+		}
+
+		return JSON.stringify({ ...input.config, resource });
 	}
 
 	deserialize(instantiationService: IInstantiationService, serializedEditorInput: string): SearchEditorInput | undefined {
-		return instantiationService.createInstance(SearchEditorInput, JSON.parse(serializedEditorInput));
+		const { resource, ...config } = JSON.parse(serializedEditorInput);
+		return instantiationService.createInstance(SearchEditorInput, config, undefined, resource && URI.parse(resource));
 	}
 }
 
@@ -60,40 +118,82 @@ let searchEditorInputInstances = 0;
 export class SearchEditorInput extends EditorInput {
 	static readonly ID: string = 'workbench.editorinputs.searchEditorInput';
 
-	public config: SearchConfiguration;
-	private instanceNumber: number = searchEditorInputInstances++;
+	private _config: SearchConfiguration;
+	public get config(): Readonly<SearchConfiguration> {
+		return this._config;
+	}
+
+	private model: ITextModel;
+	public readonly resource: URI;
+
+	private dirty: boolean = false;
 
 	constructor(
-		config: SearchConfiguration | undefined,
+		config: Partial<SearchConfiguration> | undefined,
+		initialContents: string | undefined,
+		resource: URI | undefined,
 		@IModelService private readonly modelService: IModelService,
 		@IModeService private readonly modeService: IModeService,
+		@IEditorService protected readonly editorService: IEditorService,
+		@IEditorGroupsService protected readonly editorGroupService: IEditorGroupsService,
+		@ITextFileService protected readonly textFileService: ITextFileService,
+		@IHistoryService private readonly historyService: IHistoryService,
+		@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService,
+		@IFileDialogService private readonly fileDialogService: IFileDialogService,
+		@IInstantiationService private readonly instantiationService: IInstantiationService
 	) {
 		super();
-
-		if (config === undefined) {
-			this.config = { query: '', includes: '', excludes: '', contextLines: 0, wholeWord: false, caseSensitive: false, regexp: false, useIgnores: true, showIncludesExcludes: false };
-		} else {
-			this.config = config;
-		}
+		this.resource = resource ?? URI.from({ scheme: 'search-editor', fragment: `${searchEditorInputInstances++}` });
+		this._config = { ...{ query: '', includes: '', excludes: '', contextLines: 0, wholeWord: false, caseSensitive: false, regexp: false, useIgnores: true, showIncludesExcludes: false }, ...config };
 
 		const searchResultMode = this.modeService.create('search-result');
-		this.modelService.createModel('', searchResultMode, this.getResource());
+
+		this.model = this.modelService.getModel(this.resource) ?? this.modelService.createModel(initialContents ?? '', searchResultMode, this.resource);
+	}
+
+	async save(group: GroupIdentifier, options?: ITextFileSaveOptions): Promise<boolean> {
+		if (this.resource.scheme === 'search-editor') {
+			const path = await this.promptForPath(this.resource, this.suggestFileName(), options?.availableFileSystems);
+			if (path) {
+				if (await this.textFileService.saveAs(this.resource, path, options)) {
+					this.setDirty(false);
+					if (options?.context !== SaveContext.EDITOR_CLOSE && !isEqual(path, this.resource)) {
+						const replacement = this.instantiationService.createInstance(SearchEditorInput, this.config, undefined, path);
+						await this.editorService.replaceEditors([{ editor: this, replacement, options: { pinned: true } }], group);
+						return true;
+					} else if (options?.context === SaveContext.EDITOR_CLOSE) {
+						return true;
+					}
+				}
+			}
+			return false;
+		} else {
+			this.setDirty(false);
+			return !!this.textFileService.write(this.resource, this.model.getValue(), options);
+		}
+	}
+
+	// Brining this over from textFileService because it only suggests for untitled scheme.
+	// In the future I may just use the untitled scheme. I dont get particular benefit from using search-editor...
+	private async promptForPath(resource: URI, defaultUri: URI, availableFileSystems?: string[]): Promise<URI | undefined> {
+		// Help user to find a name for the file by opening it first
+		await this.editorService.openEditor({ resource, options: { revealIfOpened: true, preserveFocus: true } });
+		return this.fileDialogService.pickFileToSave(defaultUri, availableFileSystems);
 	}
 
 	getTypeId(): string {
 		return SearchEditorInput.ID;
 	}
 
-	getResource(): URI {
-		return URI.from({ scheme: 'untitled', authority: 'search-editor', path: this.config.query, fragment: `${this.instanceNumber}` });
-	}
-
 	getName(): string {
-		return this.config.query ? localize('searchTitle.withQuery', "Search: {0}", this.config.query) : localize('searchTitle', "Search");
+		if (this.resource.scheme === 'search-editor') {
+			return this.config.query ? localize('searchTitle.withQuery', "Search: {0}", this.config.query) : localize('searchTitle', "Search");
+		}
+		return localize('searchTitle.withQuery', "Search: {0}", basename(this.resource.path, '.code-search'));
 	}
 
 	setConfig(config: SearchConfiguration) {
-		this.config = config;
+		this._config = config;
 		this._onDidChangeLabel.fire();
 	}
 
@@ -101,9 +201,54 @@ export class SearchEditorInput extends EditorInput {
 		return null;
 	}
 
+	setDirty(dirty: boolean) {
+		this.dirty = dirty;
+		this._onDidChangeDirty.fire();
+	}
+
+	isDirty() {
+		return this.dirty;
+	}
+
 	dispose() {
-		this.modelService.destroyModel(this.getResource());
+		this.modelService.destroyModel(this.resource);
 		super.dispose();
+	}
+
+	matches(other: unknown) {
+		if (this === other) { return true; }
+
+		if (other instanceof SearchEditorInput) {
+			if (
+				(other.resource.path && other.resource.path === this.resource.path) ||
+				(other.resource.fragment && other.resource.fragment === this.resource.fragment)
+			) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Bringing this over from textFileService because it only suggests for untitled scheme.
+	// In the future I may just use the untitled scheme. I dont get particular benefit from using search-editor...
+	private suggestFileName(): URI {
+		const searchFileName = (this.config.query.replace(/[^\w \-_]+/g, '_') || 'Search') + '.code-search';
+
+		const remoteAuthority = this.environmentService.configuration.remoteAuthority;
+		const schemeFilter = remoteAuthority ? network.Schemas.vscodeRemote : network.Schemas.file;
+
+		const lastActiveFile = this.historyService.getLastActiveFile(schemeFilter);
+		if (lastActiveFile) {
+			const lastDir = dirname(lastActiveFile);
+			return joinPath(lastDir, searchFileName);
+		}
+
+		const lastActiveFolder = this.historyService.getLastActiveWorkspaceRoot(schemeFilter);
+		if (lastActiveFolder) {
+			return joinPath(lastActiveFolder, searchFileName);
+		}
+
+		return URI.from({ scheme: schemeFilter, path: searchFileName });
 	}
 }
 
@@ -313,75 +458,25 @@ export const serializeSearchResultForEditor = (searchResult: SearchResult, rawIn
 					.map(folderMatch => folderMatch.matches().sort(searchMatchComparer)
 						.map(fileMatch => fileMatchToSearchResultFormat(fileMatch, labelFormatter)))));
 
-	return { matchRanges: allResults.matchRanges.map(translateRangeLines(header.length)), text: header.concat(allResults.text) };
+	return { matchRanges: allResults.matchRanges.map(translateRangeLines(header.length)), text: header.concat(allResults.text.length ? allResults.text : ['No Results']) };
 };
-
-export const refreshActiveEditorSearch =
-	async (contextLines: number | undefined, editorService: IEditorService, instantiationService: IInstantiationService, contextService: IWorkspaceContextService, labelService: ILabelService, configurationService: IConfigurationService) => {
-		const editorWidget = editorService.activeTextEditorWidget;
-		if (!isCodeEditor(editorWidget)) {
-			return;
-		}
-
-		const textModel = editorWidget.getModel();
-		if (!textModel) { return; }
-
-		const header = textModel.getValueInRange(new Range(1, 1, 5, 1), EndOfLinePreference.LF)
-			.split(lineDelimiter)
-			.filter(line => line.indexOf('# ') === 0);
-
-		const contentPattern = searchHeaderToContentPattern(header);
-
-		const content: IPatternInfo = {
-			pattern: contentPattern.pattern,
-			isRegExp: contentPattern.flags.regex,
-			isCaseSensitive: contentPattern.flags.caseSensitive,
-			isWordMatch: contentPattern.flags.wholeWord
-		};
-
-		contextLines = contextLines ?? contentPattern.context ?? 0;
-
-		const options: ITextQueryBuilderOptions = {
-			_reason: 'searchEditor',
-			extraFileResources: instantiationService.invokeFunction(getOutOfWorkspaceEditorResources),
-			maxResults: 10000,
-			disregardIgnoreFiles: contentPattern.flags.ignoreExcludes,
-			disregardExcludeSettings: contentPattern.flags.ignoreExcludes,
-			excludePattern: contentPattern.excludes,
-			includePattern: contentPattern.includes,
-			previewOptions: {
-				matchLines: 1,
-				charsPerLine: 1000
-			},
-			afterContext: contextLines,
-			beforeContext: contextLines,
-			isSmartCase: configurationService.getValue<ISearchConfigurationProperties>('search').smartCase,
-			expandPatterns: true
-		};
-
-		const folderResources = contextService.getWorkspace().folders;
-
-		let query: ITextQuery;
-		try {
-			const queryBuilder = instantiationService.createInstance(QueryBuilder);
-			query = queryBuilder.text(content, folderResources.map(folder => folder.uri), options);
-		} catch (err) {
-			return;
-		}
-
-		const searchModel = instantiationService.createInstance(SearchModel);
-		await searchModel.search(query);
-
-		const labelFormatter = (uri: URI): string => labelService.getUriLabel(uri, { relative: true });
-		const results = serializeSearchResultForEditor(searchModel.searchResult, contentPattern.includes, contentPattern.excludes, contextLines, labelFormatter, false);
-
-		textModel.setValue(results.text.join(lineDelimiter));
-		textModel.deltaDecorations([], results.matchRanges.map(range => ({ range, options: { className: 'searchEditorFindMatch', stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges } })));
-	};
 
 export const openNewSearchEditor =
 	async (editorService: IEditorService, instantiationService: IInstantiationService) => {
-		await editorService.openEditor(instantiationService.createInstance(SearchEditorInput, undefined), { pinned: true });
+		const activeEditor = editorService.activeTextEditorWidget;
+		let activeModel: ICodeEditor | undefined;
+		if (isDiffEditor(activeEditor)) {
+			if (activeEditor.getOriginalEditor().hasTextFocus()) {
+				activeModel = activeEditor.getOriginalEditor();
+			} else {
+				activeModel = activeEditor.getModifiedEditor();
+			}
+		} else {
+			activeModel = activeEditor as ICodeEditor | undefined;
+		}
+		const selection = activeModel?.getSelection();
+		let selected = (selection && activeModel?.getModel()?.getValueInRange(selection)) ?? '';
+		await editorService.openEditor(instantiationService.createInstance(SearchEditorInput, { query: selected }, undefined, undefined), { pinned: true });
 	};
 
 export const createEditorFromSearchResult =
@@ -395,7 +490,7 @@ export const createEditorFromSearchResult =
 
 		const labelFormatter = (uri: URI): string => labelService.getUriLabel(uri, { relative: true });
 
-		const results = serializeSearchResultForEditor(searchResult, rawIncludePattern, rawExcludePattern, 0, labelFormatter, false);
+		const results = serializeSearchResultForEditor(searchResult, rawIncludePattern, rawExcludePattern, 0, labelFormatter, true);
 		const contents = results.text.join(lineDelimiter);
 		let possible = {
 			contents,
@@ -418,24 +513,22 @@ export const createEditorFromSearchResult =
 			existing = editorService.getOpened(possible);
 		}
 
-		const editor = await editorService.openEditor(
-			instantiationService.createInstance(
-				SearchEditorInput,
-				{
-					query: searchResult.query.contentPattern.pattern,
-					regexp: !!searchResult.query.contentPattern.isRegExp,
-					caseSensitive: !!searchResult.query.contentPattern.isCaseSensitive,
-					wholeWord: !!searchResult.query.contentPattern.isWordMatch,
-					includes: rawIncludePattern,
-					excludes: rawExcludePattern,
-					contextLines: 0,
-					useIgnores: !searchResult.query.userDisabledExcludesAndIgnoreFiles,
-					showIncludesExcludes: !!(rawExcludePattern || rawExcludePattern || searchResult.query.userDisabledExcludesAndIgnoreFiles)
-				}),
-			{ pinned: true }) as SearchEditor;
+		const input = instantiationService.createInstance(
+			SearchEditorInput,
+			{
+				query: searchResult.query.contentPattern.pattern,
+				regexp: !!searchResult.query.contentPattern.isRegExp,
+				caseSensitive: !!searchResult.query.contentPattern.isCaseSensitive,
+				wholeWord: !!searchResult.query.contentPattern.isWordMatch,
+				includes: rawIncludePattern,
+				excludes: rawExcludePattern,
+				contextLines: 0,
+				useIgnores: !searchResult.query.userDisabledExcludesAndIgnoreFiles,
+				showIncludesExcludes: !!(rawExcludePattern || rawExcludePattern || searchResult.query.userDisabledExcludesAndIgnoreFiles)
+			}, contents, undefined);
 
+		const editor = await editorService.openEditor(input, { pinned: true }) as SearchEditor;
 		const model = assertIsDefined(editor.getModel());
-		model.setValue(contents);
 		model.deltaDecorations([], results.matchRanges.map(range => ({ range, options: { className: 'searchEditorFindMatch', stickiness: TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges } })));
 	};
 
