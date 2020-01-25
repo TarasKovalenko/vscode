@@ -63,7 +63,7 @@ import { ICodeEditor, IDiffEditor } from 'vs/editor/browser/editorBrowser';
 import { IDecorationRenderOptions } from 'vs/editor/common/editorCommon';
 import { EditorGroup } from 'vs/workbench/common/editor/editorGroup';
 import { Dimension } from 'vs/base/browser/dom';
-import { ILogService, NullLogService } from 'vs/platform/log/common/log';
+import { ILogService, NullLogService, LogLevel } from 'vs/platform/log/common/log';
 import { ILabelService } from 'vs/platform/label/common/label';
 import { timeout } from 'vs/base/common/async';
 import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
@@ -100,7 +100,19 @@ export function createFileInput(instantiationService: IInstantiationService, res
 	return instantiationService.createInstance(FileEditorInput, resource, undefined, undefined);
 }
 
-export const TestEnvironmentService = new NativeWorkbenchEnvironmentService(parseArgs(process.argv, OPTIONS) as IWindowConfiguration, process.execPath, 0);
+export const TestWindowConfiguration: IWindowConfiguration = {
+	windowId: 0,
+	sessionId: 'testSessionId',
+	logLevel: LogLevel.Error,
+	mainPid: 0,
+	appRoot: '',
+	userEnv: {},
+	execPath: process.execPath,
+	perfEntries: [],
+	...parseArgs(process.argv, OPTIONS)
+};
+
+export const TestEnvironmentService = new NativeWorkbenchEnvironmentService(TestWindowConfiguration, process.execPath, 0);
 
 export class TestContextService implements IWorkspaceContextService {
 	_serviceBrand: undefined;
@@ -319,10 +331,10 @@ export class TestAccessibilityService implements IAccessibilityService {
 
 	_serviceBrand: undefined;
 
-	onDidChangeAccessibilitySupport = Event.None;
+	onDidChangeScreenReaderOptimized = Event.None;
 
+	isScreenReaderOptimized(): boolean { return false; }
 	alwaysUnderlineAccessKeys(): Promise<boolean> { return Promise.resolve(false); }
-	getAccessibilitySupport(): AccessibilitySupport { return AccessibilitySupport.Unknown; }
 	setAccessibilitySupport(accessibilitySupport: AccessibilitySupport): void { }
 }
 
@@ -770,6 +782,7 @@ export class TestEditorGroupView implements IEditorGroupView {
 	disposed!: boolean;
 	editors: ReadonlyArray<IEditorInput> = [];
 	label!: string;
+	ariaLabel!: string;
 	index!: number;
 	whenRestored: Promise<void> = Promise.resolve(undefined);
 	element!: HTMLElement;
@@ -1098,11 +1111,11 @@ export class TestFileService implements IFileService {
 	}
 
 	copy(_source: URI, _target: URI, _overwrite?: boolean): Promise<IFileStatWithMetadata> {
-		throw new Error('not implemented');
+		return Promise.resolve(null!);
 	}
 
 	createFile(_resource: URI, _content?: VSBuffer | VSBufferReadable, _options?: ICreateFileOptions): Promise<IFileStatWithMetadata> {
-		throw new Error('not implemented');
+		return Promise.resolve(null!);
 	}
 
 	createFolder(_resource: URI): Promise<IFileStatWithMetadata> {
@@ -1166,15 +1179,6 @@ export class TestBackupFileService implements IBackupFileService {
 		return false;
 	}
 
-	async loadBackupResource(resource: URI): Promise<URI | undefined> {
-		const hasBackup = await this.hasBackup(resource);
-		if (hasBackup) {
-			return this.toBackupResource(resource);
-		}
-
-		return undefined;
-	}
-
 	registerResourceForBackup(_resource: URI): Promise<void> {
 		return Promise.resolve();
 	}
@@ -1183,15 +1187,11 @@ export class TestBackupFileService implements IBackupFileService {
 		return Promise.resolve();
 	}
 
-	toBackupResource(_resource: URI): URI {
-		throw new Error('not implemented');
-	}
-
-	backupResource<T extends object>(_resource: URI, _content: ITextSnapshot, versionId?: number, meta?: T): Promise<void> {
+	backup<T extends object>(_resource: URI, _content?: ITextSnapshot, versionId?: number, meta?: T): Promise<void> {
 		return Promise.resolve();
 	}
 
-	getWorkspaceFileBackups(): Promise<URI[]> {
+	getBackups(): Promise<URI[]> {
 		return Promise.resolve([]);
 	}
 
@@ -1202,19 +1202,11 @@ export class TestBackupFileService implements IBackupFileService {
 		return textBuffer.getValueInRange(range, EndOfLinePreference.TextDefined);
 	}
 
-	resolveBackupContent<T extends object>(_backup: URI): Promise<IResolvedBackup<T>> {
-		throw new Error('not implemented');
+	resolve<T extends object>(_backup: URI): Promise<IResolvedBackup<T> | undefined> {
+		return Promise.resolve(undefined);
 	}
 
-	discardResourceBackup(_resource: URI): Promise<void> {
-		return Promise.resolve();
-	}
-
-	didDiscardAllWorkspaceBackups = false;
-
-	discardAllWorkspaceBackups(): Promise<void> {
-		this.didDiscardAllWorkspaceBackups = true;
-
+	discardBackup(_resource: URI): Promise<void> {
 		return Promise.resolve();
 	}
 }

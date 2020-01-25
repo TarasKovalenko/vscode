@@ -49,7 +49,7 @@ import { hash } from 'vs/base/common/hash';
 import { guessMimeTypes } from 'vs/base/common/mime';
 import { extname } from 'vs/base/common/resources';
 import { Schemas } from 'vs/base/common/network';
-import { EditorActivation, EditorOpenContext, IResourceInput } from 'vs/platform/editor/common/editor';
+import { EditorActivation, EditorOpenContext } from 'vs/platform/editor/common/editor';
 import { IDialogService, IFileDialogService, ConfirmResult } from 'vs/platform/dialogs/common/dialogs';
 import { ILogService } from 'vs/platform/log/common/log';
 
@@ -668,6 +668,10 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 		return localize('groupLabel', "Group {0}", this._index + 1);
 	}
 
+	get ariaLabel(): string {
+		return localize('groupAriaLabel', "Editor Group {0}", this._index + 1);
+	}
+
 	get disposed(): boolean {
 		return this._disposed;
 	}
@@ -762,7 +766,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 		return this._group.indexOf(editor);
 	}
 
-	isOpened(editor: EditorInput | IResourceInput): boolean {
+	isOpened(editor: EditorInput): boolean {
 		return this._group.contains(editor);
 	}
 
@@ -831,7 +835,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 		// Determine options
 		const openEditorOptions: IEditorOpenOptions = {
 			index: options ? options.index : undefined,
-			pinned: !this.accessor.partOptions.enablePreview || editor.isDirty() || options?.pinned || typeof options?.index === 'number',
+			pinned: !this.accessor.partOptions.enablePreview || editor.isDirty() || (options?.pinned ?? typeof options?.index === 'number'), // unless specified, prefer to pin when opening with index
 			active: this._group.count === 0 || !options || !options.inactive
 		};
 
@@ -1493,7 +1497,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 				}
 
 				options.inactive = !isActiveEditor;
-				options.pinned = true;
+				options.pinned = options.pinned ?? true; // unless specified, prefer to pin upon replace
 
 				const editorToReplace = { editor, replacement, options };
 				if (isActiveEditor) {

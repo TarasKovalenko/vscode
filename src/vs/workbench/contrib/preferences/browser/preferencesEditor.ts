@@ -1021,6 +1021,7 @@ export class DefaultPreferencesEditor extends BaseTextEditor {
 			options.minimap = {
 				enabled: false
 			};
+			options.renderValidationDecorations = 'editable';
 		}
 		return options;
 	}
@@ -1062,7 +1063,7 @@ export class DefaultPreferencesEditor extends BaseTextEditor {
 	}
 
 	protected getAriaLabel(): string {
-		return nls.localize('preferencesAriaLabel', "Default preferences. Readonly text editor.");
+		return nls.localize('preferencesAriaLabel', "Default preferences. Readonly editor.");
 	}
 }
 

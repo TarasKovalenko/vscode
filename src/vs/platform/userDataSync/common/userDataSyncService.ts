@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IUserDataSyncService, SyncStatus, ISynchroniser, IUserDataSyncStoreService, SyncSource, ISettingsSyncService, IUserDataSyncLogService, IUserDataAuthTokenService } from 'vs/platform/userDataSync/common/userDataSync';
+import { IUserDataSyncService, SyncStatus, ISynchroniser, IUserDataSyncStoreService, SyncSource, ISettingsSyncService, IUserDataSyncLogService, IUserDataAuthTokenService, IUserDataSynchroniser } from 'vs/platform/userDataSync/common/userDataSync';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { SettingsSynchroniser } from 'vs/platform/userDataSync/common/settingsSync';
@@ -13,12 +13,13 @@ import { IExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
 import { KeybindingsSynchroniser } from 'vs/platform/userDataSync/common/keybindingsSync';
 import { GlobalStateSynchroniser } from 'vs/platform/userDataSync/common/globalStateSync';
 import { toErrorMessage } from 'vs/base/common/errorMessage';
+import { localize } from 'vs/nls';
 
 export class UserDataSyncService extends Disposable implements IUserDataSyncService {
 
 	_serviceBrand: any;
 
-	private readonly synchronisers: ISynchroniser[];
+	private readonly synchronisers: IUserDataSynchroniser[];
 
 	private _status: SyncStatus = SyncStatus.Uninitialized;
 	get status(): SyncStatus { return this._status; }
@@ -88,31 +89,57 @@ export class UserDataSyncService extends Disposable implements IUserDataSyncServ
 		}
 	}
 
-	async sync(_continue?: boolean): Promise<boolean> {
+	async sync(): Promise<void> {
 		if (!this.userDataSyncStoreService.userDataSyncStore) {
 			throw new Error('Not enabled');
 		}
 		if (!(await this.userDataAuthTokenService.getToken())) {
 			throw new Error('Not Authenticated. Please sign in to start sync.');
 		}
+		if (this.status === SyncStatus.HasConflicts) {
+			throw new Error(localize('resolve conflicts', "Please resolve conflicts before resuming sync."));
+		}
 		for (const synchroniser of this.synchronisers) {
 			try {
-				if (!await synchroniser.sync(_continue)) {
-					return false;
+				await synchroniser.sync();
+				// do not continue if synchroniser has conflicts
+				if (synchroniser.status === SyncStatus.HasConflicts) {
+					return;
 				}
 			} catch (e) {
 				this.logService.error(`${this.getSyncSource(synchroniser)}: ${toErrorMessage(e)}`);
 			}
 		}
-		return true;
 	}
 
-	stop(): void {
+	async resolveConflictsAndContinueSync(content: string): Promise<void> {
+		const synchroniser = this.getSynchroniserInConflicts();
+		if (!synchroniser) {
+			throw new Error(localize('no synchroniser with conflicts', "No conflicts detected."));
+		}
+		await synchroniser.resolveConflicts(content);
+		if (synchroniser.status !== SyncStatus.HasConflicts) {
+			await this.sync();
+		}
+	}
+
+	async stop(): Promise<void> {
 		if (!this.userDataSyncStoreService.userDataSyncStore) {
 			throw new Error('Not enabled');
 		}
 		for (const synchroniser of this.synchronisers) {
-			synchroniser.stop();
+			await synchroniser.stop();
+		}
+	}
+
+	async restart(): Promise<void> {
+		const synchroniser = this.getSynchroniserInConflicts();
+		if (!synchroniser) {
+			throw new Error(localize('no synchroniser with conflicts', "No conflicts detected."));
+		}
+		await synchroniser.restart();
+		if (synchroniser.status !== SyncStatus.HasConflicts) {
+			await this.sync();
 		}
 	}
 
@@ -159,6 +186,15 @@ export class UserDataSyncService extends Disposable implements IUserDataSyncServ
 			}
 		}
 		return false;
+	}
+
+	async getRemoteContent(source: SyncSource): Promise<string | null> {
+		for (const synchroniser of this.synchronisers) {
+			if (synchroniser.source === source) {
+				return synchroniser.getRemoteContent();
+			}
+		}
+		return null;
 	}
 
 	async isFirstTimeSyncAndHasUserData(): Promise<boolean> {
@@ -243,6 +279,11 @@ export class UserDataSyncService extends Disposable implements IUserDataSyncServ
 	private computeConflictsSource(): SyncSource | null {
 		const synchroniser = this.synchronisers.filter(s => s.status === SyncStatus.HasConflicts)[0];
 		return synchroniser ? this.getSyncSource(synchroniser) : null;
+	}
+
+	private getSynchroniserInConflicts(): IUserDataSynchroniser | null {
+		const synchroniser = this.synchronisers.filter(s => s.status === SyncStatus.HasConflicts)[0];
+		return synchroniser || null;
 	}
 
 	private getSyncSource(synchroniser: ISynchroniser): SyncSource {

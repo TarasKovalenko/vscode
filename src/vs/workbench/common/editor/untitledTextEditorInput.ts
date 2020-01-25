@@ -28,13 +28,10 @@ export class UntitledTextEditorInput extends TextEditorInput implements IEncodin
 
 	private static readonly MEMOIZER = createMemoizer();
 
-	private static readonly FIRST_LINE_MAX_TITLE_LENGTH = 50;
-
 	private readonly _onDidModelChangeEncoding = this._register(new Emitter<void>());
 	readonly onDidModelChangeEncoding = this._onDidModelChangeEncoding.event;
 
 	private cachedModel: UntitledTextEditorModel | null = null;
-	private cachedModelFirstLine: string | undefined = undefined;
 
 	private modelResolve: Promise<UntitledTextEditorModel & IResolvedTextEditorModel> | null = null;
 
@@ -75,15 +72,10 @@ export class UntitledTextEditorInput extends TextEditorInput implements IEncodin
 	}
 
 	getName(): string {
-
-		// Take name from first line if present and only if
-		// we have no associated file path. In that case we
-		// prefer the file name as title.
-		if (!this._hasAssociatedFilePath && this.cachedModelFirstLine) {
-			return this.cachedModelFirstLine;
+		if (this.cachedModel) {
+			return this.cachedModel.name;
 		}
 
-		// Otherwise fallback to resource
 		return this.hasAssociatedFilePath ? basenameOrAuthority(this.resource) : this.resource.path;
 	}
 
@@ -176,14 +168,6 @@ export class UntitledTextEditorInput extends TextEditorInput implements IEncodin
 		// A input with associated path is always dirty because it is the intent
 		// of the user to create a new file at that location through saving
 		return this.hasAssociatedFilePath;
-	}
-
-	hasBackup(): boolean {
-		if (this.cachedModel) {
-			return this.cachedModel.hasBackup();
-		}
-
-		return false;
 	}
 
 	save(group: GroupIdentifier, options?: ITextFileSaveOptions): Promise<boolean> {
@@ -301,20 +285,7 @@ export class UntitledTextEditorInput extends TextEditorInput implements IEncodin
 		// re-emit some events from the model
 		this._register(model.onDidChangeDirty(() => this._onDidChangeDirty.fire()));
 		this._register(model.onDidChangeEncoding(() => this._onDidModelChangeEncoding.fire()));
-
-		// listen for first line change events if we use it for the label
-		// by checking the contents of the first line has changed
-		if (!this._hasAssociatedFilePath) {
-			this._register(model.onDidChangeFirstLine(() => this.onDidChangeFirstLine(model)));
-		}
-	}
-
-	private onDidChangeFirstLine(model: UntitledTextEditorModel): void {
-		const firstLineText = model.textEditorModel?.getValueInRange({ startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: UntitledTextEditorInput.FIRST_LINE_MAX_TITLE_LENGTH }).trim();
-		if (firstLineText !== this.cachedModelFirstLine) {
-			this.cachedModelFirstLine = firstLineText;
-			this._onDidChangeLabel.fire();
-		}
+		this._register(model.onDidChangeName(() => this._onDidChangeLabel.fire()));
 	}
 
 	matches(otherInput: unknown): boolean {
