@@ -103,7 +103,7 @@ export interface IViewContainersRegistry {
 	/**
 	 * Returns the view container location
 	 */
-	getViewContainerLocation(container: ViewContainer): ViewContainerLocation | undefined;
+	getViewContainerLocation(container: ViewContainer): ViewContainerLocation;
 }
 
 interface ViewOrderDelegate {
@@ -162,7 +162,7 @@ class ViewContainersRegistryImpl extends Disposable implements IViewContainersRe
 		return [...(this.viewContainers.get(location) || [])];
 	}
 
-	getViewContainerLocation(container: ViewContainer): ViewContainerLocation | undefined {
+	getViewContainerLocation(container: ViewContainer): ViewContainerLocation {
 		return keys(this.viewContainers).filter(location => this.getViewContainers(location).filter(viewContainer => viewContainer.id === container.id).length > 0)[0];
 	}
 }
@@ -349,9 +349,7 @@ export interface IViewsViewlet extends IViewlet {
 
 }
 
-export const IViewDescriptorService = createDecorator<IViewDescriptorService>('viewDescriptorService');
 export const IViewsService = createDecorator<IViewsService>('viewsService');
-
 
 export interface IViewsService {
 	_serviceBrand: undefined;
@@ -361,10 +359,14 @@ export interface IViewsService {
 	openView(id: string, focus?: boolean): Promise<IView | null>;
 }
 
+export const IViewDescriptorService = createDecorator<IViewDescriptorService>('viewDescriptorService');
 
 export interface IViewDescriptorService {
 
 	_serviceBrand: undefined;
+
+	readonly onDidChangeContainer: Event<{ views: IViewDescriptor[], from: ViewContainer, to: ViewContainer }>;
+	readonly onDidChangeLocation: Event<{ views: IViewDescriptor[], from: ViewContainerLocation, to: ViewContainerLocation }>;
 
 	moveViewToLocation(view: IViewDescriptor, location: ViewContainerLocation): void;
 
@@ -376,9 +378,11 @@ export interface IViewDescriptorService {
 
 	getViewContainer(viewId: string): ViewContainer | null;
 
-	getViewLocation(viewId: string): ViewContainerLocation | null;
+	getViewContainerLocation(viewContainr: ViewContainer): ViewContainerLocation | null;
 
 	getDefaultContainer(viewId: string): ViewContainer | null;
+
+	getViewLocation(viewId: string): ViewContainerLocation | null;
 }
 
 // Custom views
@@ -443,9 +447,7 @@ export interface IRevealOptions {
 }
 
 export interface ITreeViewDescriptor extends IViewDescriptor {
-
-	readonly treeView: ITreeView;
-
+	treeView: ITreeView;
 }
 
 export type TreeViewItemHandleArg = {

@@ -3,17 +3,21 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { IUserDataSyncService, SyncStatus, ISynchroniser, IUserDataSyncStoreService, SyncSource, ISettingsSyncService, IUserDataSyncLogService, IUserDataAuthTokenService, IUserDataSynchroniser } from 'vs/platform/userDataSync/common/userDataSync';
+import { IUserDataSyncService, SyncStatus, ISynchroniser, IUserDataSyncStoreService, SyncSource, ISettingsSyncService, IUserDataSyncLogService, IUserDataAuthTokenService, IUserDataSynchroniser, UserDataSyncStoreError } from 'vs/platform/userDataSync/common/userDataSync';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { SettingsSynchroniser } from 'vs/platform/userDataSync/common/settingsSync';
 import { Emitter, Event } from 'vs/base/common/event';
 import { ExtensionsSynchroniser } from 'vs/platform/userDataSync/common/extensionsSync';
-import { IExtensionIdentifier } from 'vs/platform/extensions/common/extensions';
 import { KeybindingsSynchroniser } from 'vs/platform/userDataSync/common/keybindingsSync';
 import { GlobalStateSynchroniser } from 'vs/platform/userDataSync/common/globalStateSync';
 import { toErrorMessage } from 'vs/base/common/errorMessage';
 import { localize } from 'vs/nls';
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+
+type SyncConflictsClassification = {
+	source?: { classification: 'SystemMetaData', purpose: 'FeatureInsight', isMeasurement: true };
+};
 
 export class UserDataSyncService extends Disposable implements IUserDataSyncService {
 
@@ -41,6 +45,7 @@ export class UserDataSyncService extends Disposable implements IUserDataSyncServ
 		@ISettingsSyncService private readonly settingsSynchroniser: ISettingsSyncService,
 		@IUserDataSyncLogService private readonly logService: IUserDataSyncLogService,
 		@IUserDataAuthTokenService private readonly userDataAuthTokenService: IUserDataAuthTokenService,
+		@ITelemetryService private readonly telemetryService: ITelemetryService,
 	) {
 		super();
 		this.keybindingsSynchroniser = this._register(this.instantiationService.createInstance(KeybindingsSynchroniser));
@@ -99,17 +104,23 @@ export class UserDataSyncService extends Disposable implements IUserDataSyncServ
 		if (this.status === SyncStatus.HasConflicts) {
 			throw new Error(localize('resolve conflicts', "Please resolve conflicts before resuming sync."));
 		}
+		const startTime = new Date().getTime();
+		this.logService.trace('Started Syncing...');
 		for (const synchroniser of this.synchronisers) {
 			try {
 				await synchroniser.sync();
 				// do not continue if synchroniser has conflicts
 				if (synchroniser.status === SyncStatus.HasConflicts) {
-					return;
+					break;
 				}
 			} catch (e) {
+				if (e instanceof UserDataSyncStoreError) {
+					throw e;
+				}
 				this.logService.error(`${this.getSyncSource(synchroniser)}: ${toErrorMessage(e)}`);
 			}
 		}
+		this.logService.trace(`Finished Syncing. Took ${new Date().getTime() - startTime}ms`);
 	}
 
 	async resolveConflictsAndContinueSync(content: string): Promise<void> {
@@ -247,18 +258,21 @@ export class UserDataSyncService extends Disposable implements IUserDataSyncServ
 		this.logService.info('Completed resetting local cache');
 	}
 
-	removeExtension(identifier: IExtensionIdentifier): Promise<void> {
-		return this.extensionsSynchroniser.removeExtension(identifier);
-	}
-
 	private updateStatus(): void {
-		this._conflictsSource = this.computeConflictsSource();
-		this.setStatus(this.computeStatus());
-	}
-
-	private setStatus(status: SyncStatus): void {
+		const status = this.computeStatus();
 		if (this._status !== status) {
+			const oldStatus = this._status;
+			const oldConflictsSource = this._conflictsSource;
+			this._conflictsSource = this.computeConflictsSource();
 			this._status = status;
+			if (status === SyncStatus.HasConflicts) {
+				// Log to telemetry when there is a sync conflict
+				this.telemetryService.publicLog2<{ source: string }, SyncConflictsClassification>('sync/conflictsDetected', { source: this._conflictsSource! });
+			}
+			if (oldStatus === SyncStatus.HasConflicts && status === SyncStatus.Idle) {
+				// Log to telemetry when conflicts are resolved
+				this.telemetryService.publicLog2<{ source: string }, SyncConflictsClassification>('sync/conflictsResolved', { source: oldConflictsSource! });
+			}
 			this._onDidChangeStatus.fire(status);
 		}
 	}
@@ -296,7 +310,7 @@ export class UserDataSyncService extends Disposable implements IUserDataSyncServ
 		if (synchroniser instanceof ExtensionsSynchroniser) {
 			return SyncSource.Extensions;
 		}
-		return SyncSource.UIState;
+		return SyncSource.GlobalState;
 	}
 
 	private onDidChangeAuthTokenStatus(token: string | undefined): void {

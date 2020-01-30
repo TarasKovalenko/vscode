@@ -60,19 +60,23 @@ export class UserDataAutoSync extends Disposable implements IUserDataAutoSyncSer
 				if (auto) {
 					if (await this.isTurnedOffEverywhere()) {
 						// Turned off everywhere. Reset & Stop Sync.
+						this.logService.info('Turning off sync as it is turned off everywhere.');
 						await this.userDataSyncService.resetLocal();
 						await this.userDataSyncUtilService.updateConfigurationValue('sync.enable', false);
 						return;
 					}
 					if (this.userDataSyncService.status !== SyncStatus.Idle) {
-						this.logService.info('Skipped auto sync as sync is happening');
+						this.logService.trace('Sync Skipped as it is syncing already');
 						return;
 					}
 				}
 				await this.userDataSyncService.sync();
 				this.successiveFailures = 0;
 			} catch (e) {
-				this.successiveFailures++;
+				// Do not count on auth errors
+				if (!(e instanceof UserDataSyncError && e.code === UserDataSyncErrorCode.Unauthroized)) {
+					this.successiveFailures++;
+				}
 				this.logService.error(e);
 				this._onError.fire(e instanceof UserDataSyncError ? { code: e.code, source: e.source } : { code: UserDataSyncErrorCode.Unknown });
 			}
@@ -83,6 +87,8 @@ export class UserDataAutoSync extends Disposable implements IUserDataAutoSyncSer
 				await timeout(1000 * 60 * 5 * (this.successiveFailures + 1)); // Loop sync for every (successive failures count + 1) times 5 mins interval.
 				this.sync(loop, true);
 			}
+		} else {
+			this.logService.trace('Not syncing as it is disabled.');
 		}
 	}
 
@@ -99,6 +105,7 @@ export class UserDataAutoSync extends Disposable implements IUserDataAutoSyncSer
 	}
 
 	triggerAutoSync(): Promise<void> {
+		this.logService.trace('Triggerred Sync...');
 		return this.sync(false, true);
 	}
 

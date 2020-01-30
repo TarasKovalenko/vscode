@@ -13,16 +13,15 @@ import * as types from 'vs/base/common/types';
 import * as objects from 'vs/base/common/objects';
 import * as resources from 'vs/base/common/resources';
 import { Extensions as ColorRegistryExtensions, IColorRegistry, ColorIdentifier, editorBackground, editorForeground } from 'vs/platform/theme/common/colorRegistry';
-import { ThemeType } from 'vs/platform/theme/common/themeService';
+import { ThemeType, ITokenStyle } from 'vs/platform/theme/common/themeService';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { getParseErrorMessage } from 'vs/base/common/jsonErrorMessages';
 import { URI } from 'vs/base/common/uri';
 import { parse as parsePList } from 'vs/workbench/services/themes/common/plistParser';
 import { startsWith } from 'vs/base/common/strings';
-import { TokenStyle, TokenClassification, ProbeScope, TokenStylingRule, getTokenClassificationRegistry, TokenStyleValue } from 'vs/platform/theme/common/tokenClassificationRegistry';
+import { TokenStyle, TokenClassification, ProbeScope, TokenStylingRule, getTokenClassificationRegistry, TokenStyleValue, TokenStyleData } from 'vs/platform/theme/common/tokenClassificationRegistry';
 import { MatcherWithPriority, Matcher, createMatchers } from 'vs/workbench/services/themes/common/textMateScopeMatcher';
 import { IExtensionResourceLoaderService } from 'vs/workbench/services/extensionResourceLoader/common/extensionResourceLoader';
-import { FontStyle, ColorId, MetadataConsts } from 'vs/editor/common/modes';
 import { CharCode } from 'vs/base/common/charCode';
 
 let colorRegistry = Registry.as<IColorRegistry>(ColorRegistryExtensions.ColorContribution);
@@ -39,6 +38,9 @@ const tokenGroupToScopesMap = {
 	variables: ['variable', 'entity.name.variable']
 };
 
+
+export type TokenStyleDefinition = TokenStylingRule | ProbeScope[] | TokenStyleValue;
+export type TokenStyleDefinitions = { [P in keyof TokenStyleData]?: TokenStyleDefinition | undefined };
 
 export class ColorThemeData implements IColorTheme {
 
@@ -122,7 +124,7 @@ export class ColorThemeData implements IColorTheme {
 		return color;
 	}
 
-	public getTokenStyle(classification: TokenClassification, useDefault?: boolean): TokenStyle | undefined {
+	public getTokenStyle(classification: TokenClassification, useDefault = true, definitions: TokenStyleDefinitions = {}): TokenStyle | undefined {
 		let result: any = {
 			foreground: undefined,
 			bold: undefined,
@@ -136,10 +138,11 @@ export class ColorThemeData implements IColorTheme {
 			italic: -1
 		};
 
-		function _processStyle(matchScore: number, style: TokenStyle) {
+		function _processStyle(matchScore: number, style: TokenStyle, definition: TokenStyleDefinition) {
 			if (style.foreground && score.foreground <= matchScore) {
 				score.foreground = matchScore;
 				result.foreground = style.foreground;
+				definitions.foreground = definition;
 			}
 			for (let p of ['bold', 'underline', 'italic']) {
 				const property = p as keyof TokenStyle;
@@ -148,6 +151,7 @@ export class ColorThemeData implements IColorTheme {
 					if (score[property] <= matchScore) {
 						score[property] = matchScore;
 						result[property] = info;
+						definitions[property] = definition;
 					}
 				}
 			}
@@ -159,12 +163,16 @@ export class ColorThemeData implements IColorTheme {
 					let style: TokenStyle | undefined;
 					if (rule.defaults.scopesToProbe) {
 						style = this.resolveScopes(rule.defaults.scopesToProbe);
+						if (style) {
+							_processStyle(matchScore, style, rule.defaults.scopesToProbe);
+						}
 					}
 					if (!style && useDefault !== false) {
-						style = this.resolveTokenStyleValue(rule.defaults[this.type]);
-					}
-					if (style) {
-						_processStyle(matchScore, style);
+						const tokenStyleValue = rule.defaults[this.type];
+						style = this.resolveTokenStyleValue(tokenStyleValue);
+						if (style) {
+							_processStyle(matchScore, style, tokenStyleValue!);
+						}
 					}
 				}
 			}
@@ -172,14 +180,14 @@ export class ColorThemeData implements IColorTheme {
 			for (const rule of this.tokenStylingRules) {
 				const matchScore = rule.match(classification);
 				if (matchScore >= 0) {
-					_processStyle(matchScore, rule.value);
+					_processStyle(matchScore, rule.value, rule);
 				}
 			}
 		}
 		for (const rule of this.customTokenStylingRules) {
 			const matchScore = rule.match(classification);
 			if (matchScore >= 0) {
-				_processStyle(matchScore, rule.value);
+				_processStyle(matchScore, rule.value, rule);
 			}
 		}
 		return TokenStyle.fromData(result);
@@ -234,27 +242,32 @@ export class ColorThemeData implements IColorTheme {
 		return this.getTokenColorIndex().asArray();
 	}
 
-	public getTokenStyleMetadata(type: string, modifiers: string[], useDefault?: boolean): number | undefined {
+	public getTokenStyleMetadata(type: string, modifiers: string[], useDefault = true, definitions: TokenStyleDefinitions = {}): ITokenStyle | undefined {
 		const classification = tokenClassificationRegistry.getTokenClassification(type, modifiers);
 		if (!classification) {
 			return undefined;
 		}
-		const style = this.getTokenStyle(classification, useDefault);
-		let fontStyle = FontStyle.None;
-		let foreground = 0;
-		if (style) {
-			if (style.bold) {
-				fontStyle |= FontStyle.Bold;
-			}
-			if (style.underline) {
-				fontStyle |= FontStyle.Underline;
-			}
-			if (style.italic) {
-				fontStyle |= FontStyle.Italic;
-			}
-			foreground = this.getTokenColorIndex().get(style.foreground);
+		const style = this.getTokenStyle(classification, useDefault, definitions);
+		if (!style) {
+			return undefined;
 		}
-		return toMetadata(fontStyle, foreground, 0);
+
+		return {
+			foreground: this.getTokenColorIndex().get(style.foreground),
+			bold: style.bold,
+			underline: style.underline,
+			italic: style.italic
+		};
+	}
+
+	public getTokenStylingRuleScope(rule: TokenStylingRule): 'setting' | 'theme' | undefined {
+		if (this.customTokenStylingRules.indexOf(rule) !== -1) {
+			return 'setting';
+		}
+		if (this.tokenStylingRules && this.tokenStylingRules.indexOf(rule) !== -1) {
+			return 'theme';
+		}
+		return undefined;
 	}
 
 	public getDefault(colorId: ColorIdentifier): Color | undefined {
@@ -769,18 +782,19 @@ function normalizeColor(color: string | Color | undefined | null): string | unde
 	if (typeof color !== 'string') {
 		color = Color.Format.CSS.formatHexA(color, true);
 	}
-	if (color.charCodeAt(0) !== CharCode.Hash) {
+	const len = color.length;
+	if (color.charCodeAt(0) !== CharCode.Hash || (len !== 4 && len !== 5 && len !== 7 && len !== 9)) {
 		return undefined;
 	}
 	let result = [CharCode.Hash];
-	const len = color.length;
+
 	for (let i = 1; i < len; i++) {
 		const upper = hexUpper(color.charCodeAt(i));
 		if (!upper) {
 			return undefined;
 		}
 		result.push(upper);
-		if (len === 3 || len === 4) {
+		if (len === 4 || len === 5) {
 			result.push(upper);
 		}
 	}
@@ -788,10 +802,7 @@ function normalizeColor(color: string | Color | undefined | null): string | unde
 	if (result.length === 9 && result[7] === CharCode.F && result[8] === CharCode.F) {
 		result.length = 7;
 	}
-	if (result.length === 7) {
-		return String.fromCharCode(...result);
-	}
-	return undefined;
+	return String.fromCharCode(...result);
 }
 
 function hexUpper(charCode: CharCode): number {
@@ -801,20 +812,4 @@ function hexUpper(charCode: CharCode): number {
 		return charCode - CharCode.a + CharCode.A;
 	}
 	return 0;
-}
-
-function toMetadata(fontStyle: FontStyle, foreground: ColorId | number, background: ColorId | number) {
-	const fontStyleBits = fontStyle << MetadataConsts.FONT_STYLE_OFFSET;
-	const foregroundBits = foreground << MetadataConsts.FOREGROUND_OFFSET;
-	const backgroundBits = background << MetadataConsts.BACKGROUND_OFFSET;
-	if ((fontStyleBits & MetadataConsts.FONT_STYLE_MASK) !== fontStyleBits) {
-		console.log(`Can not express fontStyle ${fontStyle} in metadata`);
-	}
-	if ((backgroundBits & MetadataConsts.BACKGROUND_MASK) !== backgroundBits) {
-		console.log(`Can not express background ${background} in metadata`);
-	}
-	if ((foregroundBits & MetadataConsts.FOREGROUND_MASK) !== foregroundBits) {
-		console.log(`Can not express foreground ${foreground} in metadata`);
-	}
-	return (fontStyleBits | foregroundBits | backgroundBits) >>> 0;
 }
