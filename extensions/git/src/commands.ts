@@ -6,17 +6,18 @@
 import { lstat, Stats } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { commands, Disposable, LineChange, MessageOptions, OutputChannel, Position, ProgressLocation, QuickPickItem, Range, SourceControlResourceState, TextDocumentShowOptions, TextEditor, Uri, ViewColumn, window, workspace, WorkspaceEdit, WorkspaceFolder } from 'vscode';
+import { commands, Disposable, LineChange, MessageOptions, OutputChannel, Position, ProgressLocation, QuickPickItem, Range, SourceControlResourceState, TextDocumentShowOptions, TextEditor, Uri, ViewColumn, window, workspace, WorkspaceEdit, WorkspaceFolder, TimelineItem, env } from 'vscode';
 import TelemetryReporter from 'vscode-extension-telemetry';
 import * as nls from 'vscode-nls';
-import { Branch, GitErrorCodes, Ref, RefType, Status } from './api/git';
-import { CommitOptions, ForcePushMode, Git, Stash } from './git';
+import { Branch, GitErrorCodes, Ref, RefType, Status, CommitOptions } from './api/git';
+import { ForcePushMode, Git, Stash } from './git';
 import { Model } from './model';
 import { Repository, Resource, ResourceGroupType } from './repository';
 import { applyLineChanges, getModifiedRange, intersectDiffWithRange, invertLineChange, toLineRanges } from './staging';
 import { fromGitUri, toGitUri, isGitUri } from './uri';
 import { grep, isDescendant, pathEquals } from './util';
 import { Log, LogLevel } from './log';
+import { GitTimelineItem } from './timelineProvider';
 
 const localize = nls.loadMessageBundle();
 
@@ -1620,7 +1621,7 @@ export class CommandCenter {
 
 		const rawBranchName = defaultName || await window.showInputBox({
 			placeHolder: localize('branch name', "Branch name"),
-			prompt: localize('provide branch name', "Please provide a branch name"),
+			prompt: localize('provide branch name', "Please provide a new branch name"),
 			value: initialValue,
 			ignoreFocusOut: true,
 			validateInput: (name: string) => {
@@ -2331,16 +2332,46 @@ export class CommandCenter {
 		return result && result.stash;
 	}
 
-	@command('git.openDiff', { repository: false })
-	async openDiff(uri: Uri, hash: string) {
-		const basename = path.basename(uri.fsPath);
-
-		if (hash === '~') {
-			return commands.executeCommand('vscode.diff', toGitUri(uri, hash), toGitUri(uri, `HEAD`), `${basename} (Index)`);
+	@command('git.timeline.openDiff', { repository: false })
+	async timelineOpenDiff(item: TimelineItem, uri: Uri | undefined, _source: string) {
+		// eslint-disable-next-line eqeqeq
+		if (uri == null || !GitTimelineItem.is(item)) {
+			return undefined;
 		}
 
-		return commands.executeCommand('vscode.diff', toGitUri(uri, `${hash}^`), toGitUri(uri, hash), `${basename} (${hash.substr(0, 8)}^) \u27f7 ${basename} (${hash.substr(0, 8)})`);
+		const basename = path.basename(uri.fsPath);
+
+		let title;
+		if ((item.previousRef === 'HEAD' || item.previousRef === '~') && item.ref === '') {
+			title = `${basename} (Working Tree)`;
+		}
+		else if (item.previousRef === 'HEAD' && item.ref === '~') {
+			title = `${basename} (Index)`;
+		} else {
+			title = `${basename} (${item.shortPreviousRef}) \u27f7 ${basename} (${item.shortRef})`;
+		}
+
+		return commands.executeCommand('vscode.diff', toGitUri(uri, item.previousRef), item.ref === '' ? uri : toGitUri(uri, item.ref), title);
 	}
+
+	@command('git.timeline.copyCommitId', { repository: false })
+	async timelineCopyCommitId(item: TimelineItem, _uri: Uri | undefined, _source: string) {
+		if (!GitTimelineItem.is(item)) {
+			return;
+		}
+
+		env.clipboard.writeText(item.ref);
+	}
+
+	@command('git.timeline.copyCommitMessage', { repository: false })
+	async timelineCopyCommitMessage(item: TimelineItem, _uri: Uri | undefined, _source: string) {
+		if (!GitTimelineItem.is(item)) {
+			return;
+		}
+
+		env.clipboard.writeText(item.message);
+	}
+
 
 	private createCommand(id: string, key: string, method: Function, options: CommandOptions): (...args: any[]) => any {
 		const result = (...args: any[]) => {
