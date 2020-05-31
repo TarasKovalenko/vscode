@@ -7,46 +7,37 @@ import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions, IWo
 import { Registry } from 'vs/platform/registry/common/platform';
 import { LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 import { UserDataSyncWorkbenchContribution } from 'vs/workbench/contrib/userDataSync/browser/userDataSync';
-import { IConfigurationService, ConfigurationTarget } from 'vs/platform/configuration/common/configuration';
-import { IUserDataSyncEnablementService, getUserDataSyncStore } from 'vs/platform/userDataSync/common/userDataSync';
-import { IProductService } from 'vs/platform/product/common/productService';
+import { IUserDataAutoSyncService, UserDataSyncError, UserDataSyncErrorCode } from 'vs/platform/userDataSync/common/userDataSync';
+import { INotificationService, Severity } from 'vs/platform/notification/common/notification';
+import { Disposable } from 'vs/base/common/lifecycle';
+import { localize } from 'vs/nls';
+import { isWeb } from 'vs/base/common/platform';
 
-class UserDataSyncSettingsMigrationContribution implements IWorkbenchContribution {
+class UserDataSyncReportIssueContribution extends Disposable implements IWorkbenchContribution {
 
 	constructor(
-		@IProductService productService: IProductService,
-		@IConfigurationService private readonly configurationService: IConfigurationService,
-		@IUserDataSyncEnablementService userDataSyncEnablementService: IUserDataSyncEnablementService,
+		@IUserDataAutoSyncService userDataAutoSyncService: IUserDataAutoSyncService,
+		@INotificationService private readonly notificationService: INotificationService,
 	) {
-		if (getUserDataSyncStore(productService, configurationService)) {
-			if (!configurationService.getValue('sync.enableSettings')) {
-				userDataSyncEnablementService.setResourceEnablement('settings', false);
-			}
-			if (!configurationService.getValue('sync.enableKeybindings')) {
-				userDataSyncEnablementService.setResourceEnablement('keybindings', false);
-			}
-			if (!configurationService.getValue('sync.enableUIState')) {
-				userDataSyncEnablementService.setResourceEnablement('globalState', false);
-			}
-			if (!configurationService.getValue('sync.enableExtensions')) {
-				userDataSyncEnablementService.setResourceEnablement('extensions', false);
-			}
-			if (configurationService.getValue('sync.enable')) {
-				userDataSyncEnablementService.setEnablement(true);
-			}
-			this.removeFromConfiguration();
-		}
+		super();
+		this._register(userDataAutoSyncService.onError(error => this.onAutoSyncError(error)));
 	}
 
-	private async removeFromConfiguration(): Promise<void> {
-		await this.configurationService.updateValue('sync.enable', undefined, {}, ConfigurationTarget.USER, true);
-		await this.configurationService.updateValue('sync.enableSettings', undefined, {}, ConfigurationTarget.USER, true);
-		await this.configurationService.updateValue('sync.enableKeybindings', undefined, {}, ConfigurationTarget.USER, true);
-		await this.configurationService.updateValue('sync.enableUIState', undefined, {}, ConfigurationTarget.USER, true);
-		await this.configurationService.updateValue('sync.enableExtensions', undefined, {}, ConfigurationTarget.USER, true);
+	private onAutoSyncError(error: UserDataSyncError): void {
+		switch (error.code) {
+			case UserDataSyncErrorCode.LocalTooManyRequests:
+				this.notificationService.notify({
+					severity: Severity.Error,
+					message: localize('too many requests', "Turned off syncing preferences on this device because it is making too many requests."),
+				});
+				return;
+		}
 	}
 }
 
 const workbenchRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
 workbenchRegistry.registerWorkbenchContribution(UserDataSyncWorkbenchContribution, LifecyclePhase.Ready);
-workbenchRegistry.registerWorkbenchContribution(UserDataSyncSettingsMigrationContribution, LifecyclePhase.Ready);
+
+if (isWeb) {
+	workbenchRegistry.registerWorkbenchContribution(UserDataSyncReportIssueContribution, LifecyclePhase.Ready);
+}

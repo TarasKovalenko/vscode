@@ -19,7 +19,6 @@ import { ITextBufferFactory, ITextModel } from 'vs/editor/common/model';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { ILogService } from 'vs/platform/log/common/log';
 import { basename } from 'vs/base/common/path';
-import { onUnexpectedError } from 'vs/base/common/errors';
 import { IWorkingCopyService, IWorkingCopyBackup } from 'vs/workbench/services/workingCopy/common/workingCopyService';
 import { IFilesConfigurationService } from 'vs/workbench/services/filesConfiguration/common/filesConfigurationService';
 import { ILabelService } from 'vs/platform/label/common/label';
@@ -206,9 +205,9 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 
 	//#region Revert
 
-	async revert(options?: IRevertOptions): Promise<boolean> {
+	async revert(options?: IRevertOptions): Promise<void> {
 		if (!this.isResolved()) {
-			return false;
+			return;
 		}
 
 		// Unset flags
@@ -240,8 +239,6 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 		if (wasDirty) {
 			this._onDidChangeDirty.fire();
 		}
-
-		return true;
 	}
 
 	//#endregion
@@ -250,6 +247,13 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 
 	async load(options?: ITextFileLoadOptions): Promise<TextFileEditorModel> {
 		this.logService.trace('[text file model] load() - enter', this.resource.toString(true));
+
+		// Return early if we are disposed
+		if (this.isDisposed()) {
+			this.logService.trace('[text file model] load() - exit - without loading because model is disposed', this.resource.toString(true));
+
+			return this;
+		}
 
 		// It is very important to not reload the model when the model is dirty.
 		// We also only want to reload the model from the disk if no save is pending
@@ -359,7 +363,14 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 	}
 
 	private loadFromContent(content: ITextFileStreamContent, options?: ITextFileLoadOptions, fromBackup?: boolean): TextFileEditorModel {
-		this.logService.trace('[text file model] load() - resolved content', this.resource.toString(true));
+		this.logService.trace('[text file model] loadFromContent() - enter', this.resource.toString(true));
+
+		// Return early if we are disposed
+		if (this.isDisposed()) {
+			this.logService.trace('[text file model] loadFromContent() - exit - because model is disposed', this.resource.toString(true));
+
+			return this;
+		}
 
 		// Update our resolved disk stat model
 		this.updateLastResolvedFileStat({
@@ -405,7 +416,7 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 	}
 
 	private doCreateTextModel(resource: URI, value: ITextBufferFactory, fromBackup: boolean): void {
-		this.logService.trace('[text file model] load() - created text editor model', this.resource.toString(true));
+		this.logService.trace('[text file model] doCreateTextModel()', this.resource.toString(true));
 
 		// Create model
 		const textModel = this.createTextEditorModel(value, resource, this.preferredMode);
@@ -420,7 +431,7 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 	}
 
 	private doUpdateTextModel(value: ITextBufferFactory): void {
-		this.logService.trace('[text file model] load() - updated text editor model', this.resource.toString(true));
+		this.logService.trace('[text file model] doUpdateTextModel()', this.resource.toString(true));
 
 		// Update model value in a block that ignores content change events for dirty tracking
 		this.ignoreDirtyOnModelContentChange = true;
@@ -668,7 +679,7 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 			// - the model is not in orphan mode (because in that case we know the file does not exist on disk)
 			// - the model version did not change due to save participants running
 			if (options.force && !this.dirty && !this.inOrphanMode && options.reason === SaveReason.EXPLICIT && versionId === this.versionId) {
-				return this.doTouch(this.versionId, options.reason);
+				return this.doTouch(this.versionId, options);
 			}
 
 			// update versionId with its new value (if pre-save changes happened)
@@ -703,7 +714,6 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 	}
 
 	private handleSaveSuccess(stat: IFileStatWithMetadata, versionId: number, options: ITextFileSaveOptions): void {
-		this.logService.trace(`[text file model] doSave(${versionId}) - after write()`, this.resource.toString(true));
 
 		// Updated resolved stat with updated stat
 		this.updateLastResolvedFileStat(stat);
@@ -744,11 +754,16 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 		this._onDidSaveError.fire();
 	}
 
-	private doTouch(this: TextFileEditorModel & IResolvedTextFileEditorModel, versionId: number, reason: SaveReason): Promise<void> {
+	private doTouch(this: TextFileEditorModel & IResolvedTextFileEditorModel, versionId: number, options: ITextFileSaveOptions): Promise<void> {
 		const lastResolvedFileStat = assertIsDefined(this.lastResolvedFileStat);
 
 		return this.saveSequentializer.setPending(versionId, (async () => {
 			try {
+
+				// Write contents to touch: we used to simply update the mtime of the file
+				// but this lead to weird results, either for external watchers or even for
+				// us where we thought the file has changed on disk. As such, we let the OS
+				// handle the increment of mtime and not deal with it ourselves.
 				const stat = await this.textFileService.write(lastResolvedFileStat.resource, this.createSnapshot(), {
 					mtime: lastResolvedFileStat.mtime,
 					encoding: this.getEncoding(),
@@ -759,9 +774,17 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 				this.updateLastResolvedFileStat(stat);
 
 				// Emit File Saved Event
-				this._onDidSave.fire(reason);
+				this._onDidSave.fire(options.reason ?? SaveReason.EXPLICIT);
 			} catch (error) {
-				onUnexpectedError(error); // just log any error but do not notify the user since the file was not dirty
+
+				// In any case of an error, we mark the model as dirty to prevent data loss
+				// It could be possible that the touch corrupted the file on disk (e.g. when
+				// an error happened after truncating the file) and as such we want to preserve
+				// the model contents to prevent data loss
+				this.setDirty(true);
+
+				// Notify user to handle this save error
+				this.handleSaveError(error, versionId, options);
 			}
 		})());
 	}
@@ -906,6 +929,8 @@ export class TextFileEditorModel extends BaseTextEditorModel implements ITextFil
 	}
 
 	dispose(): void {
+		this.logService.trace('[text file model] dispose()', this.resource.toString(true));
+
 		this.disposed = true;
 		this.inConflictMode = false;
 		this.inOrphanMode = false;

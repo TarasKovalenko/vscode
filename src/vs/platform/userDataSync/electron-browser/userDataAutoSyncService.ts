@@ -5,9 +5,12 @@
 
 import { IUserDataSyncService, IUserDataSyncLogService, IUserDataSyncEnablementService } from 'vs/platform/userDataSync/common/userDataSync';
 import { Event } from 'vs/base/common/event';
-import { IElectronService } from 'vs/platform/electron/node/electron';
+import { IElectronService } from 'vs/platform/electron/electron-sandbox/electron';
 import { UserDataAutoSyncService as BaseUserDataAutoSyncService } from 'vs/platform/userDataSync/common/userDataAutoSyncService';
 import { IAuthenticationTokenService } from 'vs/platform/authentication/common/authentication';
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+import { IProductService } from 'vs/platform/product/common/productService';
+import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 
 export class UserDataAutoSyncService extends BaseUserDataAutoSyncService {
 
@@ -17,15 +20,17 @@ export class UserDataAutoSyncService extends BaseUserDataAutoSyncService {
 		@IElectronService electronService: IElectronService,
 		@IUserDataSyncLogService logService: IUserDataSyncLogService,
 		@IAuthenticationTokenService authTokenService: IAuthenticationTokenService,
+		@ITelemetryService telemetryService: ITelemetryService,
+		@IProductService productService: IProductService,
+		@IConfigurationService configurationService: IConfigurationService,
 	) {
-		super(userDataSyncEnablementService, userDataSyncService, logService, authTokenService);
+		super(userDataSyncEnablementService, userDataSyncService, logService, authTokenService, telemetryService, productService, configurationService);
 
-		// Sync immediately if there is a local change.
-		this._register(Event.debounce(Event.any<any>(
-			electronService.onWindowFocus,
-			electronService.onWindowOpen,
+		this._register(Event.debounce<string, string[]>(Event.any<string>(
+			Event.map(electronService.onWindowFocus, () => 'windowFocus'),
+			Event.map(electronService.onWindowOpen, () => 'windowOpen'),
 			userDataSyncService.onDidChangeLocal,
-		), () => undefined, 500)(() => this.triggerAutoSync()));
+		), (last, source) => last ? [...last, source] : [source], 1000)(sources => this.triggerAutoSync(sources)));
 	}
 
 }

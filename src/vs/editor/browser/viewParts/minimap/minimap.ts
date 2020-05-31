@@ -46,7 +46,7 @@ class MinimapOptions {
 
 	public readonly renderMinimap: RenderMinimap;
 
-	public readonly mode: 'actual' | 'cover' | 'contain';
+	public readonly size: 'proportional' | 'fill' | 'fit';
 
 	public readonly minimapHeightIsEditorHeight: boolean;
 
@@ -104,30 +104,31 @@ class MinimapOptions {
 		const options = configuration.options;
 		const pixelRatio = options.get(EditorOption.pixelRatio);
 		const layoutInfo = options.get(EditorOption.layoutInfo);
+		const minimapLayout = layoutInfo.minimap;
 		const fontInfo = options.get(EditorOption.fontInfo);
 		const minimapOpts = options.get(EditorOption.minimap);
 
-		this.renderMinimap = layoutInfo.renderMinimap | 0;
-		this.mode = minimapOpts.mode;
-		this.minimapHeightIsEditorHeight = layoutInfo.minimapHeightIsEditorHeight;
+		this.renderMinimap = minimapLayout.renderMinimap;
+		this.size = minimapOpts.size;
+		this.minimapHeightIsEditorHeight = minimapLayout.minimapHeightIsEditorHeight;
 		this.scrollBeyondLastLine = options.get(EditorOption.scrollBeyondLastLine);
 		this.showSlider = minimapOpts.showSlider;
 		this.pixelRatio = pixelRatio;
 		this.typicalHalfwidthCharacterWidth = fontInfo.typicalHalfwidthCharacterWidth;
 		this.lineHeight = options.get(EditorOption.lineHeight);
-		this.minimapLeft = layoutInfo.minimapLeft;
-		this.minimapWidth = layoutInfo.minimapWidth;
+		this.minimapLeft = minimapLayout.minimapLeft;
+		this.minimapWidth = minimapLayout.minimapWidth;
 		this.minimapHeight = layoutInfo.height;
 
-		this.canvasInnerWidth = layoutInfo.minimapCanvasInnerWidth;
-		this.canvasInnerHeight = layoutInfo.minimapCanvasInnerHeight;
-		this.canvasOuterWidth = layoutInfo.minimapCanvasOuterWidth;
-		this.canvasOuterHeight = layoutInfo.minimapCanvasOuterHeight;
+		this.canvasInnerWidth = minimapLayout.minimapCanvasInnerWidth;
+		this.canvasInnerHeight = minimapLayout.minimapCanvasInnerHeight;
+		this.canvasOuterWidth = minimapLayout.minimapCanvasOuterWidth;
+		this.canvasOuterHeight = minimapLayout.minimapCanvasOuterHeight;
 
-		this.isSampling = layoutInfo.minimapIsSampling;
+		this.isSampling = minimapLayout.minimapIsSampling;
 		this.editorHeight = layoutInfo.height;
-		this.fontScale = layoutInfo.minimapScale;
-		this.minimapLineHeight = layoutInfo.minimapLineHeight;
+		this.fontScale = minimapLayout.minimapScale;
+		this.minimapLineHeight = minimapLayout.minimapLineHeight;
 		this.minimapCharWidth = Constants.BASE_CHAR_WIDTH * this.fontScale;
 
 		this.charRenderer = once(() => MinimapCharRendererFactory.create(this.fontScale, fontInfo.fontFamily));
@@ -144,7 +145,7 @@ class MinimapOptions {
 
 	public equals(other: MinimapOptions): boolean {
 		return (this.renderMinimap === other.renderMinimap
-			&& this.mode === other.mode
+			&& this.size === other.size
 			&& this.minimapHeightIsEditorHeight === other.minimapHeightIsEditorHeight
 			&& this.scrollBeyondLastLine === other.scrollBeyondLastLine
 			&& this.showSlider === other.showSlider
@@ -163,7 +164,7 @@ class MinimapOptions {
 			&& this.fontScale === other.fontScale
 			&& this.minimapLineHeight === other.minimapLineHeight
 			&& this.minimapCharWidth === other.minimapCharWidth
-			&& this.backgroundColor.equals(other.backgroundColor)
+			&& this.backgroundColor && this.backgroundColor.equals(other.backgroundColor)
 		);
 	}
 }
@@ -262,7 +263,8 @@ class MinimapLayout {
 			const computedSliderRatio = (maxMinimapSliderTop) / (scrollHeight - viewportHeight);
 			const sliderTop = (scrollTop * computedSliderRatio);
 			const sliderNeeded = (maxMinimapSliderTop > 0);
-			return new MinimapLayout(scrollTop, scrollHeight, sliderNeeded, computedSliderRatio, sliderTop, sliderHeight, 1, lineCount);
+			const maxLinesFitting = Math.floor(options.canvasInnerHeight / options.minimapLineHeight);
+			return new MinimapLayout(scrollTop, scrollHeight, sliderNeeded, computedSliderRatio, sliderTop, sliderHeight, 1, Math.min(lineCount, maxLinesFitting));
 		}
 
 		// The visible line count in a viewport can change due to a number of reasons:
@@ -1002,26 +1004,26 @@ export class Minimap extends ViewPart implements IMinimapModel {
 	}
 
 	public getOptions(): TextModelResolvedOptions {
-		return this._context.model.getOptions();
+		return this._context.model.getTextModelOptions();
 	}
 
 	public revealLineNumber(lineNumber: number): void {
 		if (this._samplingState) {
 			lineNumber = this._samplingState.minimapLines[lineNumber - 1];
 		}
-		this._context.privateViewEventBus.emit(new viewEvents.ViewRevealRangeRequestEvent(
+		this._context.model.revealRange(
 			'mouse',
+			false,
 			new Range(lineNumber, 1, lineNumber, 1),
 			viewEvents.VerticalRevealType.Center,
-			false,
 			ScrollType.Smooth
-		));
+		);
 	}
 
 	public setScrollTop(scrollTop: number): void {
-		this._context.viewLayout.setScrollPositionNow({
+		this._context.model.setScrollPosition({
 			scrollTop: scrollTop
-		});
+		}, ScrollType.Immediate);
 	}
 
 	//#endregion
@@ -1111,7 +1113,7 @@ class InnerMinimap extends Disposable {
 			if (!this._lastRenderData) {
 				return;
 			}
-			if (this._model.options.minimapHeightIsEditorHeight) {
+			if (this._model.options.size !== 'proportional') {
 				if (e.leftButton && this._lastRenderData) {
 					// pretend the click occured in the center of the slider
 					const position = dom.getDomNodePagePosition(this._slider.domNode);
