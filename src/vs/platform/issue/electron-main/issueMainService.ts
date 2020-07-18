@@ -20,6 +20,7 @@ import { listProcesses } from 'vs/base/node/ps';
 import { IDialogMainService } from 'vs/platform/dialogs/electron-main/dialogs';
 import { URI } from 'vs/base/common/uri';
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
+import { zoomLevelToZoomFactor } from 'vs/platform/windows/common/windows';
 
 const DEFAULT_BACKGROUND_COLOR = '#1E1E1E';
 
@@ -198,7 +199,8 @@ export class IssueMainService implements ICommonIssueService {
 							nodeIntegration: true,
 							enableWebSQL: false,
 							enableRemoteModule: false,
-							nativeWindowOpen: true
+							nativeWindowOpen: true,
+							zoomFactor: zoomLevelToZoomFactor(data.zoomLevel)
 						}
 					});
 
@@ -251,7 +253,8 @@ export class IssueMainService implements ICommonIssueService {
 							nodeIntegration: true,
 							enableWebSQL: false,
 							enableRemoteModule: false,
-							nativeWindowOpen: true
+							nativeWindowOpen: true,
+							zoomFactor: zoomLevelToZoomFactor(data.zoomLevel)
 						}
 					});
 
@@ -267,7 +270,7 @@ export class IssueMainService implements ICommonIssueService {
 					};
 
 					this._processExplorerWindow.loadURL(
-						toLauchUrl('vs/code/electron-browser/processExplorer/processExplorer.html', windowConfiguration));
+						toLauchUrl('vs/code/electron-sandbox/processExplorer/processExplorer.html', windowConfiguration));
 
 					this._processExplorerWindow.on('close', () => this._processExplorerWindow = null);
 

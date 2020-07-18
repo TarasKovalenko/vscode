@@ -429,7 +429,8 @@ export class CustomMenubarControl extends MenubarControl {
 							primary: KeyCode.F10,
 							weight: KeybindingWeight.WorkbenchContrib,
 							when: IsWebContext
-						}
+						},
+						f1: true
 					});
 				}
 
@@ -732,5 +733,11 @@ export class CustomMenubarControl extends MenubarControl {
 		}
 
 		this.menubar?.update(this.getMenuBarOptions());
+	}
+
+	toggleFocus() {
+		if (this.menubar) {
+			this.menubar.toggleFocus();
+		}
 	}
 }

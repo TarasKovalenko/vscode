@@ -10,6 +10,7 @@ import { URI } from 'vs/base/common/uri';
 import * as model from 'vs/editor/common/model';
 import { Range } from 'vs/editor/common/core/range';
 import { Disposable } from 'vs/base/common/lifecycle';
+import { ITextModelService } from 'vs/editor/common/services/resolverService';
 
 export class NotebookCellTextModel extends Disposable implements ICell {
 	private _onDidChangeOutputs = new Emitter<NotebookCellOutputsSplice[]>();
@@ -69,15 +70,6 @@ export class NotebookCellTextModel extends Disposable implements ICell {
 		return this._textBuffer;
 	}
 
-	private _textModel?: model.ITextModel;
-
-	get textModel(): model.ITextModel | undefined {
-		return this._textModel;
-	}
-
-	set textModel(m: model.ITextModel | undefined) {
-		this._textModel = m;
-	}
 
 	constructor(
 		readonly uri: URI,
@@ -86,7 +78,8 @@ export class NotebookCellTextModel extends Disposable implements ICell {
 		private _language: string,
 		public cellKind: CellKind,
 		outputs: IProcessedOutput[],
-		metadata: NotebookCellMetadata | undefined
+		metadata: NotebookCellMetadata | undefined,
+		private readonly _modelService: ITextModelService
 	) {
 		super();
 		this._outputs = outputs;
@@ -138,5 +131,14 @@ export class NotebookCellTextModel extends Disposable implements ICell {
 				hasExecutionOrder
 			}
 		};
+	}
+
+	async resolveTextModelRef() {
+		const ref = await this._modelService.createModelReference(this.uri);
+		return ref;
+	}
+
+	dispose() {
+		super.dispose();
 	}
 }

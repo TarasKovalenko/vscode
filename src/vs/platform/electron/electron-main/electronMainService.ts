@@ -10,7 +10,7 @@ import { OpenContext } from 'vs/platform/windows/node/window';
 import { ILifecycleMainService } from 'vs/platform/lifecycle/electron-main/lifecycleMainService';
 import { IOpenedWindow, IOpenWindowOptions, IWindowOpenable, IOpenEmptyWindowOptions } from 'vs/platform/windows/common/windows';
 import { INativeOpenDialogOptions } from 'vs/platform/dialogs/common/dialogs';
-import { isMacintosh } from 'vs/base/common/platform';
+import { isMacintosh, isWindows, isRootUser } from 'vs/base/common/platform';
 import { ICommonElectronService } from 'vs/platform/electron/common/electron';
 import { ISerializableCommandAction } from 'vs/platform/actions/common/actions';
 import { IEnvironmentService } from 'vs/platform/environment/common/environment';
@@ -22,6 +22,8 @@ import { ITelemetryData, ITelemetryService } from 'vs/platform/telemetry/common/
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { ILogService } from 'vs/platform/log/common/log';
 import { INativeEnvironmentService } from 'vs/platform/environment/node/environmentService';
+import { MouseInputEvent } from 'vs/base/parts/sandbox/common/electronTypes';
+import { totalmem } from 'os';
 
 export interface IElectronMainService extends AddFirstParameterToFunctions<ICommonElectronService, Promise<unknown> /* only methods, not events */, number | undefined /* window ID */> { }
 
@@ -301,6 +303,30 @@ export class ElectronMainService implements IElectronMainService {
 		return shell.moveItemToTrash(fullPath);
 	}
 
+	async isAdmin(): Promise<boolean> {
+		let isAdmin: boolean;
+		if (isWindows) {
+			isAdmin = (await import('native-is-elevated'))();
+		} else {
+			isAdmin = isRootUser();
+		}
+
+		return isAdmin;
+	}
+
+	async getTotalMem(): Promise<number> {
+		return totalmem();
+	}
+
+	//#endregion
+
+
+	//#region Process
+
+	async killProcess(windowId: number | undefined, pid: number, code: string): Promise<void> {
+		process.kill(pid, code);
+	}
+
 	//#endregion
 
 
@@ -459,7 +485,7 @@ export class ElectronMainService implements IElectronMainService {
 		crashReporter.start(options);
 	}
 
-	async sendInputEvent(windowId: number | undefined, event: { type: 'mouseDown' | 'mouseUp'; x: number; y: number; clickCount: number; }): Promise<void> {
+	async sendInputEvent(windowId: number | undefined, event: MouseInputEvent): Promise<void> {
 		const window = this.windowById(windowId);
 		if (window && (event.type === 'mouseDown' || event.type === 'mouseUp')) {
 			window.win.webContents.sendInputEvent(event);

@@ -56,8 +56,9 @@
         {
           "id": "npm",
           "name": "%view.name%",
-          "when": "npm:showScriptExplorer || config.npm.enableScriptExplorer",
-          "icon": "images/code.svg"
+          "when": "npm:showScriptExplorer",
+          "icon": "images/code.svg",
+          "visibility": "hidden"
         }
       ]
     },
@@ -128,7 +129,7 @@
       "editor/context": [
         {
           "command": "npm.runSelectedScript",
-          "when": "resourceFilename == 'package.json'",
+          "when": "resourceFilename == 'package.json' && resourceScheme == file",
           "group": "navigation@+1"
         }
       ],
@@ -183,7 +184,7 @@
       ],
       "explorer/context": [
         {
-          "when": "config.npm.enableRunFromFolder && explorerViewletVisible && explorerResourceIsFolder",
+          "when": "config.npm.enableRunFromFolder && explorerViewletVisible && explorerResourceIsFolder && resourceScheme == file",
           "command": "npm.runScriptFromFolder",
           "group": "2_workspace"
         }
@@ -215,7 +216,8 @@
           "type": "string",
           "enum": [
             "npm",
-            "yarn"
+            "yarn",
+            "pnpm"
           ],
           "default": "npm",
           "description": "%config.npm.packageManager%"
@@ -289,7 +291,8 @@
             "type": "string",
             "description": "%taskdef.path%"
           }
-        }
+        },
+        "when": "shellExecutionSupported"
       }
     ]
   }
