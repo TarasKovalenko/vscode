@@ -12,7 +12,6 @@ import { onUnexpectedError } from 'vs/base/common/errors';
 import { Emitter, Event } from 'vs/base/common/event';
 import { Disposable, IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import * as platform from 'vs/base/common/platform';
-import { coalesce } from 'vs/base/common/arrays';
 import { URI } from 'vs/base/common/uri';
 import { Schemas, RemoteAuthorities } from 'vs/base/common/network';
 import { BrowserFeatures } from 'vs/base/browser/canIUse';
@@ -23,6 +22,9 @@ export function clearNode(node: HTMLElement): void {
 	}
 }
 
+/**
+ * @deprecated use `node.remove()` instead
+ */
 export function removeNode(node: HTMLElement): void {
 	if (node.parentNode) {
 		node.parentNode.removeChild(node);
@@ -408,9 +410,9 @@ export function getClientArea(element: HTMLElement): Dimension {
 	}
 
 	// If visual view port exits and it's on mobile, it should be used instead of window innerWidth / innerHeight, or document.body.clientWidth / document.body.clientHeight
-	if (platform.isIOS && (<any>window).visualViewport) {
-		const width = (<any>window).visualViewport.width;
-		const height = (<any>window).visualViewport.height - (
+	if (platform.isIOS && window.visualViewport) {
+		const width = window.visualViewport.width;
+		const height = window.visualViewport.height - (
 			browser.isStandalone
 				// in PWA mode, the visual viewport always includes the safe-area-inset-bottom (which is for the home indicator)
 				// even when you are using the onscreen monitor, the visual viewport will include the area between system statusbar and the onscreen keyboard
@@ -749,6 +751,16 @@ export function getShadowRoot(domNode: Node): ShadowRoot | null {
 	return isShadowRoot(domNode) ? domNode : null;
 }
 
+export function getActiveElement(): Element | null {
+	let result = document.activeElement;
+
+	while (result?.shadowRoot) {
+		result = result.shadowRoot.activeElement;
+	}
+
+	return result;
+}
+
 export function createStyleSheet(container: HTMLElement = document.getElementsByTagName('head')[0]): HTMLStyleElement {
 	let style = document.createElement('style');
 	style.type = 'text/css';
@@ -772,11 +784,11 @@ function getSharedStyleSheet(): HTMLStyleElement {
 }
 
 function getDynamicStyleSheetRules(style: any) {
-	if (style && style.sheet && style.sheet.rules) {
+	if (style?.sheet?.rules) {
 		// Chrome, IE
 		return style.sheet.rules;
 	}
-	if (style && style.sheet && style.sheet.cssRules) {
+	if (style?.sheet?.cssRules) {
 		// FF
 		return style.sheet.cssRules;
 	}
@@ -984,6 +996,11 @@ export function trackFocus(element: HTMLElement | Window): IFocusTracker {
 	return new FocusTracker(element);
 }
 
+export function after<T extends Node>(sibling: HTMLElement, child: T): T {
+	sibling.after(child);
+	return child;
+}
+
 export function append<T extends Node>(parent: HTMLElement, ...children: T[]): T {
 	children.forEach(child => parent.appendChild(child));
 	return children[children.length - 1];
@@ -994,7 +1011,22 @@ export function prepend<T extends Node>(parent: HTMLElement, child: T): T {
 	return child;
 }
 
-const SELECTOR_REGEX = /([\w\-]+)?(#([\w\-]+))?((.([\w\-]+))*)/;
+
+/**
+ * Removes all children from `parent` and appends `children`
+ */
+export function reset(parent: HTMLElement, ...children: Array<Node | string>) {
+	parent.innerText = '';
+	for (const child of children) {
+		if (child instanceof Node) {
+			parent.appendChild(child);
+		} else if (typeof child === 'string') {
+			parent.appendChild(document.createTextNode(child));
+		}
+	}
+}
+
+const SELECTOR_REGEX = /([\w\-]+)?(#([\w\-]+))?((\.([\w\-]+))*)/;
 
 export enum Namespace {
 	HTML = 'http://www.w3.org/1999/xhtml',
@@ -1045,14 +1077,13 @@ function _$<T extends Element>(namespace: Namespace, description: string, attrs?
 		}
 	});
 
-	coalesce(children)
-		.forEach(child => {
-			if (child instanceof Node) {
-				result.appendChild(child);
-			} else {
-				result.appendChild(document.createTextNode(child as string));
-			}
-		});
+	for (const child of children) {
+		if (child instanceof Node) {
+			result.appendChild(child);
+		} else if (typeof child === 'string') {
+			result.appendChild(document.createTextNode(child));
+		}
+	}
 
 	return result as T;
 }

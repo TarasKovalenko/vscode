@@ -7,7 +7,7 @@ import { Disposable } from 'vs/base/common/lifecycle';
 import * as modes from 'vs/editor/common/modes';
 import * as nls from 'vs/nls';
 import { extHostNamedCustomer } from 'vs/workbench/api/common/extHostCustomers';
-import { IAuthenticationService, AllowedExtension, readAllowedExtensions } from 'vs/workbench/services/authentication/browser/authenticationService';
+import { IAuthenticationService, AllowedExtension, readAllowedExtensions, getAuthenticationProviderActivationEvent } from 'vs/workbench/services/authentication/browser/authenticationService';
 import { ExtHostAuthenticationShape, ExtHostContext, IExtHostContext, MainContext, MainThreadAuthenticationShape } from '../common/extHost.protocol';
 import { IDialogService } from 'vs/platform/dialogs/common/dialogs';
 import { IStorageService, StorageScope } from 'vs/platform/storage/common/storage';
@@ -17,8 +17,10 @@ import { INotificationService } from 'vs/platform/notification/common/notificati
 import { IStorageKeysSyncRegistryService } from 'vs/platform/userDataSync/common/storageKeys';
 import { IRemoteAgentService } from 'vs/workbench/services/remote/common/remoteAgentService';
 import { fromNow } from 'vs/base/common/date';
+import { ActivationKind, IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
+import { Platform, platform } from 'vs/base/common/platform';
 
-const VSO_ALLOWED_EXTENSIONS = ['github.vscode-pull-request-github', 'github.vscode-pull-request-github-insiders', 'vscode.git', 'ms-vsonline.vsonline', 'vscode.github-browser'];
+const VSO_ALLOWED_EXTENSIONS = ['github.vscode-pull-request-github', 'github.vscode-pull-request-github-insiders', 'vscode.git', 'ms-vsonline.vsonline', 'vscode.github-browser', 'ms-vscode.github-browser'];
 
 interface IAccountUsage {
 	extensionId: string;
@@ -130,8 +132,12 @@ export class MainThreadAuthenticationProvider extends Disposable {
 	}
 
 	private async registerCommandsAndContextMenuItems(): Promise<void> {
-		const sessions = await this._proxy.$getSessions(this.id);
-		sessions.forEach(session => this.registerSession(session));
+		try {
+			const sessions = await this._proxy.$getSessions(this.id);
+			sessions.forEach(session => this.registerSession(session));
+		} catch (_) {
+			// Ignore
+		}
 	}
 
 	private registerSession(session: modes.AuthenticationSession) {
@@ -213,7 +219,8 @@ export class MainThreadAuthentication extends Disposable implements MainThreadAu
 		@INotificationService private readonly notificationService: INotificationService,
 		@IStorageKeysSyncRegistryService private readonly storageKeysSyncRegistryService: IStorageKeysSyncRegistryService,
 		@IRemoteAgentService private readonly remoteAgentService: IRemoteAgentService,
-		@IQuickInputService private readonly quickInputService: IQuickInputService
+		@IQuickInputService private readonly quickInputService: IQuickInputService,
+		@IExtensionService private readonly extensionService: IExtensionService
 	) {
 		super();
 		this._proxy = extHostContext.getProxy(ExtHostContext.ExtHostAuthentication);
@@ -229,6 +236,12 @@ export class MainThreadAuthentication extends Disposable implements MainThreadAu
 		this._register(this.authenticationService.onDidUnregisterAuthenticationProvider(info => {
 			this._proxy.$onDidChangeAuthenticationProviders([], [info]);
 		}));
+
+		this._proxy.$setProviders(this.authenticationService.declaredProviders);
+
+		this._register(this.authenticationService.onDidChangeDeclaredProviders(e => {
+			this._proxy.$setProviders(e);
+		}));
 	}
 
 	$getProviderIds(): Promise<string[]> {
@@ -243,6 +256,10 @@ export class MainThreadAuthentication extends Disposable implements MainThreadAu
 
 	$unregisterAuthenticationProvider(id: string): void {
 		this.authenticationService.unregisterAuthenticationProvider(id);
+	}
+
+	$ensureProvider(id: string): Promise<void> {
+		return this.extensionService.activateByEvent(getAuthenticationProviderActivationEvent(id), ActivationKind.Immediate);
 	}
 
 	$sendDidChangeSessions(id: string, event: modes.AuthenticationSessionsChangeEvent): void {
@@ -292,7 +309,7 @@ export class MainThreadAuthentication extends Disposable implements MainThreadAu
 				}
 
 				const session = await this.authenticationService.login(providerId, scopes);
-				await this.$setTrustedExtension(providerId, session.account.label, extensionId, extensionName);
+				await this.$setTrustedExtensionAndAccountPreference(providerId, session.account.label, extensionId, extensionName, session.id);
 				return session;
 			} else {
 				await this.$requestNewSession(providerId, scopes, extensionId, extensionName);
@@ -386,7 +403,11 @@ export class MainThreadAuthentication extends Disposable implements MainThreadAu
 		}
 
 		const remoteConnection = this.remoteAgentService.getConnection();
-		if (remoteConnection && remoteConnection.remoteAuthority && remoteConnection.remoteAuthority.startsWith('vsonline') && VSO_ALLOWED_EXTENSIONS.includes(extensionId)) {
+		const isVSO = remoteConnection !== null
+			? remoteConnection.remoteAuthority.startsWith('vsonline')
+			: platform === Platform.Web;
+
+		if (isVSO && VSO_ALLOWED_EXTENSIONS.includes(extensionId)) {
 			addAccountUsage(this.storageService, providerId, accountName, extensionId, extensionName);
 			return true;
 		}
@@ -423,11 +444,13 @@ export class MainThreadAuthentication extends Disposable implements MainThreadAu
 		return choice === 0;
 	}
 
-	async $setTrustedExtension(providerId: string, accountName: string, extensionId: string, extensionName: string): Promise<void> {
+	async $setTrustedExtensionAndAccountPreference(providerId: string, accountName: string, extensionId: string, extensionName: string, sessionId: string): Promise<void> {
 		const allowList = readAllowedExtensions(this.storageService, providerId, accountName);
 		if (!allowList.find(allowed => allowed.id === extensionId)) {
 			allowList.push({ id: extensionId, name: extensionName });
 			this.storageService.store(`${providerId}-${accountName}`, JSON.stringify(allowList), StorageScope.GLOBAL);
 		}
+
+		this.storageService.store(`${extensionName}-${providerId}`, sessionId, StorageScope.GLOBAL);
 	}
 }

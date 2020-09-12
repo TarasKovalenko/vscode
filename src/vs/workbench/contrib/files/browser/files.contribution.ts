@@ -34,7 +34,7 @@ import { ILabelService } from 'vs/platform/label/common/label';
 import { IWorkbenchLayoutService } from 'vs/workbench/services/layout/browser/layoutService';
 import { registerSingleton } from 'vs/platform/instantiation/common/extensions';
 import { ExplorerService } from 'vs/workbench/contrib/files/common/explorerService';
-import { SUPPORTED_ENCODINGS } from 'vs/workbench/services/textfile/common/textfiles';
+import { SUPPORTED_ENCODINGS } from 'vs/workbench/services/textfile/common/encoding';
 import { Schemas } from 'vs/base/common/network';
 import { WorkspaceWatcher } from 'vs/workbench/contrib/files/common/workspaceWatcher';
 import { editorConfigurationBaseNode } from 'vs/editor/common/config/commonEditorConfig';
@@ -361,10 +361,23 @@ configurationRegistry.registerConfiguration({
 	properties: {
 		'editor.formatOnSave': {
 			'type': 'boolean',
-			'default': false,
 			'description': nls.localize('formatOnSave', "Format a file on save. A formatter must be available, the file must not be saved after delay, and the editor must not be shutting down."),
-			scope: ConfigurationScope.LANGUAGE_OVERRIDABLE,
-		}
+			'scope': ConfigurationScope.LANGUAGE_OVERRIDABLE,
+		},
+		'editor.formatOnSaveMode': {
+			'type': 'string',
+			'default': 'file',
+			'enum': [
+				'file',
+				'modifications'
+			],
+			'enumDescriptions': [
+				nls.localize('everything', "Format the whole file."),
+				nls.localize('modification', "Format modifications (requires source control)."),
+			],
+			'markdownDescription': nls.localize('formatOnSaveMode', "Controls if format on save formats the whole file or only modifications. Only applies when `#editor.formatOnSave#` is `true`."),
+			'scope': ConfigurationScope.LANGUAGE_OVERRIDABLE,
+		},
 	}
 });
 
