@@ -17,8 +17,6 @@ import { IViewPaneContainer } from 'vs/workbench/common/views';
 
 export const VIEWLET_ID = 'workbench.view.extensions';
 
-export const EXTENSIONS_CONFIG = '.vscode/extensions.json';
-
 export interface IExtensionsViewPaneContainer extends IViewPaneContainer {
 	search(text: string, refresh?: boolean): void;
 }
@@ -32,6 +30,7 @@ export const enum ExtensionState {
 
 export interface IExtension {
 	readonly type: ExtensionType;
+	readonly isBuiltin: boolean;
 	readonly state: ExtensionState;
 	readonly name: string;
 	readonly displayName: string;
@@ -146,3 +145,4 @@ export class ExtensionContainers extends Disposable {
 }
 
 export const TOGGLE_IGNORE_EXTENSION_ACTION_ID = 'workbench.extensions.action.toggleIgnoreExtension';
+export const INSTALL_EXTENSION_FROM_VSIX_COMMAND_ID = 'workbench.extensions.command.installFromVSIX';

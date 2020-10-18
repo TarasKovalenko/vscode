@@ -34,7 +34,7 @@ export class StartDebugActionViewItem implements IActionViewItem {
 	private options: { label: string, handler: (() => Promise<boolean>) }[] = [];
 	private toDispose: IDisposable[];
 	private selected = 0;
-	private providers: { label: string, provider: IDebugConfigurationProvider, pick: () => Promise<{ launch: ILaunch, config: IConfig } | undefined> }[] = [];
+	private providers: { label: string, provider: IDebugConfigurationProvider | undefined, pick: () => Promise<{ launch: ILaunch, config: IConfig } | undefined> }[] = [];
 
 	constructor(
 		private context: unknown,
@@ -106,7 +106,7 @@ export class StartDebugActionViewItem implements IActionViewItem {
 			if (shouldBeSelected) {
 				this.selected = e.index;
 			} else {
-				// Some select options should not remain selected https://github.com/Microsoft/vscode/issues/31526
+				// Some select options should not remain selected https://github.com/microsoft/vscode/issues/31526
 				this.selectBox.select(this.selected);
 			}
 		}));
@@ -196,7 +196,7 @@ export class StartDebugActionViewItem implements IActionViewItem {
 		}
 
 		this.providers.forEach(p => {
-			if (p.provider.type === manager.selectedConfiguration.config?.type) {
+			if (p.provider && p.provider.type === manager.selectedConfiguration.type) {
 				this.selected = this.options.length;
 			}
 
@@ -204,7 +204,7 @@ export class StartDebugActionViewItem implements IActionViewItem {
 				label: `${p.label}...`, handler: async () => {
 					const picked = await p.pick();
 					if (picked) {
-						await manager.selectConfiguration(picked.launch, picked.config.name, picked.config);
+						await manager.selectConfiguration(picked.launch, picked.config.name, picked.config, p.provider?.type);
 						return true;
 					}
 					return false;

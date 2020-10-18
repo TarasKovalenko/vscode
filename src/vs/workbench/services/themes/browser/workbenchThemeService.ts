@@ -18,7 +18,7 @@ import { Event, Emitter } from 'vs/base/common/event';
 import { registerFileIconThemeSchemas } from 'vs/workbench/services/themes/common/fileIconThemeSchema';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import { FileIconThemeData } from 'vs/workbench/services/themes/browser/fileIconThemeData';
-import { removeClasses, addClasses } from 'vs/base/browser/dom';
+import { removeClasses, addClasses, createStyleSheet } from 'vs/base/browser/dom';
 import { IWorkbenchEnvironmentService } from 'vs/workbench/services/environment/common/environmentService';
 import { IFileService, FileChangeType } from 'vs/platform/files/common/files';
 import { URI } from 'vs/base/common/uri';
@@ -36,7 +36,8 @@ import { ILogService } from 'vs/platform/log/common/log';
 import { isWeb } from 'vs/base/common/platform';
 import { ColorScheme } from 'vs/platform/theme/common/theme';
 import { IHostColorSchemeService } from 'vs/workbench/services/themes/common/hostColorSchemeService';
-
+import { CodiconStyles } from 'vs/base/browser/ui/codicons/codiconStyles';
+import { RunOnceScheduler } from 'vs/base/common/async';
 
 // implementation
 
@@ -151,12 +152,12 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 
 		const fileIconData = FileIconThemeData.fromStorageData(this.storageService);
 		if (fileIconData) {
-			this.applyAndSetFileIconTheme(fileIconData);
+			this.applyAndSetFileIconTheme(fileIconData, true);
 		}
 
 		const productIconData = ProductIconThemeData.fromStorageData(this.storageService);
 		if (productIconData) {
-			this.applyAndSetProductIconTheme(productIconData);
+			this.applyAndSetProductIconTheme(productIconData, true);
 		}
 
 		this.initialize().then(undefined, errors.onUnexpectedError).then(_ => {
@@ -164,6 +165,17 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 			this.installPreferredSchemeListener();
 			this.installRegistryListeners();
 		});
+
+		const codiconStyleSheet = createStyleSheet();
+		codiconStyleSheet.id = 'codiconStyles';
+
+		function updateAll() {
+			codiconStyleSheet.textContent = CodiconStyles.getCSS();
+		}
+
+		const delayer = new RunOnceScheduler(updateAll, 0);
+		CodiconStyles.onDidChange(() => delayer.schedule());
+		delayer.schedule();
 	}
 
 	private initialize(): Promise<[IWorkbenchColorTheme | null, IWorkbenchFileIconTheme | null, IWorkbenchProductIconTheme | null]> {
@@ -351,15 +363,11 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 	}
 
 	private getPreferredColorScheme(): ColorScheme | undefined {
-		const detectHCThemeSetting = this.configurationService.getValue<boolean>(ThemeSettings.DETECT_HC);
-		if (this.hostColorService.colorScheme === ColorScheme.HIGH_CONTRAST && detectHCThemeSetting) {
+		if (this.configurationService.getValue<boolean>(ThemeSettings.DETECT_HC) && this.hostColorService.highContrast) {
 			return ColorScheme.HIGH_CONTRAST;
 		}
 		if (this.configurationService.getValue<boolean>(ThemeSettings.DETECT_COLOR_SCHEME)) {
-			const osScheme = this.hostColorService.colorScheme;
-			if (osScheme !== ColorScheme.HIGH_CONTRAST) {
-				return osScheme;
-			}
+			return this.hostColorService.dark ? ColorScheme.DARK : ColorScheme.LIGHT;
 		}
 		return undefined;
 	}
@@ -370,7 +378,8 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 		if (themeSettingId) {
 			const theme = await this.colorThemeRegistry.findThemeBySettingsId(themeSettingId, undefined);
 			if (theme) {
-				return this.setColorTheme(theme.id, ConfigurationTarget.USER);
+				const configurationTarget = this.settings.findAutoConfigurationTarget(settingId);
+				return this.setColorTheme(theme.id, configurationTarget);
 			}
 		}
 		return null;
@@ -560,7 +569,7 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 		return false;
 	}
 
-	private applyAndSetFileIconTheme(iconThemeData: FileIconThemeData): void {
+	private applyAndSetFileIconTheme(iconThemeData: FileIconThemeData, silent = false): void {
 		this.currentFileIconTheme = iconThemeData;
 
 		_applyRules(iconThemeData.styleSheetContent!, fileIconThemeRulesClassName);
@@ -576,8 +585,10 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 		if (iconThemeData.id) {
 			this.sendTelemetry(iconThemeData.id, iconThemeData.extensionData, 'fileIcon');
 		}
-		this.onFileIconThemeChange.fire(this.currentFileIconTheme);
 
+		if (!silent) {
+			this.onFileIconThemeChange.fire(this.currentFileIconTheme);
+		}
 	}
 
 	public getProductIconThemes(): Promise<IWorkbenchProductIconTheme[]> {
@@ -630,7 +641,7 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 		return false;
 	}
 
-	private applyAndSetProductIconTheme(iconThemeData: ProductIconThemeData): void {
+	private applyAndSetProductIconTheme(iconThemeData: ProductIconThemeData, silent = false): void {
 
 		this.currentProductIconTheme = iconThemeData;
 
@@ -641,8 +652,9 @@ export class WorkbenchThemeService implements IWorkbenchThemeService {
 		if (iconThemeData.id) {
 			this.sendTelemetry(iconThemeData.id, iconThemeData.extensionData, 'productIcon');
 		}
-		this.onProductIconThemeChange.fire(this.currentProductIconTheme);
-
+		if (!silent) {
+			this.onProductIconThemeChange.fire(this.currentProductIconTheme);
+		}
 	}
 }
 
