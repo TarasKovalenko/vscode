@@ -34,6 +34,7 @@ import { isMacintosh } from 'vs/base/common/platform';
 import { Checkbox } from 'vs/base/browser/ui/checkbox/checkbox';
 import { IViewsService } from 'vs/workbench/common/views';
 import { searchReplaceAllIcon, searchHideReplaceIcon, searchShowContextIcon, searchShowReplaceIcon } from 'vs/workbench/contrib/search/browser/searchIcons';
+import { ToggleSearchEditorContextLinesCommandId } from 'vs/workbench/contrib/searchEditor/browser/constants';
 
 /** Specified in searchview.css */
 export const SingleLineInputHeight = 24;
@@ -295,7 +296,7 @@ export class SearchWidget extends Widget {
 		this.toggleReplaceButton.element.setAttribute('aria-expanded', 'false');
 		this.toggleReplaceButton.element.classList.add(...searchHideReplaceIcon.classNamesArray);
 		this.toggleReplaceButton.icon = 'toggle-replace-button';
-		// TODO@joh need to dispose this listener eventually
+		// TODO@joao need to dispose this listener eventually
 		this.toggleReplaceButton.onDidClick(() => this.onToggleReplaceButton());
 		this.toggleReplaceButton.element.title = nls.localize('search.replace.toggle.button.title', "Toggle Replace");
 	}
@@ -351,7 +352,11 @@ export class SearchWidget extends Widget {
 		this._register(this.searchInputFocusTracker.onDidBlur(() => this.searchInputBoxFocused.set(false)));
 
 
-		this.showContextCheckbox = new Checkbox({ isChecked: false, title: nls.localize('showContext', "Show Context"), icon: searchShowContextIcon });
+		this.showContextCheckbox = new Checkbox({
+			isChecked: false,
+			title: appendKeyBindingLabel(nls.localize('showContext', "Toggle Context Lines"), this.keyBindingService.lookupKeybinding(ToggleSearchEditorContextLinesCommandId), this.keyBindingService),
+			icon: searchShowContextIcon
+		});
 		this._register(this.showContextCheckbox.onChange(() => this.onContextLinesChanged()));
 
 		if (options.showContextToggle) {

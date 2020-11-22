@@ -13,7 +13,7 @@ import { IWorkspaceContextService } from 'vs/platform/workspace/common/workspace
 import { IStorageService } from 'vs/platform/storage/common/storage';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { IThemeService, ThemeIcon } from 'vs/platform/theme/common/themeService';
 import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
 import { FilterViewPaneContainer } from 'vs/workbench/browser/parts/views/viewsViewlet';
@@ -38,7 +38,7 @@ import { ReconnectionWaitEvent, PersistentConnectionEventType } from 'vs/platfor
 import Severity from 'vs/base/common/severity';
 import { ReloadWindowAction } from 'vs/workbench/browser/actions/windowActions';
 import { IDisposable } from 'vs/base/common/lifecycle';
-import { LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
+import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
 import { SwitchRemoteViewItem, SwitchRemoteAction } from 'vs/workbench/contrib/remote/browser/explorerViewItems';
 import { Action, IActionViewItem, IAction } from 'vs/base/common/actions';
 import { isStringArray } from 'vs/base/common/types';
@@ -135,12 +135,12 @@ class HelpTreeRenderer implements ITreeRenderer<HelpModel | IHelpItem, IHelpItem
 	}
 }
 
-class HelpDataSource implements IAsyncDataSource<any, any> {
-	hasChildren(element: any) {
+class HelpDataSource implements IAsyncDataSource<HelpModel, IHelpItem> {
+	hasChildren(element: HelpModel) {
 		return element instanceof HelpModel;
 	}
 
-	getChildren(element: any) {
+	getChildren(element: HelpModel) {
 		if (element instanceof HelpModel && element.items) {
 			return element.items;
 		}
@@ -154,6 +154,7 @@ const documentationIcon = registerIcon('remote-explorer-documentation', Codicon.
 const feedbackIcon = registerIcon('remote-explorer-feedback', Codicon.twitter);
 const reviewIssuesIcon = registerIcon('remote-explorer-review-issues', Codicon.issues);
 const reportIssuesIcon = registerIcon('remote-explorer-report-issues', Codicon.comment);
+const remoteExplorerViewIcon = registerIcon('remote-explorer-view-icon', Codicon.remoteExplorer, nls.localize('remoteExplorerViewIcon', 'View icon of the remote explorer view.'));
 
 interface IHelpItem {
 	icon: Codicon,
@@ -388,7 +389,7 @@ class IssueReporterItem extends HelpItemBase {
 class HelpPanel extends ViewPane {
 	static readonly ID = '~remote.helpPanel';
 	static readonly TITLE = nls.localize('remote.help', "Help and feedback");
-	private tree!: WorkbenchAsyncDataTree<any, any, any>;
+	private tree!: WorkbenchAsyncDataTree<HelpModel, IHelpItem, IHelpItem>;
 
 	constructor(
 		protected viewModel: IViewModel,
@@ -418,7 +419,7 @@ class HelpPanel extends ViewPane {
 		treeContainer.classList.add('remote-help-content');
 		container.appendChild(treeContainer);
 
-		this.tree = this.instantiationService.createInstance(WorkbenchAsyncDataTree,
+		this.tree = <WorkbenchAsyncDataTree<HelpModel, IHelpItem, IHelpItem>>this.instantiationService.createInstance(WorkbenchAsyncDataTree,
 			'RemoteHelp',
 			treeContainer,
 			new HelpTreeVirtualDelegate(),
@@ -439,7 +440,7 @@ class HelpPanel extends ViewPane {
 		this.tree.setInput(model);
 
 		this._register(Event.debounce(this.tree.onDidOpen, (last, event) => event, 75, true)(e => {
-			e.element.handleClick();
+			e.element?.handleClick();
 		}));
 	}
 
@@ -583,7 +584,7 @@ Registry.as<IViewContainersRegistry>(Extensions.ViewContainersRegistry).register
 				return;
 			}
 		},
-		icon: 'codicon-remote-explorer',
+		icon: ThemeIcon.fromCodicon(remoteExplorerViewIcon),
 		order: 4
 	}, ViewContainerLocation.Sidebar);
 
