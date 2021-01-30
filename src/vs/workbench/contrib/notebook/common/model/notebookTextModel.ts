@@ -257,7 +257,7 @@ export class NotebookTextModel extends Disposable implements INotebookTextModel 
 		super();
 		this.transientOptions = options;
 		this.metadata = metadata;
-		this.updateLanguages(languages);
+		this.updateLanguages(metadata.languages && metadata.languages.length ? metadata.languages : languages);
 		this._initialize(cells);
 
 		this._eventEmitter = new DelayedEmitter(
@@ -498,6 +498,10 @@ export class NotebookTextModel extends Disposable implements INotebookTextModel 
 		const oldMetadata = this.metadata;
 		this.metadata = metadata;
 
+		if (this.metadata.languages && this.metadata.languages.length) {
+			this.updateLanguages(this.metadata.languages);
+		}
+
 		if (computeUndoRedo) {
 			const that = this;
 			this._operationManager.pushEditOperation(new class implements IResourceUndoRedoElement {
@@ -620,7 +624,10 @@ export class NotebookTextModel extends Disposable implements INotebookTextModel 
 						if (!cell) {
 							return;
 						}
-						this._changeCellMetadata(cell.handle, newMetadata, false);
+						this._changeCellMetadata(cell.handle, {
+							...newMetadata,
+							runState: cell.metadata.runState
+						}, false);
 					}
 				}), undefined, undefined);
 			}

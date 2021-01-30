@@ -240,7 +240,7 @@ export class HitTestContext {
 	public readonly layoutInfo: EditorLayoutInfo;
 	public readonly viewDomNode: HTMLElement;
 	public readonly lineHeight: number;
-	public readonly atomicSoftTabs: boolean;
+	public readonly stickyTabStops: boolean;
 	public readonly typicalHalfwidthCharacterWidth: number;
 	public readonly lastRenderData: PointerHandlerLastRenderData;
 
@@ -253,7 +253,7 @@ export class HitTestContext {
 		this.layoutInfo = options.get(EditorOption.layoutInfo);
 		this.viewDomNode = viewHelper.viewDomNode;
 		this.lineHeight = options.get(EditorOption.lineHeight);
-		this.atomicSoftTabs = options.get(EditorOption.atomicSoftTabs);
+		this.stickyTabStops = options.get(EditorOption.stickyTabStops);
 		this.typicalHalfwidthCharacterWidth = options.get(EditorOption.fontInfo).typicalHalfwidthCharacterWidth;
 		this.lastRenderData = lastRenderData;
 		this._context = context;
@@ -269,11 +269,11 @@ export class HitTestContext {
 		const viewZoneWhitespace = context.viewLayout.getWhitespaceAtVerticalOffset(mouseVerticalOffset);
 
 		if (viewZoneWhitespace) {
-			let viewZoneMiddle = viewZoneWhitespace.verticalOffset + viewZoneWhitespace.height / 2,
-				lineCount = context.model.getLineCount(),
-				positionBefore: Position | null = null,
-				position: Position | null,
-				positionAfter: Position | null = null;
+			const viewZoneMiddle = viewZoneWhitespace.verticalOffset + viewZoneWhitespace.height / 2;
+			const lineCount = context.model.getLineCount();
+			let positionBefore: Position | null = null;
+			let position: Position | null;
+			let positionAfter: Position | null = null;
 
 			if (viewZoneWhitespace.afterLineNumber !== lineCount) {
 				// There are more lines after this view zone
@@ -767,7 +767,7 @@ export class MouseTargetFactory {
 		const lineWidth = ctx.getLineWidth(lineNumber);
 
 		if (request.mouseContentHorizontalOffset > lineWidth) {
-			if (browser.isEdge && pos.column === 1) {
+			if (browser.isEdgeLegacy && pos.column === 1) {
 				// See https://github.com/microsoft/vscode/issues/10875
 				const detail = createEmptyContentDataInLines(request.mouseContentHorizontalOffset - lineWidth);
 				return request.fulfill(MouseTargetType.CONTENT_EMPTY, new Position(lineNumber, ctx.model.getLineMaxColumn(lineNumber)), undefined, detail);
@@ -940,12 +940,16 @@ export class MouseTargetFactory {
 			}
 		}
 
-		// For inline decorations, Gecko returns the `<span>` of the line and the offset is the `<span>` with the inline decoration
+		// For inline decorations, Gecko sometimes returns the `<span>` of the line and the offset is the `<span>` with the inline decoration
+		// Some other times, it returns the `<span>` with the inline decoration
 		if (hitResult.offsetNode.nodeType === hitResult.offsetNode.ELEMENT_NODE) {
-			const parent1 = hitResult.offsetNode.parentNode; // expected to be the view line div
+			const parent1 = hitResult.offsetNode.parentNode;
 			const parent1ClassName = parent1 && parent1.nodeType === parent1.ELEMENT_NODE ? (<HTMLElement>parent1).className : null;
+			const parent2 = parent1 ? parent1.parentNode : null;
+			const parent2ClassName = parent2 && parent2.nodeType === parent2.ELEMENT_NODE ? (<HTMLElement>parent2).className : null;
 
 			if (parent1ClassName === ViewLine.CLASS_NAME) {
+				// it returned the `<span>` of the line and the offset is the `<span>` with the inline decoration
 				const tokenSpan = hitResult.offsetNode.childNodes[Math.min(hitResult.offset, hitResult.offsetNode.childNodes.length - 1)];
 				if (tokenSpan) {
 					const p = ctx.getPositionFromDOMInfo(<HTMLElement>tokenSpan, 0);
@@ -954,6 +958,13 @@ export class MouseTargetFactory {
 						hitTarget: null
 					};
 				}
+			} else if (parent2ClassName === ViewLine.CLASS_NAME) {
+				// it returned the `<span>` with the inline decoration
+				const p = ctx.getPositionFromDOMInfo(<HTMLElement>hitResult.offsetNode, 0);
+				return {
+					position: p,
+					hitTarget: null
+				};
 			}
 		}
 
@@ -1014,12 +1025,11 @@ export class MouseTargetFactory {
 	}
 
 	private static _snapToSoftTabBoundary(position: Position, viewModel: IViewModel): Position {
-		const minColumn = viewModel.getLineMinColumn(position.lineNumber);
 		const lineContent = viewModel.getLineContent(position.lineNumber);
 		const { tabSize } = viewModel.getTextModelOptions();
-		const newPosition = AtomicTabMoveOperations.atomicPosition(lineContent, position.column - minColumn, tabSize, Direction.Nearest);
+		const newPosition = AtomicTabMoveOperations.atomicPosition(lineContent, position.column - 1, tabSize, Direction.Nearest);
 		if (newPosition !== -1) {
-			return new Position(position.lineNumber, newPosition + minColumn);
+			return new Position(position.lineNumber, newPosition + 1);
 		}
 		return position;
 	}
@@ -1056,7 +1066,7 @@ export class MouseTargetFactory {
 			};
 		}
 		// Snap to the nearest soft tab boundary if atomic soft tabs are enabled.
-		if (result.position && ctx.atomicSoftTabs) {
+		if (result.position && ctx.stickyTabStops) {
 			result.position = this._snapToSoftTabBoundary(result.position, ctx.model);
 		}
 		return result;
@@ -1073,7 +1083,7 @@ export function shadowCaretRangeFromPoint(shadowRoot: ShadowRoot, x: number, y: 
 		// Get the last child of the element until its firstChild is a text node
 		// This assumes that the pointer is on the right of the line, out of the tokens
 		// and that we want to get the offset of the last token of the line
-		while (el && el.firstChild && el.firstChild.nodeType !== el.firstChild.TEXT_NODE) {
+		while (el && el.firstChild && el.firstChild.nodeType !== el.firstChild.TEXT_NODE && el.lastChild && el.lastChild.firstChild) {
 			el = <Element>el.lastChild;
 		}
 
