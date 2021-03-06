@@ -81,14 +81,14 @@ export function isFileToOpen(uriToOpen: IWindowOpenable): uriToOpen is IFileToOp
 	return !!(uriToOpen as IFileToOpen).fileUri;
 }
 
-export type MenuBarVisibility = 'default' | 'visible' | 'toggle' | 'hidden' | 'compact';
+export type MenuBarVisibility = 'classic' | 'visible' | 'toggle' | 'hidden' | 'compact';
 
 export function getMenuBarVisibility(configurationService: IConfigurationService): MenuBarVisibility {
 	const titleBarStyle = getTitleBarStyle(configurationService);
-	const menuBarVisibility = configurationService.getValue<MenuBarVisibility>('window.menuBarVisibility');
+	const menuBarVisibility = configurationService.getValue<MenuBarVisibility | 'default'>('window.menuBarVisibility');
 
-	if (titleBarStyle === 'native' && menuBarVisibility === 'compact') {
-		return 'default';
+	if (menuBarVisibility === 'default' || (titleBarStyle === 'native' && menuBarVisibility === 'compact')) {
+		return 'classic';
 	} else {
 		return menuBarVisibility;
 	}
@@ -169,7 +169,7 @@ export interface IPathData {
 	readonly openOnlyIfExists?: boolean;
 
 	// Specifies an optional id to override the editor used to edit the resource, e.g. custom editor.
-	readonly overrideId?: string;
+	readonly editorOverrideId?: string;
 }
 
 export interface IPathsToWaitFor extends IPathsToWaitForData {

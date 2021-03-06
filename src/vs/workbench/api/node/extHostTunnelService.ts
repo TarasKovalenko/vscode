@@ -18,7 +18,6 @@ import { IExtHostTunnelService, TunnelDto } from 'vs/workbench/api/common/extHos
 import { Event, Emitter } from 'vs/base/common/event';
 import { TunnelOptions, TunnelCreationOptions } from 'vs/platform/remote/common/tunnel';
 import { IExtensionDescription } from 'vs/platform/extensions/common/extensions';
-import { promisify } from 'util';
 import { MovingAverage } from 'vs/base/common/numbers';
 import { CandidatePort } from 'vs/workbench/services/remote/common/remoteExplorerService';
 import { ILogService } from 'vs/platform/log/common/log';
@@ -148,11 +147,12 @@ export class ExtHostTunnelService extends Disposable implements IExtHostTunnelSe
 		super();
 		this._proxy = extHostRpc.getProxy(MainContext.MainThreadTunnelService);
 		if (isLinux && initData.remote.isRemote && initData.remote.authority) {
-			this._proxy.$setCandidateFinder();
+			this._proxy.$setRemoteTunnelService(process.pid);
 		}
 	}
 
 	async openTunnel(extension: IExtensionDescription, forward: TunnelOptions): Promise<vscode.Tunnel | undefined> {
+		this.logService.trace(`ForwardedPorts: (ExtHostTunnelService) ${extension.identifier} called openTunnel API for ${forward.remoteAddress.port}.`);
 		const tunnel = await this._proxy.$openTunnel(forward, extension.displayName);
 		if (tunnel) {
 			const disposableTunnel: vscode.Tunnel = new ExtensionTunnel(tunnel.remoteAddress, tunnel.localAddress, () => {
@@ -185,6 +185,7 @@ export class ExtHostTunnelService extends Disposable implements IExtHostTunnelSe
 		while (this._candidateFindingEnabled) {
 			const startTime = new Date().getTime();
 			const newPorts = await this.findCandidatePorts();
+			this.logService.trace(`ForwardedPorts: (ExtHostTunnelService) found candidate ports ${newPorts.map(port => port.port).join(', ')}`);
 			const timeTaken = new Date().getTime() - startTime;
 			movingAverage.update(timeTaken);
 			if (!oldPorts || (JSON.stringify(oldPorts) !== JSON.stringify(newPorts))) {
@@ -197,6 +198,9 @@ export class ExtHostTunnelService extends Disposable implements IExtHostTunnelSe
 
 	async setTunnelExtensionFunctions(provider: vscode.RemoteAuthorityResolver | undefined): Promise<IDisposable> {
 		if (provider) {
+			if (provider.candidatePortSource !== undefined) {
+				await this._proxy.$setCandidatePortSource(provider.candidatePortSource);
+			}
 			if (provider.showCandidatePort) {
 				this._showCandidatePort = provider.showCandidatePort;
 				await this._proxy.$setCandidateFilter();
@@ -236,23 +240,26 @@ export class ExtHostTunnelService extends Disposable implements IExtHostTunnelSe
 	async $forwardPort(tunnelOptions: TunnelOptions, tunnelCreationOptions: TunnelCreationOptions): Promise<TunnelDto | undefined> {
 		if (this._forwardPortProvider) {
 			try {
-				this.logService.trace('$forwardPort: Getting tunnel from provider.');
+				this.logService.trace('ForwardedPorts: (ExtHostTunnelService) Getting tunnel from provider.');
 				const providedPort = this._forwardPortProvider(tunnelOptions, tunnelCreationOptions);
-				this.logService.trace('$forwardPort: Got tunnel promise from provider.');
+				this.logService.trace('ForwardedPorts: (ExtHostTunnelService) Got tunnel promise from provider.');
 				if (providedPort !== undefined) {
 					const tunnel = await providedPort;
-					this.logService.trace('$forwardPort: Successfully awaited tunnel from provider.');
+					this.logService.trace('ForwardedPorts: (ExtHostTunnelService) Successfully awaited tunnel from provider.');
 					if (!this._extensionTunnels.has(tunnelOptions.remoteAddress.host)) {
 						this._extensionTunnels.set(tunnelOptions.remoteAddress.host, new Map());
 					}
-					const disposeListener = this._register(tunnel.onDidDispose(() => this._proxy.$closeTunnel(tunnel.remoteAddress)));
+					const disposeListener = this._register(tunnel.onDidDispose(() => {
+						this.logService.trace('ForwardedPorts: (ExtHostTunnelService) Extension fired tunnel\'s onDidDispose.');
+						return this._proxy.$closeTunnel(tunnel.remoteAddress);
+					}));
 					this._extensionTunnels.get(tunnelOptions.remoteAddress.host)!.set(tunnelOptions.remoteAddress.port, { tunnel, disposeListener });
 					return TunnelDto.fromApiTunnel(tunnel);
 				} else {
-					this.logService.trace('$forwardPort: Tunnel is undefined');
+					this.logService.trace('ForwardedPorts: (ExtHostTunnelService) Tunnel is undefined');
 				}
 			} catch (e) {
-				this.logService.trace('$forwardPort: tunnel provider error');
+				this.logService.trace('ForwardedPorts: (ExtHostTunnelService) tunnel provider error');
 			}
 		}
 		return undefined;
@@ -260,15 +267,17 @@ export class ExtHostTunnelService extends Disposable implements IExtHostTunnelSe
 
 	async $applyCandidateFilter(candidates: CandidatePort[]): Promise<CandidatePort[]> {
 		const filter = await Promise.all(candidates.map(candidate => this._showCandidatePort(candidate.host, candidate.port, candidate.detail)));
-		return candidates.filter((candidate, index) => filter[index]);
+		const result = candidates.filter((candidate, index) => filter[index]);
+		this.logService.trace(`ForwardedPorts: (ExtHostTunnelService) filtered from ${candidates.map(port => port.port).join(', ')} to ${result.map(port => port.port).join(', ')}`);
+		return result;
 	}
 
 	async findCandidatePorts(): Promise<CandidatePort[]> {
 		let tcp: string = '';
 		let tcp6: string = '';
 		try {
-			tcp = await pfs.readFile('/proc/net/tcp', 'utf8');
-			tcp6 = await pfs.readFile('/proc/net/tcp6', 'utf8');
+			tcp = await fs.promises.readFile('/proc/net/tcp', 'utf8');
+			tcp6 = await fs.promises.readFile('/proc/net/tcp6', 'utf8');
 		} catch (e) {
 			// File reading error. No additional handling needed.
 		}
@@ -286,10 +295,10 @@ export class ExtHostTunnelService extends Disposable implements IExtHostTunnelSe
 			try {
 				const pid: number = Number(childName);
 				const childUri = resources.joinPath(URI.file('/proc'), childName);
-				const childStat = await pfs.stat(childUri.fsPath);
+				const childStat = await fs.promises.stat(childUri.fsPath);
 				if (childStat.isDirectory() && !isNaN(pid)) {
-					const cwd = await promisify(fs.readlink)(resources.joinPath(childUri, 'cwd').fsPath);
-					const cmd = await pfs.readFile(resources.joinPath(childUri, 'cmdline').fsPath, 'utf8');
+					const cwd = await fs.promises.readlink(resources.joinPath(childUri, 'cwd').fsPath);
+					const cmd = await fs.promises.readFile(resources.joinPath(childUri, 'cmdline').fsPath, 'utf8');
 					processes.push({ pid, cwd, cmd });
 				}
 			} catch (e) {

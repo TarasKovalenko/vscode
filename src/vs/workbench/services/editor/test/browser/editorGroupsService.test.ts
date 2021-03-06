@@ -5,34 +5,32 @@
 
 import * as assert from 'assert';
 import { Event } from 'vs/base/common/event';
-import { workbenchInstantiationService, registerTestEditor, TestFileEditorInput, TestEditorPart, ITestInstantiationService } from 'vs/workbench/test/browser/workbenchTestServices';
+import { workbenchInstantiationService, registerTestEditor, TestFileEditorInput, TestEditorPart, ITestInstantiationService, TestServiceAccessor, createEditorPart } from 'vs/workbench/test/browser/workbenchTestServices';
 import { GroupDirection, GroupsOrder, MergeGroupMode, GroupOrientation, GroupChangeKind, GroupLocation, OpenEditorContext } from 'vs/workbench/services/editor/common/editorGroupsService';
 import { EditorOptions, CloseDirection, IEditorPartOptions, EditorsOrder } from 'vs/workbench/common/editor';
 import { URI } from 'vs/base/common/uri';
 import { SyncDescriptor } from 'vs/platform/instantiation/common/descriptors';
-import { IDisposable, dispose } from 'vs/base/common/lifecycle';
+import { DisposableStore } from 'vs/base/common/lifecycle';
 import { MockScopableContextKeyService } from 'vs/platform/keybinding/test/common/mockKeybindingService';
-
-const TEST_EDITOR_ID = 'MyFileEditorForEditorGroupService';
-const TEST_EDITOR_INPUT_ID = 'testEditorInputForEditorGroupService';
+import { ConfirmResult } from 'vs/platform/dialogs/common/dialogs';
 
 suite('EditorGroupsService', () => {
 
-	let disposables: IDisposable[] = [];
+	const TEST_EDITOR_ID = 'MyFileEditorForEditorGroupService';
+	const TEST_EDITOR_INPUT_ID = 'testEditorInputForEditorGroupService';
+
+	const disposables = new DisposableStore();
 
 	setup(() => {
-		disposables.push(registerTestEditor(TEST_EDITOR_ID, [new SyncDescriptor(TestFileEditorInput)], TEST_EDITOR_INPUT_ID));
+		disposables.add(registerTestEditor(TEST_EDITOR_ID, [new SyncDescriptor(TestFileEditorInput)], TEST_EDITOR_INPUT_ID));
 	});
 
 	teardown(() => {
-		dispose(disposables);
-		disposables = [];
+		disposables.clear();
 	});
 
 	function createPart(instantiationService = workbenchInstantiationService()): [TestEditorPart, ITestInstantiationService] {
-		const part = instantiationService.createInstance(TestEditorPart);
-		part.create(document.createElement('div'));
-		part.layout(400, 300);
+		const part = createEditorPart(instantiationService, disposables);
 
 		return [part, instantiationService];
 	}
@@ -42,7 +40,7 @@ suite('EditorGroupsService', () => {
 		const [part] = createPart(instantiationService);
 
 		let activeGroupChangeCounter = 0;
-		const activeGroupChangeListener = part.onDidActiveGroupChange(() => {
+		const activeGroupChangeListener = part.onDidChangeActiveGroup(() => {
 			activeGroupChangeCounter++;
 		});
 
@@ -189,8 +187,6 @@ suite('EditorGroupsService', () => {
 		groupAddedListener.dispose();
 		groupRemovedListener.dispose();
 		groupMovedListener.dispose();
-
-		part.dispose();
 	});
 
 	test('save & restore state', async function () {
@@ -219,7 +215,6 @@ suite('EditorGroupsService', () => {
 		assert.ok(restoredPart.getGroup(downGroup.id));
 
 		restoredPart.clearState();
-		restoredPart.dispose();
 	});
 
 	test('groups index / labels', function () {
@@ -230,7 +225,7 @@ suite('EditorGroupsService', () => {
 		const downGroup = part.addGroup(rightGroup, GroupDirection.DOWN);
 
 		let groupIndexChangedCounter = 0;
-		const groupIndexChangedListener = part.onDidGroupIndexChange(() => {
+		const groupIndexChangedListener = part.onDidChangeGroupIndex(() => {
 			groupIndexChangedCounter++;
 		});
 
@@ -276,8 +271,6 @@ suite('EditorGroupsService', () => {
 
 		labelChangeListener.dispose();
 		groupIndexChangedListener.dispose();
-
-		part.dispose();
 	});
 
 	test('copy/merge groups', async () => {
@@ -315,6 +308,7 @@ suite('EditorGroupsService', () => {
 		part.mergeGroup(rootGroup, downGroup);
 		assert.strictEqual(groupRemovedCounter, 1);
 		assert.strictEqual(rootGroupDisposed, true);
+
 		groupAddedListener.dispose();
 		groupRemovedListener.dispose();
 		disposeListener.dispose();
@@ -326,7 +320,6 @@ suite('EditorGroupsService', () => {
 
 		await part.whenRestored;
 		assert.ok(true);
-		part.dispose();
 	});
 
 	test('options', () => {
@@ -334,7 +327,7 @@ suite('EditorGroupsService', () => {
 
 		let oldOptions!: IEditorPartOptions;
 		let newOptions!: IEditorPartOptions;
-		part.onDidEditorPartOptionsChange(event => {
+		part.onDidChangeEditorPartOptions(event => {
 			oldOptions = event.oldPartOptions;
 			newOptions = event.newPartOptions;
 		});
@@ -346,8 +339,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(part.partOptions.showTabs, false);
 		assert.strictEqual(newOptions.showTabs, false);
 		assert.strictEqual(oldOptions, currentOptions);
-
-		part.dispose();
 	});
 
 	test('editor basics', async function () {
@@ -457,7 +448,6 @@ suite('EditorGroupsService', () => {
 		editorWillCloseListener.dispose();
 		editorWillOpenListener.dispose();
 		editorGroupChangeListener.dispose();
-		part.dispose();
 	});
 
 	test('openEditors / closeEditors', async () => {
@@ -483,10 +473,33 @@ suite('EditorGroupsService', () => {
 		assert.ok(inputInactive.gotDisposed);
 
 		assert.strictEqual(group.isEmpty, true);
-		part.dispose();
 	});
 
-	test('closeEditors (one, opened in multiple groups)', async () => {
+	test('closeEditor - dirty editor handling', async () => {
+		const [part, instantiationService] = createPart();
+
+		const accessor = instantiationService.createInstance(TestServiceAccessor);
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.DONT_SAVE);
+
+		const group = part.activeGroup;
+
+		const input = new TestFileEditorInput(URI.file('foo/bar'), TEST_EDITOR_INPUT_ID);
+		input.dirty = true;
+
+		await group.openEditor(input);
+
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.CANCEL);
+		await group.closeEditor(input);
+
+		assert.ok(!input.gotDisposed);
+
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.DONT_SAVE);
+		await group.closeEditor(input);
+
+		assert.ok(input.gotDisposed);
+	});
+
+	test('closeEditor (one, opened in multiple groups)', async () => {
 		const [part] = createPart();
 		const group = part.activeGroup;
 		assert.strictEqual(group.isEmpty, true);
@@ -506,6 +519,35 @@ suite('EditorGroupsService', () => {
 		await group.closeEditor(input);
 
 		assert.ok(input.gotDisposed);
+	});
+
+	test('closeEditors - dirty editor handling', async () => {
+		const [part, instantiationService] = createPart();
+
+		const accessor = instantiationService.createInstance(TestServiceAccessor);
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.DONT_SAVE);
+
+		const group = part.activeGroup;
+
+		const input1 = new TestFileEditorInput(URI.file('foo/bar1'), TEST_EDITOR_INPUT_ID);
+		input1.dirty = true;
+
+		const input2 = new TestFileEditorInput(URI.file('foo/bar2'), TEST_EDITOR_INPUT_ID);
+
+		await group.openEditor(input1);
+		await group.openEditor(input2);
+
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.CANCEL);
+		await group.closeEditors([input1, input2]);
+
+		assert.ok(!input1.gotDisposed);
+		assert.ok(!input2.gotDisposed);
+
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.DONT_SAVE);
+		await group.closeEditors([input1, input2]);
+
+		assert.ok(input1.gotDisposed);
+		assert.ok(input2.gotDisposed);
 	});
 
 	test('closeEditors (except one)', async () => {
@@ -531,7 +573,6 @@ suite('EditorGroupsService', () => {
 		await group.closeEditors({ except: input2 });
 		assert.strictEqual(group.count, 1);
 		assert.strictEqual(group.getEditorByIndex(0), input2);
-		part.dispose();
 	});
 
 	test('closeEditors (except one, sticky editor)', async () => {
@@ -567,7 +608,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(group.count, 1);
 		assert.strictEqual(group.stickyCount, 0);
 		assert.strictEqual(group.getEditorByIndex(0), input2);
-		part.dispose();
 	});
 
 	test('closeEditors (saved only)', async () => {
@@ -592,7 +632,6 @@ suite('EditorGroupsService', () => {
 
 		await group.closeEditors({ savedOnly: true });
 		assert.strictEqual(group.count, 0);
-		part.dispose();
 	});
 
 	test('closeEditors (saved only, sticky editor)', async () => {
@@ -624,7 +663,6 @@ suite('EditorGroupsService', () => {
 
 		await group.closeEditors({ savedOnly: true });
 		assert.strictEqual(group.count, 0);
-		part.dispose();
 	});
 
 	test('closeEditors (direction: right)', async () => {
@@ -651,7 +689,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(group.count, 2);
 		assert.strictEqual(group.getEditorByIndex(0), input1);
 		assert.strictEqual(group.getEditorByIndex(1), input2);
-		part.dispose();
 	});
 
 	test('closeEditors (direction: right, sticky editor)', async () => {
@@ -685,7 +722,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(group.count, 2);
 		assert.strictEqual(group.getEditorByIndex(0), input1);
 		assert.strictEqual(group.getEditorByIndex(1), input2);
-		part.dispose();
 	});
 
 	test('closeEditors (direction: left)', async () => {
@@ -712,7 +748,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(group.count, 2);
 		assert.strictEqual(group.getEditorByIndex(0), input2);
 		assert.strictEqual(group.getEditorByIndex(1), input3);
-		part.dispose();
 	});
 
 	test('closeEditors (direction: left, sticky editor)', async () => {
@@ -747,7 +782,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(group.count, 2);
 		assert.strictEqual(group.getEditorByIndex(0), input2);
 		assert.strictEqual(group.getEditorByIndex(1), input3);
-		part.dispose();
 	});
 
 	test('closeAllEditors', async () => {
@@ -769,7 +803,35 @@ suite('EditorGroupsService', () => {
 
 		await group.closeAllEditors();
 		assert.strictEqual(group.isEmpty, true);
-		part.dispose();
+	});
+
+	test('closeAllEditors - dirty editor handling', async () => {
+		const [part, instantiationService] = createPart();
+
+		const accessor = instantiationService.createInstance(TestServiceAccessor);
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.DONT_SAVE);
+
+		const group = part.activeGroup;
+
+		const input1 = new TestFileEditorInput(URI.file('foo/bar1'), TEST_EDITOR_INPUT_ID);
+		input1.dirty = true;
+
+		const input2 = new TestFileEditorInput(URI.file('foo/bar2'), TEST_EDITOR_INPUT_ID);
+
+		await group.openEditor(input1);
+		await group.openEditor(input2);
+
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.CANCEL);
+		await group.closeAllEditors();
+
+		assert.ok(!input1.gotDisposed);
+		assert.ok(!input2.gotDisposed);
+
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.DONT_SAVE);
+		await group.closeAllEditors();
+
+		assert.ok(input1.gotDisposed);
+		assert.ok(input2.gotDisposed);
 	});
 
 	test('closeAllEditors (sticky editor)', async () => {
@@ -797,8 +859,6 @@ suite('EditorGroupsService', () => {
 		await group.closeAllEditors();
 
 		assert.strictEqual(group.isEmpty, true);
-
-		part.dispose();
 	});
 
 	test('moveEditor (same group)', async () => {
@@ -825,8 +885,8 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(editorMoveCounter, 1);
 		assert.strictEqual(group.getEditorByIndex(0), inputInactive);
 		assert.strictEqual(group.getEditorByIndex(1), input);
+
 		editorGroupChangeListener.dispose();
-		part.dispose();
 	});
 
 	test('moveEditor (across groups)', async () => {
@@ -848,7 +908,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(group.getEditorByIndex(0), input);
 		assert.strictEqual(rightGroup.count, 1);
 		assert.strictEqual(rightGroup.getEditorByIndex(0), inputInactive);
-		part.dispose();
 	});
 
 	test('copyEditor (across groups)', async () => {
@@ -871,7 +930,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(group.getEditorByIndex(1), inputInactive);
 		assert.strictEqual(rightGroup.count, 1);
 		assert.strictEqual(rightGroup.getEditorByIndex(0), inputInactive);
-		part.dispose();
 	});
 
 	test('replaceEditors', async () => {
@@ -889,7 +947,69 @@ suite('EditorGroupsService', () => {
 		await group.replaceEditors([{ editor: input, replacement: inputInactive }]);
 		assert.strictEqual(group.count, 1);
 		assert.strictEqual(group.getEditorByIndex(0), inputInactive);
-		part.dispose();
+	});
+
+	test('replaceEditors - dirty editor handling', async () => {
+		const [part, instantiationService] = createPart();
+
+		const accessor = instantiationService.createInstance(TestServiceAccessor);
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.DONT_SAVE);
+
+		const group = part.activeGroup;
+
+		const input1 = new TestFileEditorInput(URI.file('foo/bar1'), TEST_EDITOR_INPUT_ID);
+		input1.dirty = true;
+
+		const input2 = new TestFileEditorInput(URI.file('foo/bar2'), TEST_EDITOR_INPUT_ID);
+
+		await group.openEditor(input1);
+		assert.strictEqual(group.activeEditor, input1);
+
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.CANCEL);
+		await group.replaceEditors([{ editor: input1, replacement: input2 }]);
+
+		assert.strictEqual(group.activeEditor, input1);
+		assert.ok(!input1.gotDisposed);
+
+		accessor.fileDialogService.setConfirmResult(ConfirmResult.DONT_SAVE);
+		await group.replaceEditors([{ editor: input1, replacement: input2 }]);
+
+		assert.strictEqual(group.activeEditor, input2);
+		assert.ok(input1.gotDisposed);
+	});
+
+	test('replaceEditors - proper index handling', async () => {
+		const [part] = createPart();
+		const group = part.activeGroup;
+		assert.strictEqual(group.isEmpty, true);
+
+		const input1 = new TestFileEditorInput(URI.file('foo/bar1'), TEST_EDITOR_INPUT_ID);
+		const input2 = new TestFileEditorInput(URI.file('foo/bar2'), TEST_EDITOR_INPUT_ID);
+		const input3 = new TestFileEditorInput(URI.file('foo/bar3'), TEST_EDITOR_INPUT_ID);
+		const input4 = new TestFileEditorInput(URI.file('foo/bar4'), TEST_EDITOR_INPUT_ID);
+		const input5 = new TestFileEditorInput(URI.file('foo/bar5'), TEST_EDITOR_INPUT_ID);
+
+		const input6 = new TestFileEditorInput(URI.file('foo/bar6'), TEST_EDITOR_INPUT_ID);
+		const input7 = new TestFileEditorInput(URI.file('foo/bar7'), TEST_EDITOR_INPUT_ID);
+		const input8 = new TestFileEditorInput(URI.file('foo/bar8'), TEST_EDITOR_INPUT_ID);
+
+		await group.openEditor(input1, { pinned: true });
+		await group.openEditor(input2, { pinned: true });
+		await group.openEditor(input3, { pinned: true });
+		await group.openEditor(input4, { pinned: true });
+		await group.openEditor(input5, { pinned: true });
+
+		await group.replaceEditors([
+			{ editor: input1, replacement: input6 },
+			{ editor: input3, replacement: input7 },
+			{ editor: input5, replacement: input8 }
+		]);
+
+		assert.strictEqual(group.getEditorByIndex(0), input6);
+		assert.strictEqual(group.getEditorByIndex(1), input2);
+		assert.strictEqual(group.getEditorByIndex(2), input7);
+		assert.strictEqual(group.getEditorByIndex(3), input4);
+		assert.strictEqual(group.getEditorByIndex(4), input8);
 	});
 
 	test('find neighbour group (left/right)', function () {
@@ -899,8 +1019,6 @@ suite('EditorGroupsService', () => {
 
 		assert.strictEqual(rightGroup, part.findGroup({ direction: GroupDirection.RIGHT }, rootGroup));
 		assert.strictEqual(rootGroup, part.findGroup({ direction: GroupDirection.LEFT }, rightGroup));
-
-		part.dispose();
 	});
 
 	test('find neighbour group (up/down)', function () {
@@ -910,8 +1028,6 @@ suite('EditorGroupsService', () => {
 
 		assert.strictEqual(downGroup, part.findGroup({ direction: GroupDirection.DOWN }, rootGroup));
 		assert.strictEqual(rootGroup, part.findGroup({ direction: GroupDirection.UP }, downGroup));
-
-		part.dispose();
 	});
 
 	test('find group by location (left/right)', function () {
@@ -928,8 +1044,6 @@ suite('EditorGroupsService', () => {
 
 		assert.strictEqual(downGroup, part.findGroup({ location: GroupLocation.NEXT }, rightGroup));
 		assert.strictEqual(rightGroup, part.findGroup({ location: GroupLocation.PREVIOUS }, downGroup));
-
-		part.dispose();
 	});
 
 	test('applyLayout (2x2)', function () {
@@ -938,8 +1052,6 @@ suite('EditorGroupsService', () => {
 		part.applyLayout({ groups: [{ groups: [{}, {}] }, { groups: [{}, {}] }], orientation: GroupOrientation.HORIZONTAL });
 
 		assert.strictEqual(part.groups.length, 4);
-
-		part.dispose();
 	});
 
 	test('centeredLayout', function () {
@@ -948,8 +1060,6 @@ suite('EditorGroupsService', () => {
 		part.centerLayout(true);
 
 		assert.strictEqual(part.isLayoutCentered(), true);
-
-		part.dispose();
 	});
 
 	test('sticky editors', async () => {
@@ -1052,7 +1162,6 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(group.getIndexOfEditor(input), 2);
 
 		editorGroupChangeListener.dispose();
-		part.dispose();
 	});
 
 	test('moveEditor with context (across groups)', async () => {
@@ -1078,7 +1187,6 @@ suite('EditorGroupsService', () => {
 		group.moveEditor(inputInactive, rightGroup, { index: 0 });
 		const context = await waitForEditorWillOpen;
 		assert.strictEqual(context, OpenEditorContext.MOVE_EDITOR);
-		part.dispose();
 	});
 
 	test('copyEditor with context (across groups)', async () => {
@@ -1097,6 +1205,5 @@ suite('EditorGroupsService', () => {
 		group.copyEditor(inputInactive, rightGroup, { index: 0 });
 		const context = await waitForEditorWillOpen;
 		assert.strictEqual(context, OpenEditorContext.COPY_EDITOR);
-		part.dispose();
 	});
 });
